@@ -6,6 +6,7 @@ namespace System.Drawing
     /// <summary>
     /// Specifies the Copy Pixel (ROP) operation.
     /// </summary>
+    [Flags]
     public enum CopyPixelOperation
     {
         /// <summary>
