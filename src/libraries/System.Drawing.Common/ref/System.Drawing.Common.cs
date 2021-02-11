@@ -250,6 +250,7 @@ namespace System.Drawing
         BottomCenter = 512,
         BottomRight = 1024,
     }
+    [System.Flags]
     public enum CopyPixelOperation
     {
         NoMirrorBitmap = -2147483648,
