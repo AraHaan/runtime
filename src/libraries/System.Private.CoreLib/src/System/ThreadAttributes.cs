@@ -9,7 +9,7 @@
 
 namespace System
 {
-    [AttributeUsage(AttributeTargets.Method)]
+    [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Method)]
     public sealed class STAThreadAttribute : Attribute
     {
         public STAThreadAttribute()
@@ -17,7 +17,7 @@ namespace System
         }
     }
 
-    [AttributeUsage(AttributeTargets.Method)]
+    [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Method)]
     public sealed class MTAThreadAttribute : Attribute
     {
         public MTAThreadAttribute()
