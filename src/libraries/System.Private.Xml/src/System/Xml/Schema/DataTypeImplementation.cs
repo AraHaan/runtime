@@ -1,20 +1,20 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+using System.IO;
+using System.Collections;
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.XPath;
+using System.Xml.Serialization;
+using System.Reflection;
+
 namespace System.Xml.Schema
 {
-    using System;
-    using System.IO;
-    using System.Collections;
-    using System.Diagnostics;
-    using System.Globalization;
-    using System.Text;
-    using System.Text.RegularExpressions;
-    using System.Xml;
-    using System.Xml.XPath;
-    using System.Xml.Serialization;
-    using System.Reflection;
-
     public enum XmlSchemaDatatypeVariety
     {
         Atomic,
@@ -22,7 +22,7 @@ namespace System.Xml.Schema
         Union
     }
 
-    internal class XsdSimpleValue
+    internal sealed class XsdSimpleValue
     { //Wrapper to store XmlType and TypedValue together
         private readonly XmlSchemaSimpleType _xmlType;
         private readonly object _typedValue;
@@ -75,7 +75,7 @@ namespace System.Xml.Schema
         Collapse,
     }
 
-    internal class RestrictionFacets
+    internal sealed class RestrictionFacets
     {
         internal int Length;
         internal int MinLength;
@@ -471,17 +471,8 @@ namespace System.Xml.Schema
 
         internal override FacetsChecker FacetsChecker { get { return miscFacetsChecker; } }
 
-        internal override XmlValueConverter ValueConverter
-        {
-            get
-            {
-                if (_valueConverter == null)
-                {
-                    _valueConverter = CreateValueConverter(_parentSchemaType!);
-                }
-                return _valueConverter;
-            }
-        }
+        internal override XmlValueConverter ValueConverter =>
+            _valueConverter ??= CreateValueConverter(_parentSchemaType!);
 
         public override XmlTokenizedType TokenizedType { get { return XmlTokenizedType.None; } }
 
@@ -577,13 +568,10 @@ namespace System.Xml.Schema
 
         internal override Exception? TryParseValue(object value, XmlNameTable? nameTable, IXmlNamespaceResolver? namespaceResolver, out object? typedValue)
         {
-            Exception? exception = null;
-            typedValue = null;
+            ArgumentNullException.ThrowIfNull(value);
 
-            if (value == null)
-            {
-                return new ArgumentNullException(nameof(value));
-            }
+            Exception? exception;
+            typedValue = null;
 
             string? s = value as string;
             if (s != null)
@@ -716,7 +704,7 @@ namespace System.Xml.Schema
         private static readonly DatatypeImplementation s_yearMonthDuration = new Datatype_yearMonthDuration();
 
 
-        private class SchemaDatatypeMap : IComparable
+        private sealed class SchemaDatatypeMap : IComparable
         {
             private readonly string _name;
             private readonly DatatypeImplementation _type;
@@ -885,22 +873,8 @@ namespace System.Xml.Schema
             new SchemaDatatypeMap("unsignedShort",      s_unsignedShort, 42),
         };
 
-        protected int Compare(byte[] value1, byte[] value2)
-        {
-            int length = value1.Length;
-            if (length != value2.Length)
-            {
-                return -1;
-            }
-            for (int i = 0; i < length; i++)
-            {
-                if (value1[i] != value2[i])
-                {
-                    return -1;
-                }
-            }
-            return 0;
-        }
+        protected static int Compare(byte[] value1, byte[] value2) =>
+            value1.AsSpan().SequenceEqual(value2) ? 0 : -1;
 
 #if PRIYAL
         protected object GetValueToCheck(object value, IXmlNamespaceResolver nsmgr) {
@@ -919,7 +893,7 @@ namespace System.Xml.Schema
 
 
     //List type
-    internal class Datatype_List : Datatype_anySimpleType
+    internal sealed class Datatype_List : Datatype_anySimpleType
     {
         private readonly DatatypeImplementation _itemType;
         private readonly int _minListSize;
@@ -961,10 +935,8 @@ namespace System.Xml.Schema
                 } while (simpleType != null && simpleType != DatatypeImplementation.AnySimpleType);
             }
 
-            if (listItemType == null)
-            { //Get built-in simple type for the typecode
-                listItemType = DatatypeImplementation.GetSimpleTypeFromTypeCode(schemaType!.Datatype!.TypeCode);
-            }
+            //Get built-in simple type for the typecode
+            listItemType ??= DatatypeImplementation.GetSimpleTypeFromTypeCode(schemaType!.Datatype!.TypeCode);
 
             return XmlListConverter.Create(listItemType.ValueConverter);
         }
@@ -1042,12 +1014,9 @@ namespace System.Xml.Schema
 
         internal override Exception? TryParseValue(object value, XmlNameTable? nameTable, IXmlNamespaceResolver? namespaceResolver, out object? typedValue)
         {
-            Exception? exception;
-            if (value == null)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
+            ArgumentNullException.ThrowIfNull(value);
 
+            Exception? exception;
             string? s = value as string;
             typedValue = null;
             if (s != null)
@@ -1178,7 +1147,7 @@ namespace System.Xml.Schema
     }
 
     //Union datatype
-    internal class Datatype_union : Datatype_anySimpleType
+    internal sealed class Datatype_union : Datatype_anySimpleType
     {
         private static readonly Type s_atomicValueType = typeof(object);
         private static readonly Type s_listValueType = typeof(object[]);
@@ -1306,11 +1275,9 @@ namespace System.Xml.Schema
 
         internal override Exception? TryParseValue(object value, XmlNameTable? nameTable, IXmlNamespaceResolver? nsmgr, out object? typedValue)
         {
+            ArgumentNullException.ThrowIfNull(value);
+
             Exception? exception;
-            if (value == null)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
             typedValue = null;
             string? s = value as string;
             if (s != null)
@@ -1425,7 +1392,7 @@ namespace System.Xml.Schema
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.AnyAtomicType; } }
     }
 
-    internal class Datatype_untypedAtomicType : Datatype_anyAtomicType
+    internal sealed class Datatype_untypedAtomicType : Datatype_anyAtomicType
     {
         internal override XmlValueConverter CreateValueConverter(XmlSchemaType schemaType)
         {
@@ -1528,7 +1495,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_boolean : Datatype_anySimpleType
+    internal sealed class Datatype_boolean : Datatype_anySimpleType
     {
         private static readonly Type s_atomicValueType = typeof(bool);
         private static readonly Type s_listValueType = typeof(bool[]);
@@ -1950,7 +1917,7 @@ namespace System.Xml.Schema
         }
     }
 
-    internal class Datatype_yearMonthDuration : Datatype_duration
+    internal sealed class Datatype_yearMonthDuration : Datatype_duration
     {
         internal override Exception? TryParseValue(string s, XmlNameTable? nameTable, IXmlNamespaceResolver? nsmgr, out object? typedValue)
         {
@@ -1988,7 +1955,7 @@ namespace System.Xml.Schema
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.YearMonthDuration; } }
     }
 
-    internal class Datatype_dayTimeDuration : Datatype_duration
+    internal sealed class Datatype_dayTimeDuration : Datatype_duration
     {
         internal override Exception? TryParseValue(string s, XmlNameTable? nameTable, IXmlNamespaceResolver? nsmgr, out object? typedValue)
         {
@@ -2093,7 +2060,7 @@ namespace System.Xml.Schema
                 goto Error;
             }
 
-            DateTime dateTimeValue = DateTime.MinValue;
+            DateTime dateTimeValue;
             try
             {
                 dateTimeValue = (DateTime)dateTime;
@@ -2116,12 +2083,12 @@ namespace System.Xml.Schema
         }
     }
 
-    internal class Datatype_dateTimeNoTimeZone : Datatype_dateTimeBase
+    internal sealed class Datatype_dateTimeNoTimeZone : Datatype_dateTimeBase
     {
         internal Datatype_dateTimeNoTimeZone() : base(XsdDateTimeFlags.XdrDateTimeNoTz) { }
     }
 
-    internal class Datatype_dateTimeTimeZone : Datatype_dateTimeBase
+    internal sealed class Datatype_dateTimeTimeZone : Datatype_dateTimeBase
     {
         internal Datatype_dateTimeTimeZone() : base(XsdDateTimeFlags.XdrDateTime) { }
     }
@@ -2152,17 +2119,17 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_dateTime : Datatype_dateTimeBase
+    internal sealed class Datatype_dateTime : Datatype_dateTimeBase
     {
         internal Datatype_dateTime() : base(XsdDateTimeFlags.DateTime) { }
     }
 
-    internal class Datatype_timeNoTimeZone : Datatype_dateTimeBase
+    internal sealed class Datatype_timeNoTimeZone : Datatype_dateTimeBase
     {
         internal Datatype_timeNoTimeZone() : base(XsdDateTimeFlags.XdrTimeNoTz) { }
     }
 
-    internal class Datatype_timeTimeZone : Datatype_dateTimeBase
+    internal sealed class Datatype_timeTimeZone : Datatype_dateTimeBase
     {
         internal Datatype_timeTimeZone() : base(XsdDateTimeFlags.Time) { }
     }
@@ -2193,7 +2160,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_time : Datatype_dateTimeBase
+    internal sealed class Datatype_time : Datatype_dateTimeBase
     {
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.Time; } }
 
@@ -2226,7 +2193,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_date : Datatype_dateTimeBase
+    internal sealed class Datatype_date : Datatype_dateTimeBase
     {
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.Date; } }
 
@@ -2259,7 +2226,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_yearMonth : Datatype_dateTimeBase
+    internal sealed class Datatype_yearMonth : Datatype_dateTimeBase
     {
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.GYearMonth; } }
 
@@ -2293,7 +2260,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_year : Datatype_dateTimeBase
+    internal sealed class Datatype_year : Datatype_dateTimeBase
     {
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.GYear; } }
 
@@ -2326,7 +2293,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_monthDay : Datatype_dateTimeBase
+    internal sealed class Datatype_monthDay : Datatype_dateTimeBase
     {
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.GMonthDay; } }
 
@@ -2359,7 +2326,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_day : Datatype_dateTimeBase
+    internal sealed class Datatype_day : Datatype_dateTimeBase
     {
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.GDay; } }
 
@@ -2393,7 +2360,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_month : Datatype_dateTimeBase
+    internal sealed class Datatype_month : Datatype_dateTimeBase
     {
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.GMonth; } }
 
@@ -2425,7 +2392,7 @@ namespace System.Xml.Schema
         </xs:restriction>
        </xs:simpleType>
     */
-    internal class Datatype_hexBinary : Datatype_anySimpleType
+    internal sealed class Datatype_hexBinary : Datatype_anySimpleType
     {
         private static readonly Type s_atomicValueType = typeof(byte[]);
         private static readonly Type s_listValueType = typeof(byte[][]);
@@ -2472,7 +2439,7 @@ namespace System.Xml.Schema
             exception = binaryFacetsChecker.CheckLexicalFacets(ref s, this);
             if (exception != null) goto Error;
 
-            byte[]? byteArrayValue = null;
+            byte[]? byteArrayValue;
             try
             {
                 byteArrayValue = XmlConvert.FromBinHexString(s, false);
@@ -2526,7 +2493,7 @@ namespace System.Xml.Schema
         </xs:restriction>
        </xs:simpleType>
     */
-    internal class Datatype_base64Binary : Datatype_anySimpleType
+    internal sealed class Datatype_base64Binary : Datatype_anySimpleType
     {
         private static readonly Type s_atomicValueType = typeof(byte[]);
         private static readonly Type s_listValueType = typeof(byte[][]);
@@ -2573,7 +2540,7 @@ namespace System.Xml.Schema
             exception = binaryFacetsChecker.CheckLexicalFacets(ref s, this);
             if (exception != null) goto Error;
 
-            byte[]? byteArrayValue = null;
+            byte[]? byteArrayValue;
             try
             {
                 byteArrayValue = Convert.FromBase64String(s);
@@ -2626,7 +2593,7 @@ namespace System.Xml.Schema
         </xs:restriction>
        </xs:simpleType>
     */
-    internal class Datatype_anyURI : Datatype_anySimpleType
+    internal sealed class Datatype_anyURI : Datatype_anySimpleType
     {
         private static readonly Type s_atomicValueType = typeof(Uri);
         private static readonly Type s_listValueType = typeof(Uri[]);
@@ -2687,7 +2654,7 @@ namespace System.Xml.Schema
             Debug.Assert(uri != null);
 
             string stringValue = uri.OriginalString;
-            exception = ((StringFacetsChecker)stringFacetsChecker).CheckValueFacets(stringValue, this, false);
+            exception = StringFacetsChecker.CheckValueFacets(stringValue, this, false);
             if (exception != null) goto Error;
 
             typedValue = uri;
@@ -2724,7 +2691,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_QName : Datatype_anySimpleType
+    internal sealed class Datatype_QName : Datatype_anySimpleType
     {
         private static readonly Type s_atomicValueType = typeof(XmlQualifiedName);
         private static readonly Type s_listValueType = typeof(XmlQualifiedName[]);
@@ -2773,7 +2740,7 @@ namespace System.Xml.Schema
             exception = qnameFacetsChecker.CheckLexicalFacets(ref s, this);
             if (exception != null) goto Error;
 
-            XmlQualifiedName? qname = null;
+            XmlQualifiedName? qname;
             try
             {
                 string prefix;
@@ -2858,7 +2825,7 @@ namespace System.Xml.Schema
         internal override XmlSchemaWhiteSpace BuiltInWhitespaceFacet { get { return XmlSchemaWhiteSpace.Collapse; } }
     }
 
-    internal class Datatype_tokenV1Compat : Datatype_normalizedStringV1Compat
+    internal sealed class Datatype_tokenV1Compat : Datatype_normalizedStringV1Compat
     {
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.Token; } }
     }
@@ -2884,7 +2851,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_language : Datatype_token
+    internal sealed class Datatype_language : Datatype_token
     {
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.Language; } }
     }
@@ -2990,7 +2957,7 @@ namespace System.Xml.Schema
         <xs:restriction base="xs:NCName"/>
        </xs:simpleType>
     */
-    internal class Datatype_ID : Datatype_NCName
+    internal sealed class Datatype_ID : Datatype_NCName
     {
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.Id; } }
 
@@ -3006,7 +2973,7 @@ namespace System.Xml.Schema
         <xs:restriction base="xs:NCName"/>
        </xs:simpleType>
     */
-    internal class Datatype_IDREF : Datatype_NCName
+    internal sealed class Datatype_IDREF : Datatype_NCName
     {
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.Idref; } }
 
@@ -3022,7 +2989,7 @@ namespace System.Xml.Schema
         <xs:restriction base="xs:NCName"/>
        </xs:simpleType>
     */
-    internal class Datatype_ENTITY : Datatype_NCName
+    internal sealed class Datatype_ENTITY : Datatype_NCName
     {
         public override XmlTypeCode TypeCode { get { return XmlTypeCode.Entity; } }
 
@@ -3060,7 +3027,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_NOTATION : Datatype_anySimpleType
+    internal sealed class Datatype_NOTATION : Datatype_anySimpleType
     {
         private static readonly Type s_atomicValueType = typeof(XmlQualifiedName);
         private static readonly Type s_listValueType = typeof(XmlQualifiedName[]);
@@ -3109,7 +3076,7 @@ namespace System.Xml.Schema
             exception = qnameFacetsChecker.CheckLexicalFacets(ref s, this);
             if (exception != null) goto Error;
 
-            XmlQualifiedName? qname = null;
+            XmlQualifiedName? qname;
             try
             {
                 string prefix;
@@ -3240,7 +3207,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_negativeInteger : Datatype_nonPositiveInteger
+    internal sealed class Datatype_negativeInteger : Datatype_nonPositiveInteger
     {
         private static readonly FacetsChecker s_numeric10FacetsChecker = new Numeric10FacetsChecker(decimal.MinValue, decimal.MinusOne);
 
@@ -3443,7 +3410,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_byte : Datatype_short
+    internal sealed class Datatype_byte : Datatype_short
     {
         private static readonly Type s_atomicValueType = typeof(sbyte);
         private static readonly Type s_listValueType = typeof(sbyte[]);
@@ -3698,7 +3665,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_unsignedByte : Datatype_unsignedShort
+    internal sealed class Datatype_unsignedByte : Datatype_unsignedShort
     {
         private static readonly Type s_atomicValueType = typeof(byte);
         private static readonly Type s_listValueType = typeof(byte[]);
@@ -3753,7 +3720,7 @@ namespace System.Xml.Schema
         </xs:restriction>
       </xs:simpleType>
     */
-    internal class Datatype_positiveInteger : Datatype_nonNegativeInteger
+    internal sealed class Datatype_positiveInteger : Datatype_nonNegativeInteger
     {
         private static readonly FacetsChecker s_numeric10FacetsChecker = new Numeric10FacetsChecker(decimal.One, decimal.MaxValue);
 
@@ -3765,7 +3732,7 @@ namespace System.Xml.Schema
     /*
         XDR
     */
-    internal class Datatype_doubleXdr : Datatype_double
+    internal sealed class Datatype_doubleXdr : Datatype_double
     {
         public override object ParseValue(string s, XmlNameTable? nameTable, IXmlNamespaceResolver? nsmgr)
         {
@@ -3787,7 +3754,7 @@ namespace System.Xml.Schema
         }
     }
 
-    internal class Datatype_floatXdr : Datatype_float
+    internal sealed class Datatype_floatXdr : Datatype_float
     {
         public override object ParseValue(string s, XmlNameTable? nameTable, IXmlNamespaceResolver? nsmgr)
         {
@@ -3809,7 +3776,7 @@ namespace System.Xml.Schema
         }
     }
 
-    internal class Datatype_QNameXdr : Datatype_anySimpleType
+    internal sealed class Datatype_QNameXdr : Datatype_anySimpleType
     {
         private static readonly Type s_atomicValueType = typeof(XmlQualifiedName);
         private static readonly Type s_listValueType = typeof(XmlQualifiedName[]);
@@ -3822,10 +3789,8 @@ namespace System.Xml.Schema
             {
                 throw new XmlSchemaException(SR.Sch_EmptyAttributeValue, string.Empty);
             }
-            if (nsmgr == null)
-            {
-                throw new ArgumentNullException(nameof(nsmgr));
-            }
+            ArgumentNullException.ThrowIfNull(nsmgr);
+
             string prefix;
             try
             {
@@ -3846,12 +3811,12 @@ namespace System.Xml.Schema
         internal override Type ListValueType { get { return s_listValueType; } }
     }
 
-    internal class Datatype_ENUMERATION : Datatype_NMTOKEN
+    internal sealed class Datatype_ENUMERATION : Datatype_NMTOKEN
     {
         public override XmlTokenizedType TokenizedType { get { return XmlTokenizedType.ENUMERATION; } }
     }
 
-    internal class Datatype_char : Datatype_anySimpleType
+    internal sealed class Datatype_char : Datatype_anySimpleType
     {
         private static readonly Type s_atomicValueType = typeof(char);
         private static readonly Type s_listValueType = typeof(char[]);
@@ -3903,7 +3868,7 @@ namespace System.Xml.Schema
         }
     }
 
-    internal class Datatype_fixed : Datatype_decimal
+    internal sealed class Datatype_fixed : Datatype_decimal
     {
         public override object ParseValue(string s, XmlNameTable? nameTable, IXmlNamespaceResolver? nsmgr)
         {
@@ -3911,9 +3876,8 @@ namespace System.Xml.Schema
 
             try
             {
-                Numeric10FacetsChecker facetsChecker = (this.FacetsChecker as Numeric10FacetsChecker)!;
                 decimal value = XmlConvert.ToDecimal(s);
-                exception = facetsChecker.CheckTotalAndFractionDigits(value, 14 + 4, 4, true, true);
+                exception = Numeric10FacetsChecker.CheckTotalAndFractionDigits(value, 14 + 4, 4, true, true);
                 if (exception != null) goto Error;
 
                 return value;
@@ -3940,8 +3904,7 @@ namespace System.Xml.Schema
             exception = XmlConvert.TryToDecimal(s, out decimalValue);
             if (exception != null) goto Error;
 
-            Numeric10FacetsChecker facetsChecker = (this.FacetsChecker as Numeric10FacetsChecker)!;
-            exception = facetsChecker.CheckTotalAndFractionDigits(decimalValue, 14 + 4, 4, true, true);
+            exception = Numeric10FacetsChecker.CheckTotalAndFractionDigits(decimalValue, 14 + 4, 4, true, true);
             if (exception != null) goto Error;
 
             typedValue = decimalValue;
@@ -3953,7 +3916,7 @@ namespace System.Xml.Schema
         }
     }
 
-    internal class Datatype_uuid : Datatype_anySimpleType
+    internal sealed class Datatype_uuid : Datatype_anySimpleType
     {
         private static readonly Type s_atomicValueType = typeof(Guid);
         private static readonly Type s_listValueType = typeof(Guid[]);

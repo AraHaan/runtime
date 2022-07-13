@@ -1,11 +1,29 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <TargetFrameworks>$(NetCoreAppCurrent)-windows;$(NetCoreAppCurrent);$(NetCoreAppMinimum)-windows;$(NetCoreAppMinimum);netstandard2.0</TargetFrameworks>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <TargetFrameworks>netstandard2.0;netstandard2.0-windows</TargetFrameworks>
-    <IncludePlatformAttributes>true</IncludePlatformAttributes>
+    <Nullable>Annotations</Nullable>
+    <IsPackable>true</IsPackable>
+    <AddNETFrameworkPlaceholderFileToPackage>true</AddNETFrameworkPlaceholderFileToPackage>
+    <AddXamarinPlaceholderFilesToPackage>true</AddXamarinPlaceholderFilesToPackage>
+    <AddNETFrameworkAssemblyReferenceToPackage>true</AddNETFrameworkAssemblyReferenceToPackage>
+    <PackageDescription>Provides classes to use caching facilities.
+
+Commonly Used Types:
+System.Runtime.Caching.CacheEntryChangeMonitor
+System.Runtime.Caching.CacheEntryRemovedArguments
+System.Runtime.Caching.CacheEntryUpdateArguments
+System.Runtime.Caching.CacheItem
+System.Runtime.Caching.CacheItemPolicy
+System.Runtime.Caching.ChangeMonitor
+System.Runtime.Caching.FileChangeMonitor
+System.Runtime.Caching.HostFileChangeMonitor
+System.Runtime.Caching.MemoryCache
+System.Runtime.Caching.ObjectCache</PackageDescription>
   </PropertyGroup>
+
   <ItemGroup>
-    <Compile Include="System\Runtime\Caching\_shims.cs" />
+    <Compile Include="System\Runtime\Caching\Counters.cs" />
     <Compile Include="System\Runtime\Caching\CacheEntryChangeMonitor.cs" />
     <Compile Include="System\Runtime\Caching\CacheEntryRemovedArguments.cs" />
     <Compile Include="System\Runtime\Caching\CacheEntryRemovedCallback.cs" />
@@ -35,7 +53,7 @@
     <Compile Include="System\Runtime\Caching\MemoryMonitor.cs" />
     <Compile Include="System\Runtime\Caching\ObjectCache.cs" />
     <Compile Include="System\Runtime\Caching\OnChangedCallback.cs" />
-    <Compile Include="System\Runtime\Caching\PerfCounterName.cs" />
+    <Compile Include="System\Runtime\Caching\CounterName.cs" />
     <Compile Include="System\Runtime\Caching\PhysicalMemoryMonitor.cs" />
     <Compile Include="System\Runtime\Caching\SafeBitVector32.cs" />
     <Compile Include="System\Runtime\Caching\SRef.cs" />
@@ -49,19 +67,20 @@
     <Compile Include="System\Runtime\Caching\Hosting\IMemoryCacheManager.cs" />
     <Compile Include="System\Runtime\Caching\Resources\RH.cs" />
   </ItemGroup>
-  <ItemGroup Condition="'$(TargetsWindows)' == 'true'">
+
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'windows'">
     <Compile Include="System\Runtime\Caching\MemoryMonitor.Windows.cs" />
     <Compile Include="System\Runtime\Caching\PhysicalMemoryMonitor.Windows.cs" />
-    <Compile Include="$(CommonPath)Interop\Windows\Kernel32\Interop.GlobalMemoryStatusEx.cs"
-             Link="Common\Interop\Windows\Kernel32\Interop.GlobalMemoryStatusEx.cs" />
-    <Compile Include="$(CommonPath)Interop\Windows\Kernel32\Interop.MEMORYSTATUSEX.cs"
-             Link="Common\Interop\Windows\Kernel32\Interop.MEMORYSTATUSEX.cs" />
-    <Compile Include="$(CommonPath)Interop\Windows\Interop.Libraries.cs"
-             Link="Common\Interop\Windows\Interop.Libraries.cs" />
+    <Compile Include="$(CommonPath)Interop\Windows\Interop.BOOL.cs" Link="Common\Interop\Windows\Interop.BOOL.cs" />
+    <Compile Include="$(CommonPath)Interop\Windows\Kernel32\Interop.GlobalMemoryStatusEx.cs" Link="Common\Interop\Windows\Kernel32\Interop.GlobalMemoryStatusEx.cs" />
+    <Compile Include="$(CommonPath)Interop\Windows\Kernel32\Interop.MEMORYSTATUSEX.cs" Link="Common\Interop\Windows\Kernel32\Interop.MEMORYSTATUSEX.cs" />
+    <Compile Include="$(CommonPath)Interop\Windows\Interop.Libraries.cs" Link="Common\Interop\Windows\Interop.Libraries.cs" />
   </ItemGroup>
-  <ItemGroup Condition="'$(TargetsWindows)' != 'true'">
+
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' != 'windows'">
     <Compile Include="System\Runtime\Caching\PhysicalMemoryMonitor.Unix.cs" />
   </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="$(LibrariesProjectRoot)System.Configuration.ConfigurationManager\src\System.Configuration.ConfigurationManager.csproj" />
   </ItemGroup>

@@ -1,10 +1,10 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Xml.Serialization;
+
 namespace System.Xml.Schema
 {
-    using System.Xml.Serialization;
-
     public abstract class XmlSchemaParticle : XmlSchemaAnnotated
     {
         [Flags]
@@ -160,7 +160,7 @@ namespace System.Xml.Schema
             return XmlQualifiedName.Empty; //If ever called on other particles
         }
 
-        private class EmptyParticle : XmlSchemaParticle
+        private sealed class EmptyParticle : XmlSchemaParticle
         {
             internal override bool IsEmpty
             {

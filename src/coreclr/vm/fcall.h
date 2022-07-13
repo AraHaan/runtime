@@ -240,13 +240,6 @@
 //
 #include <setjmp.h>
 
-//
-// Use of setjmp is temporary, we will eventually have compiler intrinsics to
-// disable the optimizations.  Besides, we don't actually execute setjmp in
-// these macros (or anywhere else in the VM on AMD64).
-//
-#pragma warning(disable:4611) // interaction between '_setjmp' and C++ object destruction is non-portable
-
 #ifdef _DEBUG
 //
 // Linked list of unmanaged methods preceeding a HelperMethodFrame push.  This
@@ -315,6 +308,21 @@ private:
 #endif // _DEBUG
 };
 
+// These macros are used to narrowly suppress
+// warning 4611 - interaction between 'function' and C++ object destruction is non-portable
+// See usage of setjmp() and inclusion of setjmp.h for reasoning behind usage.
+#ifdef _MSC_VER
+#define DISABLE_4611()          \
+    _Pragma("warning(push)")    \
+    _Pragma("warning(disable:4611)")
+
+#define RESET_4611()    \
+    _Pragma("warning(pop)")
+#else
+#define DISABLE_4611()
+#define RESET_4611()
+#endif // _MSC_VER
+
 #define PERMIT_HELPER_METHOD_FRAME_BEGIN()                                  \
         if (1)                                                              \
         {                                                                   \
@@ -325,7 +333,9 @@ private:
         else                                \
         {                                   \
             jmp_buf ___jmpbuf;              \
+            DISABLE_4611()                  \
             setjmp(___jmpbuf);              \
+            RESET_4611()                    \
             __assume(0);                    \
         }
 
@@ -954,7 +964,7 @@ extern RAW_KEYWORD(volatile) int FC_NO_TAILCALL;
     FC_COMMON_PROLOG(__me, FCallAssert)
 
 
-#if defined(_DEBUG) && !defined(CROSSGEN_COMPILE) && !defined(__GNUC__)
+#if defined(_DEBUG) && !defined(__GNUC__)
 // Build the list of all fcalls signatures. It is used in binder.cpp to verify
 // compatibility of managed and unmanaged fcall signatures. The check is currently done
 // for x86 only.
@@ -1143,8 +1153,8 @@ public:
 #define HCIMPL2_RAW(rettype, funcname, a1, a2) rettype F_CALL_CONV funcname(int /* EAX */, a2, a1) {
 #define HCIMPL2_VV(rettype, funcname, a1, a2) rettype F_CALL_CONV funcname(int /* EAX */, int /* EDX */, int /* ECX */, a2, a1) { HCIMPL_PROLOG(funcname)
 #define HCIMPL2_IV(rettype, funcname, a1, a2) rettype F_CALL_CONV funcname(int /* EAX */, int /* EDX */, a1, a2) { HCIMPL_PROLOG(funcname)
-#define HCIMPL2VA(rettype, funcname, a1, a2) rettype F_CALL_VA_CONV funcname(a1, a2, ...) { HCIMPL_PROLOG(funcname)
 #define HCIMPL3(rettype, funcname, a1, a2, a3) rettype F_CALL_CONV funcname(int /* EAX */, a2, a1, a3) { HCIMPL_PROLOG(funcname)
+#define HCIMPL3_RAW(rettype, funcname, a1, a2, a3) rettype F_CALL_CONV funcname(int /* EAX */, a2, a1, a3) {
 #define HCIMPL4(rettype, funcname, a1, a2, a3, a4) rettype F_CALL_CONV funcname(int /* EAX */, a2, a1, a4, a3) { HCIMPL_PROLOG(funcname)
 #define HCIMPL5(rettype, funcname, a1, a2, a3, a4, a5) rettype F_CALL_CONV funcname(int /* EAX */, a2, a1, a5, a4, a3) { HCIMPL_PROLOG(funcname)
 
@@ -1167,8 +1177,8 @@ public:
 #define HCIMPL2_RAW(rettype, funcname, a1, a2) rettype F_CALL_CONV funcname(a1, a2) {
 #define HCIMPL2_VV(rettype, funcname, a1, a2) rettype F_CALL_CONV funcname(a2, a1) { HCIMPL_PROLOG(funcname)
 #define HCIMPL2_IV(rettype, funcname, a1, a2) rettype F_CALL_CONV funcname(a1, a2) { HCIMPL_PROLOG(funcname)
-#define HCIMPL2VA(rettype, funcname, a1, a2) rettype F_CALL_VA_CONV funcname(a1, a2, ...) { HCIMPL_PROLOG(funcname)
 #define HCIMPL3(rettype, funcname, a1, a2, a3) rettype F_CALL_CONV funcname(a1, a2, a3) { HCIMPL_PROLOG(funcname)
+#define HCIMPL3_RAW(rettype, funcname, a1, a2, a3) rettype F_CALL_CONV funcname(a1, a2, a3) {
 #define HCIMPL4(rettype, funcname, a1, a2, a3, a4) rettype F_CALL_CONV funcname(a1, a2, a4, a3) { HCIMPL_PROLOG(funcname)
 #define HCIMPL5(rettype, funcname, a1, a2, a3, a4, a5) rettype F_CALL_CONV funcname(a1, a2, a5, a4, a3) { HCIMPL_PROLOG(funcname)
 
@@ -1192,8 +1202,8 @@ public:
 #define HCIMPL2_RAW(rettype, funcname, a1, a2) rettype F_CALL_CONV funcname(a1, a2) {
 #define HCIMPL2_VV(rettype, funcname, a1, a2) rettype F_CALL_CONV funcname(a1, a2) { HCIMPL_PROLOG(funcname)
 #define HCIMPL2_IV(rettype, funcname, a1, a2) rettype F_CALL_CONV funcname(a1, a2) { HCIMPL_PROLOG(funcname)
-#define HCIMPL2VA(rettype, funcname, a1, a2) rettype F_CALL_VA_CONV funcname(a1, a2, ...) { HCIMPL_PROLOG(funcname)
 #define HCIMPL3(rettype, funcname, a1, a2, a3) rettype F_CALL_CONV funcname(a1, a2, a3) { HCIMPL_PROLOG(funcname)
+#define HCIMPL3_RAW(rettype, funcname, a1, a2, a3) rettype F_CALL_CONV funcname(a1, a2, a3) {
 #define HCIMPL4(rettype, funcname, a1, a2, a3, a4) rettype F_CALL_CONV funcname(a1, a2, a3, a4) { HCIMPL_PROLOG(funcname)
 #define HCIMPL5(rettype, funcname, a1, a2, a3, a4, a5) rettype F_CALL_CONV funcname(a1, a2, a3, a4, a5) { HCIMPL_PROLOG(funcname)
 

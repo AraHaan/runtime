@@ -15,7 +15,7 @@ namespace System.DirectoryServices.AccountManagement
     /// if disposeDirEntry parameter is set to true in its constructor.
     /// </summary>
     ///
-    internal class RangeRetriever : CollectionBase, IEnumerable, IEnumerator, IDisposable
+    internal sealed class RangeRetriever : CollectionBase, IEnumerable, IEnumerator, IDisposable
     {
         ///
         /// <summary>
@@ -192,7 +192,7 @@ namespace System.DirectoryServices.AccountManagement
             }
             else
             {
-                _lowRange = _lowRange + pvc.Count;
+                _lowRange += pvc.Count;
 
                 GlobalDebug.WriteLineIf(GlobalDebug.Info,
                                         "RangeRetriever",

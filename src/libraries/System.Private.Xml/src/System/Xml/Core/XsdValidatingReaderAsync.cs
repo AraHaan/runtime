@@ -15,7 +15,7 @@ using System.Threading.Tasks;
 
 namespace System.Xml
 {
-    internal partial class XsdValidatingReader : XmlReader, IXmlSchemaInfo, IXmlLineInfo, IXmlNamespaceResolver
+    internal sealed partial class XsdValidatingReader : XmlReader, IXmlSchemaInfo, IXmlLineInfo, IXmlNamespaceResolver
     {
         // Gets the text value of the current node.
         public override Task<string> GetValueAsync()
@@ -269,7 +269,7 @@ namespace System.Xml
             if (task.IsSuccess())
             {
                 _validationState = ValidatingReaderState.Read;
-                return AsyncHelper.DoneTaskTrue; ;
+                return AsyncHelper.DoneTaskTrue;
             }
             else
             {
@@ -695,7 +695,7 @@ namespace System.Xml
                     if (_validationState == ValidatingReaderState.OnDefaultAttribute)
                     {
                         XmlSchemaAttribute schemaAttr = _attributePSVI.attributeSchemaInfo.SchemaAttribute!;
-                        originalStringValue = (schemaAttr.DefaultValue != null) ? schemaAttr.DefaultValue : schemaAttr.FixedValue!;
+                        originalStringValue = schemaAttr.DefaultValue ?? schemaAttr.FixedValue!;
                     }
 
                     return (originalStringValue, ReturnBoxedValue(_attributePSVI.typedAttributeValue, AttributeSchemaInfo.XmlType!, unwrapTypedValue));
@@ -767,7 +767,7 @@ namespace System.Xml
 
         private async Task<(XmlSchemaType, string, object)> InternalReadElementContentAsObjectTupleAsync(bool unwrapTypedValue)
         {
-            XmlSchemaType? xmlType = null;
+            XmlSchemaType? xmlType;
             string originalString;
 
             Debug.Assert(this.NodeType == XmlNodeType.Element);

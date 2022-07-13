@@ -1,18 +1,19 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Reflection;
+using System;
+using System.Globalization;
+using System.Xml.Schema;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Threading;
+using System.Xml;
+using System.Xml.Serialization;
+using System.Diagnostics.CodeAnalysis;
+
 namespace System.Xml.Serialization
 {
-    using System.Reflection;
-    using System;
-    using System.Globalization;
-    using System.Xml.Schema;
-    using System.Collections;
-    using System.ComponentModel;
-    using System.Threading;
-    using System.Xml;
-    using System.Xml.Serialization;
-
     public class SoapReflectionImporter
     {
         private readonly TypeScope _typeScope;
@@ -37,21 +38,19 @@ namespace System.Xml.Serialization
 
         public SoapReflectionImporter(SoapAttributeOverrides? attributeOverrides, string? defaultNamespace)
         {
-            if (defaultNamespace == null)
-                defaultNamespace = string.Empty;
-            if (attributeOverrides == null)
-                attributeOverrides = new SoapAttributeOverrides();
-            _attributeOverrides = attributeOverrides;
-            _defaultNs = defaultNamespace;
+            _defaultNs = defaultNamespace ?? string.Empty;
+            _attributeOverrides = attributeOverrides ?? new SoapAttributeOverrides();
             _typeScope = new TypeScope();
             _modelScope = new ModelScope(_typeScope);
         }
 
+        [RequiresUnreferencedCode(XmlSerializer.TrimSerializationWarning)]
         public void IncludeTypes(ICustomAttributeProvider provider)
         {
             IncludeTypes(provider, new RecursionLimiter());
         }
 
+        [RequiresUnreferencedCode("calls IncludeType")]
         private void IncludeTypes(ICustomAttributeProvider provider, RecursionLimiter limiter)
         {
             object[] attrs = provider.GetCustomAttributes(typeof(SoapIncludeAttribute), false);
@@ -61,28 +60,32 @@ namespace System.Xml.Serialization
             }
         }
 
+        [RequiresUnreferencedCode(XmlSerializer.TrimSerializationWarning)]
         public void IncludeType(Type type)
         {
             IncludeType(type, new RecursionLimiter());
         }
 
+        [RequiresUnreferencedCode(XmlSerializer.TrimSerializationWarning)]
         private void IncludeType(Type type, RecursionLimiter limiter)
         {
             ImportTypeMapping(_modelScope.GetTypeModel(type), limiter);
         }
 
+        [RequiresUnreferencedCode(XmlSerializer.TrimSerializationWarning)]
         public XmlTypeMapping ImportTypeMapping(Type type)
         {
             return ImportTypeMapping(type, null);
         }
 
+        [RequiresUnreferencedCode(XmlSerializer.TrimSerializationWarning)]
         public XmlTypeMapping ImportTypeMapping(Type type, string? defaultNamespace)
         {
             ElementAccessor element = new ElementAccessor();
             element.IsSoap = true;
             element.Mapping = ImportTypeMapping(_modelScope.GetTypeModel(type), new RecursionLimiter());
             element.Name = element.Mapping.DefaultElementName;
-            element.Namespace = element.Mapping.Namespace == null ? defaultNamespace : element.Mapping.Namespace;
+            element.Namespace = element.Mapping.Namespace ?? defaultNamespace;
             element.Form = XmlSchemaForm.Qualified;
             XmlTypeMapping xmlMapping = new XmlTypeMapping(_typeScope, element);
             xmlMapping.SetKeyInternal(XmlMapping.GenerateKey(type, null, defaultNamespace));
@@ -91,21 +94,25 @@ namespace System.Xml.Serialization
             return xmlMapping;
         }
 
+        [RequiresUnreferencedCode(XmlSerializer.TrimSerializationWarning)]
         public XmlMembersMapping ImportMembersMapping(string? elementName, string? ns, XmlReflectionMember[] members)
         {
             return ImportMembersMapping(elementName, ns, members, true, true, false);
         }
 
+        [RequiresUnreferencedCode(XmlSerializer.TrimSerializationWarning)]
         public XmlMembersMapping ImportMembersMapping(string? elementName, string? ns, XmlReflectionMember[] members, bool hasWrapperElement, bool writeAccessors)
         {
             return ImportMembersMapping(elementName, ns, members, hasWrapperElement, writeAccessors, false);
         }
 
+        [RequiresUnreferencedCode(XmlSerializer.TrimSerializationWarning)]
         public XmlMembersMapping ImportMembersMapping(string? elementName, string? ns, XmlReflectionMember[] members, bool hasWrapperElement, bool writeAccessors, bool validate)
         {
             return ImportMembersMapping(elementName, ns, members, hasWrapperElement, writeAccessors, validate, XmlMappingAccess.Read | XmlMappingAccess.Write);
         }
 
+        [RequiresUnreferencedCode(XmlSerializer.TrimSerializationWarning)]
         public XmlMembersMapping ImportMembersMapping(string? elementName, string? ns, XmlReflectionMember[] members, bool hasWrapperElement, bool writeAccessors, bool validate, XmlMappingAccess access)
         {
             ElementAccessor element = new ElementAccessor();
@@ -114,7 +121,7 @@ namespace System.Xml.Serialization
 
             element.Mapping = ImportMembersMapping(members, ns, hasWrapperElement, writeAccessors, validate, new RecursionLimiter());
             element.Mapping.TypeName = elementName;
-            element.Namespace = element.Mapping.Namespace == null ? ns : element.Mapping.Namespace;
+            element.Namespace = element.Mapping.Namespace ?? ns;
             element.Form = XmlSchemaForm.Qualified;
             XmlMembersMapping xmlMapping = new XmlMembersMapping(_typeScope, element, access);
             xmlMapping.IsSoap = true;
@@ -122,7 +129,7 @@ namespace System.Xml.Serialization
             return xmlMapping;
         }
 
-        private Exception ReflectionException(string context, Exception e)
+        private static Exception ReflectionException(string context, Exception e)
         {
             return new InvalidOperationException(SR.Format(SR.XmlReflectionError, context), e);
         }
@@ -141,11 +148,13 @@ namespace System.Xml.Serialization
             return new SoapAttributes(memberInfo);
         }
 
+        [RequiresUnreferencedCode("calls ImportTypeMapping")]
         private TypeMapping ImportTypeMapping(TypeModel model, RecursionLimiter limiter)
         {
             return ImportTypeMapping(model, string.Empty, limiter);
         }
 
+        [RequiresUnreferencedCode("Calls TypeDesc")]
         private TypeMapping ImportTypeMapping(TypeModel model, string dataType, RecursionLimiter limiter)
         {
             if (dataType.Length > 0)
@@ -154,7 +163,7 @@ namespace System.Xml.Serialization
                 {
                     throw new InvalidOperationException(SR.Format(SR.XmlInvalidDataTypeUsage, dataType, "SoapElementAttribute.DataType"));
                 }
-                TypeDesc? td = _typeScope.GetTypeDesc(dataType!, XmlSchema.Namespace);
+                TypeDesc? td = TypeScope.GetTypeDesc(dataType!, XmlSchema.Namespace);
                 if (td == null)
                 {
                     throw new InvalidOperationException(SR.Format(SR.XmlInvalidXsdDataType, dataType, "SoapElementAttribute.DataType", new XmlQualifiedName(dataType, XmlSchema.Namespace).ToString()));
@@ -190,11 +199,11 @@ namespace System.Xml.Serialization
                         string typeNs = _defaultNs;
                         if (baseAttributes.SoapType != null && baseAttributes.SoapType.Namespace != null)
                             typeNs = baseAttributes.SoapType.Namespace;
-                        TypeDesc valueTypeDesc = string.IsNullOrEmpty(dataType) ? model.TypeDesc.BaseTypeDesc! : _typeScope.GetTypeDesc(dataType, XmlSchema.Namespace)!;
+                        TypeDesc valueTypeDesc = string.IsNullOrEmpty(dataType) ? model.TypeDesc.BaseTypeDesc! : TypeScope.GetTypeDesc(dataType, XmlSchema.Namespace)!;
                         string xsdTypeName = string.IsNullOrEmpty(dataType) ? model.TypeDesc.BaseTypeDesc!.Name : dataType;
-                        TypeMapping? baseMapping = GetTypeMapping(xsdTypeName, typeNs, valueTypeDesc);
-                        if (baseMapping == null)
-                            baseMapping = ImportTypeMapping(_modelScope.GetTypeModel(baseTypeDesc.Type!), dataType, limiter);
+                        TypeMapping baseMapping =
+                            GetTypeMapping(xsdTypeName, typeNs, valueTypeDesc) ??
+                            ImportTypeMapping(_modelScope.GetTypeModel(baseTypeDesc.Type!), dataType, limiter);
                         return CreateNullableMapping(baseMapping, model.TypeDesc.Type!);
                     }
                     else
@@ -206,6 +215,7 @@ namespace System.Xml.Serialization
             }
         }
 
+        [RequiresUnreferencedCode("calls GetTypeDesc")]
         private StructMapping CreateRootMapping()
         {
             TypeDesc typeDesc = _typeScope.GetTypeDesc(typeof(object));
@@ -219,6 +229,7 @@ namespace System.Xml.Serialization
             return mapping;
         }
 
+        [RequiresUnreferencedCode("calls CreateRootMapping")]
         private StructMapping GetRootMapping()
         {
             if (_root == null)
@@ -238,7 +249,8 @@ namespace System.Xml.Serialization
             return mapping;
         }
 
-        private NullableMapping CreateNullableMapping(TypeMapping baseMapping, Type type)
+        private NullableMapping CreateNullableMapping(TypeMapping baseMapping,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] Type type)
         {
             TypeDesc typeDesc = baseMapping.TypeDesc!.GetNullableTypeDesc(type);
             TypeMapping? existingMapping = (TypeMapping?)_nullables[baseMapping.TypeName!, baseMapping.Namespace];
@@ -275,6 +287,7 @@ namespace System.Xml.Serialization
             return mapping;
         }
 
+        [RequiresUnreferencedCode("calls GetRootMapping")]
         private StructMapping ImportStructLikeMapping(StructModel model, RecursionLimiter limiter)
         {
             if (model.TypeDesc.Kind == TypeKind.Root) return GetRootMapping();
@@ -332,7 +345,7 @@ namespace System.Xml.Serialization
             return mapping;
         }
 
-
+        [RequiresUnreferencedCode("calls GetTypeModel")]
         private bool InitializeStructMembers(StructMapping mapping, StructModel model, RecursionLimiter limiter)
         {
             if (mapping.IsFullyInitialized)
@@ -365,7 +378,7 @@ namespace System.Xml.Serialization
                     return false;
                 }
             }
-            ArrayList members = new ArrayList();
+            var members = new List<MemberMapping>();
             foreach (MemberInfo memberInfo in model.GetMemberInfos())
             {
                 if (!(memberInfo is FieldInfo) && !(memberInfo is PropertyInfo))
@@ -390,14 +403,14 @@ namespace System.Xml.Serialization
                 }
                 members.Add(member);
             }
-            mapping.Members = (MemberMapping[])members.ToArray(typeof(MemberMapping));
-            if (mapping.BaseMapping == null) mapping.BaseMapping = GetRootMapping();
+            mapping.Members = members.ToArray();
+            mapping.BaseMapping ??= GetRootMapping();
             IncludeTypes(model.Type, limiter);
 
             return true;
         }
 
-
+        [RequiresUnreferencedCode("calls IncludeTypes")]
         private ArrayMapping ImportArrayLikeMapping(ArrayModel model, RecursionLimiter limiter)
         {
             ArrayMapping mapping = new ArrayMapping();
@@ -485,15 +498,14 @@ namespace System.Xml.Serialization
             }
 
             itemTypeName = CodeIdentifier.MakePascal(itemTypeName);
-            string uniqueName = "ArrayOf" + itemTypeName;
+            string uniqueName = $"ArrayOf{itemTypeName}";
             string ns = useDefaultNs ? _defaultNs : itemTypeNamespace;
             int i = 1;
             TypeMapping? existingMapping = (TypeMapping?)_types[uniqueName, ns];
             while (existingMapping != null)
             {
-                if (existingMapping is ArrayMapping)
+                if (existingMapping is ArrayMapping arrayMapping)
                 {
-                    ArrayMapping arrayMapping = (ArrayMapping)existingMapping;
                     if (AccessorMapping.ElementsMatch(arrayMapping.Elements, mapping.Elements))
                     {
                         break;
@@ -508,17 +520,17 @@ namespace System.Xml.Serialization
             mapping.TypeName = uniqueName;
         }
 
-        private PrimitiveMapping ImportPrimitiveMapping(PrimitiveModel model, string dataType)
+        private static PrimitiveMapping ImportPrimitiveMapping(PrimitiveModel model, string dataType)
         {
             PrimitiveMapping mapping = new PrimitiveMapping();
             mapping.IsSoap = true;
             if (dataType.Length > 0)
             {
-                mapping.TypeDesc = _typeScope.GetTypeDesc(dataType, XmlSchema.Namespace);
+                mapping.TypeDesc = TypeScope.GetTypeDesc(dataType, XmlSchema.Namespace);
                 if (mapping.TypeDesc == null)
                 {
                     // try it as a non-Xsd type
-                    mapping.TypeDesc = _typeScope.GetTypeDesc(dataType, UrtTypes.Namespace);
+                    mapping.TypeDesc = TypeScope.GetTypeDesc(dataType, UrtTypes.Namespace);
                     if (mapping.TypeDesc == null)
                     {
                         throw new InvalidOperationException(SR.Format(SR.XmlUdeclaredXsdType, dataType));
@@ -534,6 +546,7 @@ namespace System.Xml.Serialization
             return mapping;
         }
 
+        [RequiresUnreferencedCode("calls XsdTypeName")]
         private EnumMapping ImportEnumMapping(EnumModel model)
         {
             SoapAttributes a = GetAttributes(model.Type);
@@ -554,7 +567,7 @@ namespace System.Xml.Serialization
                 mapping.IsFlags = model.Type.IsDefined(typeof(FlagsAttribute), false);
                 _typeScope.AddTypeMapping(mapping);
                 _types.Add(typeName, typeNs, mapping);
-                ArrayList constants = new ArrayList();
+                var constants = new List<ConstantMapping>();
                 for (int i = 0; i < model.Constants.Length; i++)
                 {
                     ConstantMapping? constant = ImportConstantMapping(model.Constants[i]);
@@ -564,7 +577,7 @@ namespace System.Xml.Serialization
                 {
                     throw new InvalidOperationException(SR.Format(SR.XmlNoSerializableMembers, model.TypeDesc.FullName));
                 }
-                mapping.Constants = (ConstantMapping[])constants.ToArray(typeof(ConstantMapping));
+                mapping.Constants = constants.ToArray();
             }
             return mapping;
         }
@@ -575,8 +588,7 @@ namespace System.Xml.Serialization
             if (a.SoapIgnore) return null;
             if ((a.GetSoapFlags() & ~SoapAttributeFlags.Enum) != 0)
                 throw new InvalidOperationException(SR.XmlInvalidEnumAttribute);
-            if (a.SoapEnum == null)
-                a.SoapEnum = new SoapEnumAttribute();
+            a.SoapEnum ??= new SoapEnumAttribute();
 
             ConstantMapping constant = new ConstantMapping();
             constant.XmlName = a.SoapEnum.Name.Length == 0 ? model.Name : a.SoapEnum.Name;
@@ -585,6 +597,7 @@ namespace System.Xml.Serialization
             return constant;
         }
 
+        [RequiresUnreferencedCode("calls GetTypeDesc")]
         private MembersMapping ImportMembersMapping(XmlReflectionMember[] xmlReflectionMembers, string? ns, bool hasWrapperElement, bool writeAccessors, bool validateWrapperElement, RecursionLimiter limiter)
         {
             MembersMapping members = new MembersMapping();
@@ -625,6 +638,7 @@ namespace System.Xml.Serialization
             return members;
         }
 
+        [RequiresUnreferencedCode(XmlSerializer.TrimSerializationWarning)]
         private MemberMapping? ImportMemberMapping(XmlReflectionMember xmlReflectionMember, string? ns, XmlReflectionMember[] xmlReflectionMembers, XmlSchemaForm form, RecursionLimiter limiter)
         {
             SoapAttributes a = xmlReflectionMember.SoapAttributes;
@@ -643,6 +657,7 @@ namespace System.Xml.Serialization
             return member;
         }
 
+        [RequiresUnreferencedCode("calls ImportAccessorMapping")]
         private MemberMapping? ImportFieldMapping(FieldModel model, SoapAttributes a, string ns, RecursionLimiter limiter)
         {
             if (a.SoapIgnore) return null;
@@ -659,6 +674,7 @@ namespace System.Xml.Serialization
             return member;
         }
 
+        [RequiresUnreferencedCode("calls GetTypeDesc")]
         private void ImportAccessorMapping(MemberMapping accessor, FieldModel model, SoapAttributes a, string? ns, XmlSchemaForm form, RecursionLimiter limiter)
         {
             Type accessorType = model.FieldType;
@@ -714,6 +730,7 @@ namespace System.Xml.Serialization
             return element;
         }
 
+        [RequiresUnreferencedCode("calls GetTypeDesc")]
         private object? GetDefaultValue(TypeDesc fieldTypeDesc, SoapAttributes a)
         {
             if (a.SoapDefaultValue == null || a.SoapDefaultValue == DBNull.Value) return null;
@@ -736,6 +753,7 @@ namespace System.Xml.Serialization
             return a.SoapDefaultValue;
         }
 
+        [RequiresUnreferencedCode("calls GetTypeDesc")]
         internal string XsdTypeName(Type type)
         {
             if (type == typeof(object)) return Soap.UrType;
@@ -744,6 +762,8 @@ namespace System.Xml.Serialization
                 return typeDesc.DataType.Name;
             return XsdTypeName(type, GetAttributes(type), typeDesc.Name);
         }
+
+        [RequiresUnreferencedCode(XmlSerializer.TrimSerializationWarning)]
         internal string XsdTypeName(Type type, SoapAttributes a, string name)
         {
             string typeName = name;
@@ -758,7 +778,7 @@ namespace System.Xml.Serialization
 
                 for (int i = 0; i < names.Length; i++)
                 {
-                    string argument = "{" + names[i] + "}";
+                    string argument = $"{{{names[i]}}}";
                     if (typeName.Contains(argument))
                     {
                         typeName = typeName.Replace(argument, XsdTypeName(types[i]));

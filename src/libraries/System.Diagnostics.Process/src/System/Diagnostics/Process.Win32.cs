@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -78,22 +79,23 @@ namespace System.Diagnostics
                 ShellExecuteHelper executeHelper = new ShellExecuteHelper(&shellExecuteInfo);
                 if (!executeHelper.ShellExecuteOnSTAThread())
                 {
-                    int error = executeHelper.ErrorCode;
-                    if (error == 0)
+                    int errorCode = executeHelper.ErrorCode;
+                    if (errorCode == 0)
                     {
-                        error = GetShellError(shellExecuteInfo.hInstApp);
+                        errorCode = GetShellError(shellExecuteInfo.hInstApp);
                     }
 
-                    switch (error)
+                    switch (errorCode)
                     {
-                        case Interop.Errors.ERROR_BAD_EXE_FORMAT:
-                        case Interop.Errors.ERROR_EXE_MACHINE_TYPE_MISMATCH:
-                            throw new Win32Exception(error, SR.InvalidApplication);
                         case Interop.Errors.ERROR_CALL_NOT_IMPLEMENTED:
                             // This happens on Windows Nano
                             throw new PlatformNotSupportedException(SR.UseShellExecuteNotSupported);
                         default:
-                            throw new Win32Exception(error);
+                            string nativeErrorMessage = errorCode == Interop.Errors.ERROR_BAD_EXE_FORMAT || errorCode == Interop.Errors.ERROR_EXE_MACHINE_TYPE_MISMATCH
+                                ? SR.InvalidApplication
+                                : GetErrorMessage(errorCode);
+
+                            throw CreateExceptionForErrorStartingProcess(nativeErrorMessage, errorCode, startInfo.FileName, startInfo.WorkingDirectory);
                     }
                 }
 
@@ -107,7 +109,7 @@ namespace System.Diagnostics
             return false;
         }
 
-        private int GetShellError(IntPtr error)
+        private static int GetShellError(IntPtr error)
         {
             switch ((long)error)
             {
@@ -134,7 +136,7 @@ namespace System.Diagnostics
             }
         }
 
-        internal unsafe class ShellExecuteHelper
+        internal sealed unsafe class ShellExecuteHelper
         {
             private readonly Interop.Shell32.SHELLEXECUTEINFO* _executeInfo;
             private bool _succeeded;
@@ -201,7 +203,7 @@ namespace System.Diagnostics
 #if DEBUG
                 // We never used to throw here, want to surface possible mistakes on our part
                 int error = Marshal.GetLastWin32Error();
-                Debug.Assert(error == 0, $"Failed GetWindowTextLengthW(): { new Win32Exception(error).Message }");
+                Debug.Assert(error == 0, $"Failed GetWindowTextLengthW(): { Marshal.GetPInvokeErrorMessage(error) }");
 #endif
                 return string.Empty;
             }
@@ -220,7 +222,7 @@ namespace System.Diagnostics
             {
                 // We never used to throw here, want to surface possible mistakes on our part
                 int error = Marshal.GetLastWin32Error();
-                Debug.Assert(error == 0, $"Failed GetWindowTextW(): { new Win32Exception(error).Message }");
+                Debug.Assert(error == 0, $"Failed GetWindowTextW(): { Marshal.GetPInvokeErrorMessage(error) }");
             }
 #endif
             return title.Slice(0, length).ToString();
@@ -263,18 +265,7 @@ namespace System.Diagnostics
             return true;
         }
 
-        public string MainWindowTitle
-        {
-            get
-            {
-                if (_mainWindowTitle == null)
-                {
-                    _mainWindowTitle = GetMainWindowTitle();
-                }
-
-                return _mainWindowTitle;
-            }
-        }
+        public string MainWindowTitle => _mainWindowTitle ??= GetMainWindowTitle();
 
         private bool IsRespondingCore()
         {
@@ -288,7 +279,10 @@ namespace System.Diagnostics
             }
 
             IntPtr result;
-            return Interop.User32.SendMessageTimeout(mainWindow, WM_NULL, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 5000, out result) != (IntPtr)0;
+            unsafe
+            {
+                return Interop.User32.SendMessageTimeout(mainWindow, WM_NULL, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 5000, &result) != (IntPtr)0;
+            }
         }
 
         public bool Responding
@@ -330,9 +324,17 @@ namespace System.Diagnostics
         /// <remarks>
         /// A child process is a process which has this process's id as its parent process id and which started after this process did.
         /// </remarks>
-        private bool IsParentOf(Process possibleChild) =>
-            StartTime < possibleChild.StartTime
-            && Id == possibleChild.ParentProcessId;
+        private bool IsParentOf(Process possibleChild)
+        {
+            try
+            {
+                return StartTime < possibleChild.StartTime && Id == possibleChild.ParentProcessId;
+            }
+            catch (Exception e) when (IsProcessInvalidException(e))
+            {
+                return false;
+            }
+        }
 
         /// <summary>
         /// Get the process's parent process id.
@@ -353,9 +355,17 @@ namespace System.Diagnostics
             }
         }
 
-        private bool Equals(Process process) =>
-            Id == process.Id
-            && StartTime == process.StartTime;
+        private bool Equals(Process process)
+        {
+            try
+            {
+                return Id == process.Id && StartTime == process.StartTime;
+            }
+            catch (Exception e) when (IsProcessInvalidException(e))
+            {
+                return false;
+            }
+        }
 
         private List<Exception>? KillTree()
         {
@@ -389,7 +399,7 @@ namespace System.Diagnostics
                 (exceptions ??= new List<Exception>()).Add(e);
             }
 
-            List<(Process Process, SafeProcessHandle Handle)> children = GetProcessHandlePairs(p => SafePredicateTest(() => IsParentOf(p)));
+            List<(Process Process, SafeProcessHandle Handle)> children = GetProcessHandlePairs((thisProcess, otherProcess) => thisProcess.IsParentOf(otherProcess));
             try
             {
                 foreach ((Process Process, SafeProcessHandle Handle) child in children)
@@ -413,7 +423,7 @@ namespace System.Diagnostics
             return exceptions;
         }
 
-        private List<(Process Process, SafeProcessHandle Handle)> GetProcessHandlePairs(Func<Process, bool> predicate)
+        private List<(Process Process, SafeProcessHandle Handle)> GetProcessHandlePairs(Func<Process, Process, bool> predicate)
         {
             var results = new List<(Process Process, SafeProcessHandle Handle)>();
 
@@ -422,7 +432,7 @@ namespace System.Diagnostics
                 SafeProcessHandle h = SafeGetHandle(p);
                 if (!h.IsInvalid)
                 {
-                    if (predicate(p))
+                    if (predicate(this, p))
                     {
                         results.Add((p, h));
                     }

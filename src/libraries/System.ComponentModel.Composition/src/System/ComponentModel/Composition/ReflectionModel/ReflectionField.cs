@@ -6,16 +6,13 @@ using Microsoft.Internal;
 
 namespace System.ComponentModel.Composition.ReflectionModel
 {
-    internal class ReflectionField : ReflectionWritableMember
+    internal sealed class ReflectionField : ReflectionWritableMember
     {
         private readonly FieldInfo _field;
 
         public ReflectionField(FieldInfo field)
         {
-            if (field == null)
-            {
-                throw new ArgumentNullException(nameof(field));
-            }
+            ArgumentNullException.ThrowIfNull(field);
 
             _field = field;
         }

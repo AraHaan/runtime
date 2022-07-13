@@ -4,14 +4,11 @@
 using System;
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class User32
+    internal static partial class User32
     {
-        [DllImport(Libraries.User32, CharSet = CharSet.Unicode, ExactSpelling = true)]
-        public static extern int PostMessageW(IntPtr hwnd, int msg, IntPtr wparam, IntPtr lparam);
-
-        [DllImport(Libraries.User32, CharSet = CharSet.Unicode, ExactSpelling = true)]
-        public static extern int PostMessageW(HandleRef hwnd, int msg, IntPtr wparam, IntPtr lparam);
+        [LibraryImport(Libraries.User32)]
+        public static partial int PostMessageW(IntPtr hwnd, int msg, IntPtr wparam, IntPtr lparam);
     }
 }

@@ -28,9 +28,7 @@ namespace System.Reflection
 
         public virtual bool IsDefined(Type attributeType, bool inherit)
         {
-            if (attributeType == null)
-                throw new ArgumentNullException(nameof(attributeType));
-
+            ArgumentNullException.ThrowIfNull(attributeType);
             return false;
         }
 
@@ -40,9 +38,7 @@ namespace System.Reflection
         public virtual object[] GetCustomAttributes(bool inherit) => Array.Empty<object>();
         public virtual object[] GetCustomAttributes(Type attributeType, bool inherit)
         {
-            if (attributeType == null)
-                throw new ArgumentNullException(nameof(attributeType));
-
+            ArgumentNullException.ThrowIfNull(attributeType);
             return Array.Empty<object>();
         }
 
@@ -94,7 +90,12 @@ namespace System.Reflection
             }
         }
 
-        public override string ToString() => ParameterType.FormatTypeName() + " " + Name;
+        public override string ToString()
+        {
+            string typeName = ParameterType.FormatTypeName();
+            string? name = Name;
+            return name is null ? typeName : typeName + " " + name;
+        }
 
         protected ParameterAttributes AttrsImpl;
         protected Type? ClassImpl;

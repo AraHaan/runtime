@@ -9,22 +9,12 @@ using System.Globalization;
 
 namespace System.Net
 {
-    internal class ServiceNameStore
+    internal sealed class ServiceNameStore
     {
         private readonly List<string> _serviceNames;
         private ServiceNameCollection? _serviceNameCollection;
 
-        public ServiceNameCollection ServiceNames
-        {
-            get
-            {
-                if (_serviceNameCollection == null)
-                {
-                    _serviceNameCollection = new ServiceNameCollection(_serviceNames);
-                }
-                return _serviceNameCollection;
-            }
-        }
+        public ServiceNameCollection ServiceNames => _serviceNameCollection ??= new ServiceNameCollection(_serviceNames);
 
         public ServiceNameStore()
         {
@@ -84,8 +74,7 @@ namespace System.Net
                     port = hostAndPort.Substring(colonIndex + 1); // Excludes colon
 
                     // Loosely validate the port just to make sure it was a port and not something else
-                    ushort portValue;
-                    if (!ushort.TryParse(port, NumberStyles.Integer, CultureInfo.InvariantCulture, out portValue))
+                    if (!ushort.TryParse(port, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
                     {
                         return inputServiceName;
                     }
@@ -118,8 +107,7 @@ namespace System.Net
             string normalizedHost = constructedUri.GetComponents(
                 UriComponents.NormalizedHost, UriFormat.SafeUnescaped);
 
-            string normalizedServiceName = string.Format(CultureInfo.InvariantCulture,
-                "{0}{1}{2}{3}", prefix, normalizedHost, port, distinguisher);
+            string normalizedServiceName = prefix + normalizedHost + port + distinguisher;
 
             // Don't return the new one unless we absolutely have to.  It may have only changed casing.
             if (inputServiceName.Equals(normalizedServiceName, StringComparison.OrdinalIgnoreCase))
@@ -227,7 +215,7 @@ namespace System.Net
             _serviceNameCollection = null; //invalidate (readonly) ServiceNameCollection
         }
 
-        private string? ExtractHostname(string uriPrefix, bool allowInvalidUriStrings)
+        private static string? ExtractHostname(string uriPrefix, bool allowInvalidUriStrings)
         {
             if (Uri.IsWellFormedUriString(uriPrefix, UriKind.Absolute))
             {
@@ -264,7 +252,7 @@ namespace System.Net
             return null;
         }
 
-        public string? BuildSimpleServiceName(string uriPrefix)
+        public static string? BuildSimpleServiceName(string uriPrefix)
         {
             string? hostname = ExtractHostname(uriPrefix, false);
 
@@ -278,14 +266,13 @@ namespace System.Net
             }
         }
 
-        public string[] BuildServiceNames(string uriPrefix)
+        public static string[] BuildServiceNames(string uriPrefix)
         {
             string hostname = ExtractHostname(uriPrefix, true)!;
 
-            IPAddress? ipAddress = null;
             if (string.Equals(hostname, "*", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(hostname, "+", StringComparison.OrdinalIgnoreCase) ||
-                IPAddress.TryParse(hostname, out ipAddress))
+                IPAddress.TryParse(hostname, out _))
             {
                 // for a wildcard, register the machine name.  If the caller doesn't have DNS permission
                 // or the query fails for some reason, don't add an SPN.

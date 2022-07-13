@@ -18,8 +18,7 @@ FORCEINLINE SetCallbackStateFlagsHolder::SetCallbackStateFlagsHolder(DWORD dwFla
 {
     // This is called before entering a profiler.  We set the specified dwFlags on
     // the Thread object, and remember the previous flags for later.
-    BEGIN_GETTHREAD_ALLOWED_IN_NO_THROW_REGION;
-    m_pThread = GetThread();
+    m_pThread = GetThreadNULLOk();
     if (m_pThread != NULL)
     {
         m_dwOriginalFullState = m_pThread->SetProfilerCallbackStateFlags(dwFlags);
@@ -28,7 +27,6 @@ FORCEINLINE SetCallbackStateFlagsHolder::SetCallbackStateFlagsHolder(DWORD dwFla
     {
         m_dwOriginalFullState = 0;
     }
-    END_GETTHREAD_ALLOWED_IN_NO_THROW_REGION;
 }
 
 FORCEINLINE SetCallbackStateFlagsHolder::~SetCallbackStateFlagsHolder()
@@ -44,9 +42,7 @@ FORCEINLINE SetCallbackStateFlagsHolder::~SetCallbackStateFlagsHolder()
     // original flag set here.
     if (m_pThread != NULL)
     {
-        BEGIN_GETTHREAD_ALLOWED_IN_NO_THROW_REGION;
         m_pThread->SetProfilerCallbackFullState(m_dwOriginalFullState);
-        END_GETTHREAD_ALLOWED_IN_NO_THROW_REGION;
     }
 }
 
@@ -100,11 +96,11 @@ inline void AssertTriggersContract(BOOL fTriggers)
 //
 // Arguments:
 //    * iidRequested - IID to convert to string and log (as insertion string)
-//    * wszCLSID - CLSID to log (as insertion string)
+//    * szCLSID - CLSID to log (as insertion string)
 //
 
 // static
-inline void ProfilingAPIUtility::LogNoInterfaceError(REFIID iidRequested, LPCWSTR wszCLSID)
+inline void ProfilingAPIUtility::LogNoInterfaceError(REFIID iidRequested, LPCSTR szCLSID)
 {
     CONTRACTL
     {
@@ -114,15 +110,9 @@ inline void ProfilingAPIUtility::LogNoInterfaceError(REFIID iidRequested, LPCWST
     }
     CONTRACTL_END;
 
-    WCHAR wszIidRequested[39];
-    if (StringFromGUID2(iidRequested, wszIidRequested, lengthof(wszIidRequested)) == 0)
-    {
-        // This is a little super-paranoid; but just use an empty string if GUIDs
-        // get bigger than we expect.
-        _ASSERTE(!"IID buffer too small.");
-        wszIidRequested[0] = L'\0';
-    }
-    ProfilingAPIUtility::LogProfError(IDS_E_PROF_NO_CALLBACK_IFACE, wszCLSID, wszIidRequested);
+    GuidString iidUtf8;
+    GuidString::Create(iidRequested, iidUtf8);
+    ProfilingAPIUtility::LogProfError(IDS_E_PROF_NO_CALLBACK_IFACE, szCLSID, (LPCSTR)iidUtf8);
 }
 
 #ifdef _DEBUG
@@ -185,21 +175,15 @@ inline HRESULT ProfilingAPIUtility::LoadProfilerForAttach(
     }
     CONTRACTL_END;
 
-    // Need string version of CLSID for event log messages
-    WCHAR wszClsid[40];
-    if (StringFromGUID2(*pClsid, wszClsid, _countof(wszClsid)) == 0)
-    {
-        _ASSERTE(!"StringFromGUID2 failed!");
-        return E_UNEXPECTED;
-    }
-
     // Inform user we're about to try attaching the profiler
-    ProfilingAPIUtility::LogProfInfo(IDS_PROF_ATTACH_REQUEST_RECEIVED, wszClsid);
+    GuidString clsidUtf8;
+    GuidString::Create(*pClsid, clsidUtf8);
+    ProfilingAPIUtility::LogProfInfo(IDS_PROF_ATTACH_REQUEST_RECEIVED, (LPCSTR)clsidUtf8);
 
     return LoadProfiler(
         kAttachLoad,
         pClsid,
-        wszClsid,
+        (LPCSTR)clsidUtf8,
         wszProfilerDLL,
         pvClientData,
         cbClientData,

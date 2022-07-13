@@ -1,28 +1,21 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+using System.IO;
+using System.Collections;
+using System.ComponentModel;
+using System.Threading;
+using System.Reflection;
+using System.Security;
+using System.Globalization;
+using System.Diagnostics.CodeAnalysis;
+
 namespace System.Xml.Serialization
 {
-    using System;
-    using System.IO;
-    using System.Collections;
-    using System.ComponentModel;
-    using System.Threading;
-    using System.Reflection;
-    using System.Security;
-    using System.Globalization;
-
     ///<internalonly/>
     public abstract class XmlSerializationGeneratedCode
     {
-        internal void Init(TempAssembly? tempAssembly)
-        {
-        }
-
-        // this method must be called at the end of serialization
-        internal void Dispose()
-        {
-        }
     }
     internal class XmlSerializationCodeGen
     {
@@ -39,6 +32,7 @@ namespace System.Xml.Serialization
         private int _references;
         private readonly Hashtable _generatedMethods = new Hashtable();
 
+        [RequiresUnreferencedCode("Calls GetTypeDesc")]
         internal XmlSerializationCodeGen(IndentedWriter writer, TypeScope[] scopes, string access, string className)
         {
             _writer = writer;
@@ -64,8 +58,10 @@ namespace System.Xml.Serialization
         internal Hashtable MethodNames { get { return _methodNames; } }
         internal Hashtable GeneratedMethods { get { return _generatedMethods; } }
 
+        [RequiresUnreferencedCode("calls WriteStructMethod")]
         internal virtual void GenerateMethod(TypeMapping mapping) { }
 
+        [RequiresUnreferencedCode("calls GenerateMethod")]
         internal void GenerateReferencedMethods()
         {
             while (_references > 0)
@@ -88,7 +84,7 @@ namespace System.Xml.Serialization
             return (string?)_methodNames[mapping];
         }
 
-        private TypeMapping[] EnsureArrayIndex(TypeMapping[] a, int index)
+        private static TypeMapping[] EnsureArrayIndex(TypeMapping[] a, int index)
         {
             if (a == null) return new TypeMapping[32];
             if (index < a.Length) return a;
@@ -243,7 +239,7 @@ namespace System.Xml.Serialization
         internal string GenerateTypedSerializer(string? readMethod, string? writeMethod, XmlMapping mapping, CodeIdentifiers classes, string baseSerializer, string readerClass, string writerClass)
         {
             string serializerName = CodeIdentifier.MakeValid(Accessor.UnescapeName(mapping.Accessor.Mapping!.TypeDesc!.Name));
-            serializerName = classes.AddUnique(serializerName + "Serializer", mapping);
+            serializerName = classes.AddUnique($"{serializerName}Serializer", mapping);
 
             _writer.WriteLine();
             _writer.Write("public sealed class ");

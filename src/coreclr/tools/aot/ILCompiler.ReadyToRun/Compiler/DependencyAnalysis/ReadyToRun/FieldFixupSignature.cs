@@ -26,7 +26,6 @@ namespace ILCompiler.DependencyAnalysis.ReadyToRun
 
             // Ensure types in signature are loadable and resolvable, otherwise we'll fail later while emitting the signature
             ((CompilerTypeSystemContext)fieldDesc.Context).EnsureLoadableType(fieldDesc.OwningType);
-            Debug.Assert(factory.SignatureContext.GetTargetModule(_fieldDesc) != null);
         }
 
         public override int ClassCode => 271828182;
@@ -39,24 +38,33 @@ namespace ILCompiler.DependencyAnalysis.ReadyToRun
             {
                 dataBuilder.AddSymbol(this);
 
-                EcmaModule targetModule = factory.SignatureContext.GetTargetModule(_fieldDesc);
+                IEcmaModule targetModule = factory.SignatureContext.GetTargetModule(_fieldDesc);
                 SignatureContext innerContext = dataBuilder.EmitFixup(factory, _fixupKind, targetModule, factory.SignatureContext);
+                uint baseOffset = 0;
+                uint fieldOffset = (uint)_fieldDesc.Offset.AsInt;
 
                 if (_fixupKind == ReadyToRunFixupKind.Verify_FieldOffset)
                 {
                     TypeDesc baseType = _fieldDesc.OwningType.BaseType;
-                    if ((_fieldDesc.OwningType.BaseType != null) && !_fieldDesc.IsStatic && !_fieldDesc.OwningType.IsValueType)
+                    if ((_fieldDesc.OwningType.BaseType != null)
+                        && !_fieldDesc.IsStatic
+                        && !_fieldDesc.OwningType.IsValueType)
                     {
-                        dataBuilder.EmitUInt((uint)_fieldDesc.OwningType.FieldBaseOffset().AsInt);
+                        MetadataType owningType = (MetadataType)_fieldDesc.OwningType;
+                        baseOffset = (uint)owningType.FieldBaseOffset().AsInt;
+                        if (factory.CompilationModuleGroup.NeedsAlignmentBetweenBaseTypeAndDerived((MetadataType)baseType, owningType))
+                        {
+                            fieldOffset -= baseOffset;
+                            baseOffset = 0;
+                        }
                     }
-                    else
-                        dataBuilder.EmitUInt(0);
+                    dataBuilder.EmitUInt(baseOffset);
                 }
 
                 if ((_fixupKind == ReadyToRunFixupKind.Check_FieldOffset) ||
                     (_fixupKind == ReadyToRunFixupKind.Verify_FieldOffset))
                 {
-                    dataBuilder.EmitUInt((uint)_fieldDesc.Offset.AsInt);
+                    dataBuilder.EmitUInt(fieldOffset);
                 }
 
                 dataBuilder.EmitFieldSignature(_fieldDesc, innerContext);

@@ -6,7 +6,7 @@ The goal is to have the majority of code located in this folder, as that code is
 
 ### File Naming Convention
 
-Any runtime-specific `partial` part which also has a shared part sholud use a runtime-specific file name suffix to ease the navigation.
+Any runtime-specific `partial` part which also has a shared part should use a runtime-specific file name suffix to ease the navigation.
 
 * `*.CoreCLR.cs` for CoreCLR runtime
 * `*.Mono.cs` for Mono runtime
@@ -17,4 +17,4 @@ The CoreCLR specific sources can be found at [src/coreclr/System.Private.CoreLib
 
 ## System.Private.CoreLib Mono Sources
 
-The Mono specific sources can be found at [src/mono/netcore/System.Private.CoreLib](../../../mono/netcore/System.Private.CoreLib/).
+The Mono specific sources can be found at [src/mono/System.Private.CoreLib](../../../mono/System.Private.CoreLib/).

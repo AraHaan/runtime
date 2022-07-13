@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace System.DirectoryServices.Protocols
 {
-    internal class LdapPartialResultsProcessor
+    internal sealed class LdapPartialResultsProcessor
     {
         private readonly ArrayList _resultList = new ArrayList();
         private readonly ManualResetEvent _workThreadWaitHandle;
@@ -19,6 +19,7 @@ namespace System.DirectoryServices.Protocols
         internal LdapPartialResultsProcessor(ManualResetEvent eventHandle)
         {
             _workThreadWaitHandle = eventHandle;
+            _ = new PartialResultsRetriever(eventHandle, this);
         }
 
         public void Add(LdapPartialAsyncResult asyncResult)
@@ -123,7 +124,7 @@ namespace System.DirectoryServices.Protocols
             tmpCallback?.Invoke(asyncResult);
         }
 
-        private void GetResultsHelper(LdapPartialAsyncResult asyncResult)
+        private static void GetResultsHelper(LdapPartialAsyncResult asyncResult)
         {
             LdapConnection connection = asyncResult._con;
             ResultAll resultType = ResultAll.LDAP_MSG_RECEIVED;
@@ -307,7 +308,7 @@ namespace System.DirectoryServices.Protocols
             }
         }
 
-        private void AddResult(SearchResponse partialResults, SearchResponse newResult)
+        private static void AddResult(SearchResponse partialResults, SearchResponse newResult)
         {
             if (newResult == null)
             {
@@ -332,7 +333,7 @@ namespace System.DirectoryServices.Protocols
         }
     }
 
-    internal class PartialResultsRetriever
+    internal sealed class PartialResultsRetriever
     {
         private readonly ManualResetEvent _workThreadWaitHandle;
         private readonly LdapPartialResultsProcessor _processor;

@@ -22,7 +22,7 @@ namespace System.IO.Packaging
     /// <para>Setting a property to null deletes this property. 'null' is never strictly speaking
     /// a property value, but an absence indicator.</para>
     /// </remarks>
-    internal class PartBasedPackageProperties : PackageProperties
+    internal sealed class PartBasedPackageProperties : PackageProperties
     {
         #region Constructors
 
@@ -438,7 +438,7 @@ namespace System.IO.Packaging
             if (corePropertiesRelationship.TargetMode != TargetMode.Internal)
                 throw new FileFormatException(SR.NoExternalTargetForMetadataRelationship);
 
-            PackagePart? propertiesPart = null;
+            PackagePart? propertiesPart;
             Uri propertiesPartUri = PackUriHelper.ResolvePartUri(
                 PackUriHelper.PackageRootUri,
                 corePropertiesRelationship.TargetUri);
@@ -600,7 +600,7 @@ namespace System.IO.Packaging
         internal static void ValidateXsiType(XmlReader reader, object ns, string name)
         {
             // Get the value of xsi;type
-            string typeValue = reader.GetAttribute(PackageXmlStringTable.GetXmlString(PackageXmlEnum.Type),
+            string? typeValue = reader.GetAttribute(PackageXmlStringTable.GetXmlString(PackageXmlEnum.Type),
                                 PackageXmlStringTable.GetXmlString(PackageXmlEnum.XmlSchemaInstanceNamespace));
 
             // Missing xsi:type
@@ -623,7 +623,7 @@ namespace System.IO.Packaging
             //  The namespace of the prefix (string before ":") matches "ns"
             //  The name (string after ":") matches "name"
             if (!object.ReferenceEquals(ns, reader.LookupNamespace(typeValue.Substring(0, index)))
-                    || string.CompareOrdinal(name, typeValue.Substring(index + 1, typeValue.Length - index - 1)) != 0)
+                    || string.CompareOrdinal(name, typeValue.Substring(index + 1)) != 0)
             {
                 throw new XmlException(SR.Format(SR.UnknownDCDateTimeXsiType, reader.Name),
                     null, ((IXmlLineInfo)reader).LineNumber, ((IXmlLineInfo)reader).LinePosition);
@@ -631,7 +631,7 @@ namespace System.IO.Packaging
         }
 
         // Expect to find text data and return its value.
-        private string GetStringData(XmlReader reader)
+        private static string GetStringData(XmlReader reader)
         {
             if (reader.IsEmptyElement)
                 return string.Empty;
@@ -651,7 +651,7 @@ namespace System.IO.Packaging
         }
 
         // Expect to find text data and return its value as DateTime.
-        private Nullable<DateTime> GetDateData(XmlReader reader)
+        private static DateTime GetDateData(XmlReader reader)
         {
             string data = GetStringData(reader);
             DateTime dateTime;
@@ -723,7 +723,7 @@ namespace System.IO.Packaging
                 CoreDocumentPropertiesRelationshipType);
         }
 
-        private Uri GeneratePropertyPartUri()
+        private static Uri GeneratePropertyPartUri()
         {
             string propertyPartName = DefaultPropertyPartNamePrefix
                 + Guid.NewGuid().ToString(GuidStorageFormatString)

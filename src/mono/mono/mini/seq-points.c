@@ -41,7 +41,7 @@ recursively_make_pred_seq_points (MonoCompile *cfg, MonoBasicBlock *bb)
 
 	for (int i = 0; i < bb->in_count; ++i) {
 		MonoBasicBlock *in_bb = bb->in_bb [i];
-		
+
 		// This bb has the last seq point, append it and continue
 		if (in_bb->last_seq_point != NULL) {
 			predecessors = g_array_append_val (predecessors, in_bb->last_seq_point);
@@ -54,7 +54,7 @@ recursively_make_pred_seq_points (MonoCompile *cfg, MonoBasicBlock *bb)
 			continue;
 
 		// Take sequence points from incoming basic blocks
-	
+
 		if (in_bb == cfg->bb_entry)
 			continue;
 
@@ -62,10 +62,10 @@ recursively_make_pred_seq_points (MonoCompile *cfg, MonoBasicBlock *bb)
 			recursively_make_pred_seq_points (cfg, in_bb);
 
 		// Union sequence points with incoming bb's
-		for (int i=0; i < in_bb->num_pred_seq_points; i++) {
-			if (!g_hash_table_lookup (seen, in_bb->pred_seq_points [i])) {
-				g_array_append_val (predecessors, in_bb->pred_seq_points [i]);
-				g_hash_table_insert (seen, in_bb->pred_seq_points [i], (gpointer)&MONO_SEQ_SEEN_LOOP);
+		for (guint j = 0; j < in_bb->num_pred_seq_points; j++) {
+			if (!g_hash_table_lookup (seen, in_bb->pred_seq_points [j])) {
+				g_array_append_val (predecessors, in_bb->pred_seq_points [j]);
+				g_hash_table_insert (seen, in_bb->pred_seq_points [j], (gpointer)&MONO_SEQ_SEEN_LOOP);
 			}
 		}
 		// predecessors = g_array_append_vals (predecessors, in_bb->pred_seq_points, in_bb->num_pred_seq_points);
@@ -77,10 +77,10 @@ recursively_make_pred_seq_points (MonoCompile *cfg, MonoBasicBlock *bb)
 		bb->pred_seq_points = (MonoInst **)mono_mempool_alloc0 (cfg->mempool, sizeof (MonoInst *) * predecessors->len);
 		bb->num_pred_seq_points = predecessors->len;
 
-		for (int newer = 0; newer < bb->num_pred_seq_points; newer++) {
+		for (guint newer = 0; newer < bb->num_pred_seq_points; newer++) {
 			bb->pred_seq_points [newer] = g_array_index(predecessors, MonoInst*, newer);
 		}
-	} 
+	}
 
 	g_array_free (predecessors, TRUE);
 }
@@ -92,7 +92,7 @@ collect_pred_seq_points (MonoCompile *cfg, MonoBasicBlock *bb, MonoInst *ins, GS
 	if (bb->pred_seq_points == NULL && bb != cfg->bb_entry)
 		recursively_make_pred_seq_points (cfg, bb);
 
-	for (int i = 0; i < bb->num_pred_seq_points; i++)
+	for (guint i = 0; i < bb->num_pred_seq_points; i++)
 		insert_pred_seq_point (bb->pred_seq_points [i], ins, next);
 
 	return;
@@ -104,8 +104,7 @@ mono_save_seq_point_info (MonoCompile *cfg, MonoJitInfo *jinfo)
 	MonoBasicBlock *bb;
 	GSList *bb_seq_points, *l;
 	MonoInst *last;
-	MonoDomain *domain = cfg->domain;
-	int i, seq_info_size;
+	int seq_info_size;
 	GSList **next = NULL;
 	SeqPoint* seq_points;
 	GByteArray* array;
@@ -116,12 +115,11 @@ mono_save_seq_point_info (MonoCompile *cfg, MonoJitInfo *jinfo)
 
 	seq_points = g_new0 (SeqPoint, cfg->seq_points->len);
 
-	for (i = 0; i < cfg->seq_points->len; ++i) {
+	for (guint i = 0; i < cfg->seq_points->len; ++i) {
 		SeqPoint *sp = &seq_points [i];
 		MonoInst *ins = (MonoInst *)g_ptr_array_index (cfg->seq_points, i);
-
-		sp->il_offset = ins->inst_imm;
-		sp->native_offset = ins->inst_offset;
+		sp->il_offset = GTMREG_TO_INT (ins->inst_imm);
+		sp->native_offset = GTMREG_TO_INT (ins->inst_offset);
 		if (ins->flags & MONO_INST_NONEMPTY_STACK)
 			sp->flags |= MONO_SEQ_POINT_FLAG_NONEMPTY_STACK;
 		if (ins->flags & MONO_INST_NESTED_CALL)
@@ -172,8 +170,7 @@ mono_save_seq_point_info (MonoCompile *cfg, MonoJitInfo *jinfo)
 					endfinally_seq_point = (MonoInst *)l->data;
 
 					for (bb2 = bb->next_bb; bb2; bb2 = bb2->next_bb) {
-						GSList *l = g_slist_last (bb2->seq_points);
-
+						l = g_slist_last (bb2->seq_points);
 						if (l) {
 							MonoInst *ins = (MonoInst *)l->data;
 
@@ -188,9 +185,8 @@ mono_save_seq_point_info (MonoCompile *cfg, MonoJitInfo *jinfo)
 		if (cfg->verbose_level > 2) {
 			printf ("\nSEQ POINT MAP: \n");
 
-			for (i = 0; i < cfg->seq_points->len; ++i) {
+			for (guint i = 0; i < cfg->seq_points->len; ++i) {
 				SeqPoint *sp = &seq_points [i];
-				GSList *l;
 
 				if (!next [i])
 					continue;
@@ -211,7 +207,7 @@ mono_save_seq_point_info (MonoCompile *cfg, MonoJitInfo *jinfo)
 		SeqPoint zero_seq_point = {0};
 		SeqPoint* last_seq_point = &zero_seq_point;
 
-		for (i = 0; i < cfg->seq_points->len; ++i) {
+		for (guint i = 0; i < cfg->seq_points->len; ++i) {
 			SeqPoint *sp = &seq_points [i];
 			GSList* next_list = NULL;
 
@@ -238,13 +234,15 @@ mono_save_seq_point_info (MonoCompile *cfg, MonoJitInfo *jinfo)
 
 	// FIXME: dynamic methods
 	if (!cfg->compile_aot) {
-		mono_domain_lock (domain);
+		// FIXME:
+		MonoJitMemoryManager *jit_mm = get_default_jit_mm ();
+		jit_mm_lock (jit_mm);
 		// FIXME: The lookup can fail if the method is JITted recursively though a type cctor
-		if (!g_hash_table_lookup (domain_jit_info (domain)->seq_points, cfg->method_to_register))
-			g_hash_table_insert (domain_jit_info (domain)->seq_points, cfg->method_to_register, cfg->seq_point_info);
+		if (!g_hash_table_lookup (jit_mm->seq_points, cfg->method_to_register))
+			g_hash_table_insert (jit_mm->seq_points, cfg->method_to_register, cfg->seq_point_info);
 		else
 			mono_seq_point_info_free (cfg->seq_point_info);
-		mono_domain_unlock (domain);
+		jit_mm_unlock (jit_mm);
 
 		g_assert (jinfo);
 		jinfo->seq_points = cfg->seq_point_info;
@@ -254,13 +252,13 @@ mono_save_seq_point_info (MonoCompile *cfg, MonoJitInfo *jinfo)
 	cfg->seq_points = NULL;
 }
 
-/* LOCKING: Acquires the domain lock */
 MonoSeqPointInfo*
-mono_get_seq_points (MonoDomain *domain, MonoMethod *method)
+mono_get_seq_points (MonoMethod *method)
 {
 	ERROR_DECL (error);
 	MonoSeqPointInfo *seq_points;
 	MonoMethod *declaring_generic_method = NULL, *shared_method = NULL;
+	MonoJitMemoryManager *jit_mm;
 
 	if (method->is_inflated) {
 		declaring_generic_method = mono_method_get_declaring_generic_method (method);
@@ -268,15 +266,17 @@ mono_get_seq_points (MonoDomain *domain, MonoMethod *method)
 		mono_error_assert_ok (error);
 	}
 
-	mono_domain_lock (domain);
-	seq_points = (MonoSeqPointInfo *)g_hash_table_lookup (domain_jit_info (domain)->seq_points, method);
+	// FIXME:
+	jit_mm = get_default_jit_mm ();
+	jit_mm_lock (jit_mm);
+	seq_points = (MonoSeqPointInfo *)g_hash_table_lookup (jit_mm->seq_points, method);
 	if (!seq_points && method->is_inflated) {
 		/* generic sharing + aot */
-		seq_points = (MonoSeqPointInfo *)g_hash_table_lookup (domain_jit_info (domain)->seq_points, declaring_generic_method);
+		seq_points = (MonoSeqPointInfo *)g_hash_table_lookup (jit_mm->seq_points, declaring_generic_method);
 		if (!seq_points)
-			seq_points = (MonoSeqPointInfo *)g_hash_table_lookup (domain_jit_info (domain)->seq_points, shared_method);
+			seq_points = (MonoSeqPointInfo *)g_hash_table_lookup (jit_mm->seq_points, shared_method);
 	}
-	mono_domain_unlock (domain);
+	jit_mm_unlock (jit_mm);
 
 	return seq_points;
 }
@@ -287,11 +287,11 @@ mono_get_seq_points (MonoDomain *domain, MonoMethod *method)
  *   Find the first sequence point after NATIVE_OFFSET.
  */
 gboolean
-mono_find_next_seq_point_for_native_offset (MonoDomain *domain, MonoMethod *method, gint32 native_offset, MonoSeqPointInfo **info, SeqPoint* seq_point)
+mono_find_next_seq_point_for_native_offset (MonoMethod *method, gint32 native_offset, MonoSeqPointInfo **info, SeqPoint* seq_point)
 {
 	MonoSeqPointInfo *seq_points;
 
-	seq_points = mono_get_seq_points (domain, method);
+	seq_points = mono_get_seq_points (method);
 	if (!seq_points) {
 		if (info)
 			*info = NULL;
@@ -309,11 +309,11 @@ mono_find_next_seq_point_for_native_offset (MonoDomain *domain, MonoMethod *meth
  *   Find the first sequence point before NATIVE_OFFSET.
  */
 gboolean
-mono_find_prev_seq_point_for_native_offset (MonoDomain *domain, MonoMethod *method, gint32 native_offset, MonoSeqPointInfo **info, SeqPoint* seq_point)
+mono_find_prev_seq_point_for_native_offset (MonoMethod *method, gint32 native_offset, MonoSeqPointInfo **info, SeqPoint* seq_point)
 {
 	MonoSeqPointInfo *seq_points;
 
-	seq_points = mono_get_seq_points (domain, method);
+	seq_points = mono_get_seq_points (method);
 	if (!seq_points) {
 		if (info)
 			*info = NULL;
@@ -332,11 +332,11 @@ mono_find_prev_seq_point_for_native_offset (MonoDomain *domain, MonoMethod *meth
  * should be the location of a sequence point.
  */
 gboolean
-mono_find_seq_point (MonoDomain *domain, MonoMethod *method, gint32 il_offset, MonoSeqPointInfo **info, SeqPoint *seq_point)
+mono_find_seq_point (MonoMethod *method, gint32 il_offset, MonoSeqPointInfo **info, SeqPoint *seq_point)
 {
 	MonoSeqPointInfo *seq_points;
 
-	seq_points = mono_get_seq_points (domain, method);
+	seq_points = mono_get_seq_points (method);
 	if (!seq_points) {
 		if (info)
 			*info = NULL;

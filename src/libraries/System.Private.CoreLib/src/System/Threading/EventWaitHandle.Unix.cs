@@ -10,7 +10,7 @@ namespace System.Threading
 {
     public partial class EventWaitHandle
     {
-        private void CreateEventCore(bool initialState, EventResetMode mode, string name, out bool createdNew)
+        private void CreateEventCore(bool initialState, EventResetMode mode, string? name, out bool createdNew)
         {
             if (name != null)
                 throw new PlatformNotSupportedException(SR.PlatformNotSupported_NamedSynchronizationPrimitives);
@@ -19,10 +19,12 @@ namespace System.Threading
             createdNew = true;
         }
 
-        private static OpenExistingResult OpenExistingWorker(string name, out EventWaitHandle result)
+#pragma warning disable IDE0060
+        private static OpenExistingResult OpenExistingWorker(string name, out EventWaitHandle? result)
         {
             throw new PlatformNotSupportedException(SR.PlatformNotSupported_NamedSynchronizationPrimitives);
         }
+#pragma warning restore IDE0060
 
         public bool Reset()
         {

@@ -29,8 +29,7 @@ namespace System.Reflection
         // TypeDelegator. The only purpose of the annotation here is to avoid dataflow warnings _within_ this type.
         public TypeDelegator([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] Type delegatingType)
         {
-            if (delegatingType is null)
-                throw new ArgumentNullException(nameof(delegatingType));
+            ArgumentNullException.ThrowIfNull(delegatingType);
 
             typeImpl = delegatingType;
         }
@@ -85,8 +84,11 @@ namespace System.Reflection
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields)]
         public override FieldInfo[] GetFields(BindingFlags bindingAttr) => typeImpl.GetFields(bindingAttr);
 
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
+        [return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
         public override Type? GetInterface(string name, bool ignoreCase) => typeImpl.GetInterface(name, ignoreCase);
 
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
         public override Type[] GetInterfaces() => typeImpl.GetInterfaces();
 
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicEvents | DynamicallyAccessedMemberTypes.NonPublicEvents)]
@@ -117,11 +119,13 @@ namespace System.Reflection
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicNestedTypes | DynamicallyAccessedMemberTypes.NonPublicNestedTypes)]
         public override Type? GetNestedType(string name, BindingFlags bindingAttr) => typeImpl.GetNestedType(name, bindingAttr);
 
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+        [DynamicallyAccessedMembers(GetAllMembers)]
         public override MemberInfo[] GetMember(string name, MemberTypes type, BindingFlags bindingAttr) => typeImpl.GetMember(name, type, bindingAttr);
 
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+        [DynamicallyAccessedMembers(GetAllMembers)]
         public override MemberInfo[] GetMembers(BindingFlags bindingAttr) => typeImpl.GetMembers(bindingAttr);
+
+        public override MemberInfo GetMemberWithSameMetadataDefinitionAs(MemberInfo member) => typeImpl.GetMemberWithSameMetadataDefinitionAs(member);
 
         protected override TypeAttributes GetAttributeFlagsImpl() => typeImpl.Attributes;
 
@@ -152,6 +156,6 @@ namespace System.Reflection
         public override object[] GetCustomAttributes(Type attributeType, bool inherit) => typeImpl.GetCustomAttributes(attributeType, inherit);
 
         public override bool IsDefined(Type attributeType, bool inherit) => typeImpl.IsDefined(attributeType, inherit);
-        public override InterfaceMapping GetInterfaceMap(Type interfaceType) => typeImpl.GetInterfaceMap(interfaceType);
+        public override InterfaceMapping GetInterfaceMap([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type interfaceType) => typeImpl.GetInterfaceMap(interfaceType);
     }
 }

@@ -3,29 +3,27 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Net.Http;
 
 namespace Microsoft.Extensions.Http
 {
-    internal class DefaultHttpMessageHandlerBuilder : HttpMessageHandlerBuilder
+    internal sealed class DefaultHttpMessageHandlerBuilder : HttpMessageHandlerBuilder
     {
         public DefaultHttpMessageHandlerBuilder(IServiceProvider services)
         {
             Services = services;
         }
 
-        private string _name;
+        private string? _name;
 
-        public override string Name
+        [DisallowNull]
+        public override string? Name
         {
             get => _name;
             set
             {
-                if (value == null)
-                {
-                    throw new ArgumentNullException(nameof(value));
-                }
-
+                ThrowHelper.ThrowIfNull(value);
                 _name = value;
             }
         }

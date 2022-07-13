@@ -3,12 +3,13 @@
 
 using System.Collections.Generic;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading.Tasks;
 using Xunit;
 
 namespace System.Net.Http.Tests
 {
-    [SkipOnMono("System.Security.Cryptography is not supported on Browser, see https://github.com/dotnet/runtime/pull/38379", TestPlatforms.Browser)]
+    [SkipOnPlatform(TestPlatforms.Browser, "System.Security.Cryptography is not supported on Browser, see https://github.com/dotnet/runtime/pull/38379")]
     public class DigestAuthenticationTests
     {
         private static readonly List<string> s_keyListWithCountTwo = new List<string> { "key1", "key2" };
@@ -103,6 +104,26 @@ namespace System.Net.Http.Tests
             }
             Assert.Equal(fieldCount, parameter.Split(',').Length);
             Assert.False(parameter.Trim().EndsWith(","));
+        }
+
+        [Fact]
+        public static void DigestResponse_CnonceRandom()
+        {
+            const BindingFlags Flags = BindingFlags.Static | BindingFlags.NonPublic;
+            MethodInfo mi = typeof(AuthenticationHelper).GetMethod("GetRandomAlphaNumericString", Flags);
+            Assert.NotNull(mi);
+
+            HashSet<string> cnonces = new HashSet<string>();
+
+            for (int i = 0; i < 100; i++)
+            {
+                string token = (string)mi.Invoke(null, null);
+
+                // cnonce is a 16 character length string from a 62 character set.
+                // log2(62)*16 is about 95, the odds of which we will generate a duplicate
+                // here are next to nothing.
+                Assert.True(cnonces.Add(token), "cnonce is not a duplicate");
+            }
         }
     }
 }

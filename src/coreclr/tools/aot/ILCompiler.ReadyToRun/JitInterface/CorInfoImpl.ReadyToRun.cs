@@ -23,7 +23,7 @@ using Internal.ReadyToRunConstants;
 using ILCompiler;
 using ILCompiler.DependencyAnalysis;
 using ILCompiler.DependencyAnalysis.ReadyToRun;
-
+using System.Text;
 
 namespace Internal.JitInterface
 {
@@ -47,17 +47,17 @@ namespace Internal.JitInterface
         public readonly TypeDesc OwningType;
 
 
-        public MethodWithToken(MethodDesc method, ModuleToken token, TypeDesc constrainedType, bool unboxing, object context)
+        public MethodWithToken(MethodDesc method, ModuleToken token, TypeDesc constrainedType, bool unboxing, object context, TypeDesc devirtualizedMethodOwner = null)
         {
             Debug.Assert(!method.IsUnboxingThunk());
             Method = method;
             Token = token;
             ConstrainedType = constrainedType;
             Unboxing = unboxing;
-            OwningType = GetMethodTokenOwningType(this, constrainedType, context, out OwningTypeNotDerivedFromToken);
+            OwningType = GetMethodTokenOwningType(this, constrainedType, context, devirtualizedMethodOwner, out OwningTypeNotDerivedFromToken);
         }
 
-        private static TypeDesc GetMethodTokenOwningType(MethodWithToken methodToken, TypeDesc constrainedType, object context, out bool owningTypeNotDerivedFromToken)
+        private static TypeDesc GetMethodTokenOwningType(MethodWithToken methodToken, TypeDesc constrainedType, object context, TypeDesc devirtualizedMethodOwner, out bool owningTypeNotDerivedFromToken)
         {
             ModuleToken moduleToken = methodToken.Token;
             owningTypeNotDerivedFromToken = false;
@@ -72,7 +72,7 @@ namespace Internal.JitInterface
             if (moduleToken.TokenType == CorTokenType.mdtMethodDef)
             {
                 var methodDefinition = moduleToken.MetadataReader.GetMethodDefinition((MethodDefinitionHandle)moduleToken.Handle);
-                return HandleContext(moduleToken.Module, methodDefinition.GetDeclaringType(), methodToken.Method.OwningType, constrainedType, context, ref owningTypeNotDerivedFromToken);
+                return HandleContext(moduleToken.Module, methodDefinition.GetDeclaringType(), methodToken.Method.OwningType, constrainedType, context, devirtualizedMethodOwner, ref owningTypeNotDerivedFromToken);
             }
 
             // At this point moduleToken must point at a MemberRef.
@@ -84,14 +84,15 @@ namespace Internal.JitInterface
                 case HandleKind.TypeReference:
                 case HandleKind.TypeSpecification:
                     {
-                        return HandleContext(moduleToken.Module, memberRef.Parent, methodToken.Method.OwningType, constrainedType, context, ref owningTypeNotDerivedFromToken);
+                        Debug.Assert(devirtualizedMethodOwner == null); // Devirtualization is expected to always use a methoddef token
+                        return HandleContext(moduleToken.Module, memberRef.Parent, methodToken.Method.OwningType, constrainedType, context, null, ref owningTypeNotDerivedFromToken);
                     }
 
                 default:
                     return methodToken.Method.OwningType;
             }
 
-            TypeDesc HandleContext(EcmaModule module, EntityHandle handle, TypeDesc methodTargetOwner, TypeDesc constrainedType, object context, ref bool owningTypeNotDerivedFromToken)
+            TypeDesc HandleContext(IEcmaModule module, EntityHandle handle, TypeDesc methodTargetOwner, TypeDesc constrainedType, object context, TypeDesc devirtualizedMethodOwner, ref bool owningTypeNotDerivedFromToken)
             {
                 var tokenOnlyOwningType = module.GetType(handle);
                 TypeDesc actualOwningType;
@@ -116,7 +117,36 @@ namespace Internal.JitInterface
                         typeInstantiation = typeContext.Instantiation;
                     }
 
-                    var instantiatedOwningType = tokenOnlyOwningType.InstantiateSignature(typeInstantiation, methodInstantiation);
+                    TypeDesc instantiatedOwningType = null;
+
+                    if (devirtualizedMethodOwner != null)
+                    {
+                        // We might be in a situation where we use the passed in type (devirtualization scenario)
+                        // Check to see if devirtualizedMethodOwner actually is a type derived from the type definition in some way.
+                        bool derivesFromTypeDefinition = false;
+                        TypeDesc currentType = devirtualizedMethodOwner;
+                        do
+                        {
+                            derivesFromTypeDefinition = currentType.GetTypeDefinition() == tokenOnlyOwningType;
+                            currentType = currentType.BaseType;
+                        } while(currentType != null && !derivesFromTypeDefinition);
+
+                        if (derivesFromTypeDefinition)
+                        {
+                            instantiatedOwningType = devirtualizedMethodOwner;
+                        }
+                        else
+                        {
+                            Debug.Assert(false); // This is expected to fire if and only if we implement devirtualization to default interface methods
+                            throw new RequiresRuntimeJitException(methodTargetOwner.ToString());
+                        }
+                    }
+
+                    if (instantiatedOwningType == null)
+                    {
+                        instantiatedOwningType = tokenOnlyOwningType.InstantiateSignature(typeInstantiation, methodInstantiation);
+                    }
+
                     var canonicalizedOwningType = instantiatedOwningType.ConvertToCanonForm(CanonicalFormKind.Specific);
                     if ((instantiatedOwningType == canonicalizedOwningType) || (constrainedType != null))
                     {
@@ -191,8 +221,12 @@ namespace Internal.JitInterface
 
         public bool Equals(MethodWithToken methodWithToken)
         {
-            bool equals = Method == methodWithToken.Method && Token.Equals(methodWithToken.Token) && ConstrainedType == methodWithToken.ConstrainedType &&
-                   Unboxing == methodWithToken.Unboxing;
+            if (methodWithToken == null)
+                return false;
+
+            bool equals = Method == methodWithToken.Method && Token.Equals(methodWithToken.Token)
+                && OwningType == methodWithToken.OwningType && ConstrainedType == methodWithToken.ConstrainedType
+                && Unboxing == methodWithToken.Unboxing;
             if (equals)
             {
                 Debug.Assert(OwningTypeNotDerivedFromToken == methodWithToken.OwningTypeNotDerivedFromToken);
@@ -214,6 +248,24 @@ namespace Internal.JitInterface
             sb.Append(Token.ToString());
             if (Unboxing)
                 sb.Append("; UNBOXING");
+        }
+
+        public override string ToString()
+        {
+            StringBuilder debuggingName = new StringBuilder();
+            debuggingName.Append(Method.ToString());
+            if (ConstrainedType != null)
+            {
+                debuggingName.Append(" @ ");
+                debuggingName.Append(ConstrainedType.ToString());
+            }
+
+            debuggingName.Append("; ");
+            debuggingName.Append(Token.ToString());
+            if (Unboxing)
+                debuggingName.Append("; UNBOXING");
+
+            return debuggingName.ToString();
         }
 
         public int CompareTo(MethodWithToken other, TypeSystemComparer comparer)
@@ -245,7 +297,7 @@ namespace Internal.JitInterface
 
             // The OwningType/OwningTypeNotDerivedFromToken shoud be equivalent if the above conditions are equal.
             Debug.Assert(OwningTypeNotDerivedFromToken == other.OwningTypeNotDerivedFromToken);
-            Debug.Assert(OwningType == other.OwningType);
+            Debug.Assert(OwningTypeNotDerivedFromToken || (OwningType == other.OwningType));
 
             if (OwningTypeNotDerivedFromToken != other.OwningTypeNotDerivedFromToken)
             {
@@ -309,22 +361,21 @@ namespace Internal.JitInterface
         private MethodWithGCInfo _methodCodeNode;
         private OffsetMapping[] _debugLocInfos;
         private NativeVarInfo[] _debugVarInfos;
-        private ArrayBuilder<MethodDesc> _inlinedMethods;
+        private HashSet<MethodDesc> _inlinedMethods;
         private UnboxingMethodDescFactory _unboxingThunkFactory = new UnboxingMethodDescFactory();
-
-        private struct PgoInstrumentationResults
-        {
-            public PgoInstrumentationSchema* pSchema;
-            public uint countSchemaItems;
-            public byte* pInstrumentationData;
-            public HRESULT hr;
-        }
-        Dictionary<MethodDesc, PgoInstrumentationResults> _pgoResults = new Dictionary<MethodDesc, PgoInstrumentationResults>();
+        private List<ISymbolNode> _precodeFixups;
+        private List<EcmaMethod> _ilBodiesNeeded;
 
         public CorInfoImpl(ReadyToRunCodegenCompilation compilation)
             : this()
         {
             _compilation = compilation;
+        }
+
+        private void AddPrecodeFixup(ISymbolNode node)
+        {
+            _precodeFixups = _precodeFixups ?? new List<ISymbolNode>();
+            _precodeFixups.Add(node);
         }
 
         private static mdToken FindGenericMethodArgTypeSpec(EcmaModule module)
@@ -388,21 +439,139 @@ namespace Internal.JitInterface
             return false;
         }
 
-        public void CompileMethod(MethodWithGCInfo methodCodeNodeNeedingCode)
+        private static bool FunctionJustThrows(MethodIL ilBody)
+        {
+            try
+            {
+                if (ilBody.GetExceptionRegions().Length != 0)
+                    return false;
+
+                ILReader reader = new ILReader(ilBody.GetILBytes());
+
+                while (reader.HasNext)
+                {
+                    var ilOpcode = reader.ReadILOpcode();
+                    if (ilOpcode == ILOpcode.throw_)
+                        return true;
+                    if (ilOpcode.IsBranch() || ilOpcode == ILOpcode.switch_)
+                        return false;
+                    reader.Skip(ilOpcode);
+                }
+            }
+            catch
+            { }
+
+            return false;
+        }
+
+        partial void DetermineIfCompilationShouldBeRetried(ref CompilationResult result)
+        {
+            // If any il bodies need to be recomputed, force recompilation
+            if (_ilBodiesNeeded != null)
+            {
+                _compilation.PrepareForCompilationRetry(_methodCodeNode, _ilBodiesNeeded);
+                result = CompilationResult.CompilationRetryRequested;
+            }
+        }
+
+        // At the moment, cross module code embedding does not support embedding cross module references within the EH clauses of a method
+        // Obviously this could be fixed, but it is not necessary to demonstrate significant value from the feature as written now.
+        private static bool FunctionHasNonReferenceableTypedILCatchClause(MethodIL methodIL, CompilationModuleGroup compilationGroup)
+        {
+            if (!compilationGroup.VersionsWithMethodBody(methodIL.OwningMethod.GetTypicalMethodDefinition()))
+            {
+                foreach (var clause in methodIL.GetExceptionRegions())
+                {
+                    if (clause.Kind == ILExceptionRegionKind.Catch)
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        public static bool IsMethodCompilable(Compilation compilation, MethodDesc method)
+        {
+            // This logic must mirror the logic in CompileMethod used to get to the point of calling CompileMethodInternal
+            if (ShouldSkipCompilation(method) || MethodSignatureIsUnstable(method.Signature, out var _))
+                return false;
+
+            MethodIL methodIL = compilation.GetMethodIL(method);
+            if (methodIL == null)
+                return false;
+
+            if (FunctionJustThrows(methodIL))
+                return false;
+
+            if (FunctionHasNonReferenceableTypedILCatchClause(methodIL, compilation.NodeFactory.CompilationModuleGroup))
+                return false;
+
+            return true;
+        }
+
+        public void CompileMethod(MethodWithGCInfo methodCodeNodeNeedingCode, Logger logger)
         {
             bool codeGotPublished = false;
             _methodCodeNode = methodCodeNodeNeedingCode;
 
             try
             {
-                if (!ShouldSkipCompilation(MethodBeingCompiled) && !MethodSignatureIsUnstable(MethodBeingCompiled.Signature, out var _))
+                if (ShouldSkipCompilation(MethodBeingCompiled))
                 {
-                    MethodIL methodIL = _compilation.GetMethodIL(MethodBeingCompiled);
-                    if (methodIL != null)
+                    if (logger.IsVerbose)
+                        logger.Writer.WriteLine($"Info: Method `{MethodBeingCompiled}` was not compiled because it is skipped.");
+                    return;
+                }
+
+                if (MethodSignatureIsUnstable(MethodBeingCompiled.Signature, out var _))
+                {
+                    if (logger.IsVerbose)
+                        logger.Writer.WriteLine($"Info: Method `{MethodBeingCompiled}` was not compiled because it has an non version resilient signature.");
+                    return;
+                }
+                MethodIL methodIL = _compilation.GetMethodIL(MethodBeingCompiled);
+                if (methodIL == null)
+                {
+                    if (logger.IsVerbose)
+                        logger.Writer.WriteLine($"Info: Method `{MethodBeingCompiled}` was not compiled because IL code could not be found for the method.");
+                    return;
+                }
+
+                if (FunctionJustThrows(methodIL))
+                {
+                    if (logger.IsVerbose)
+                        logger.Writer.WriteLine($"Info: Method `{MethodBeingCompiled}` was not compiled because it always throws an exception");
+                    return;
+                }
+
+                if (FunctionHasNonReferenceableTypedILCatchClause(methodIL, _compilation.NodeFactory.CompilationModuleGroup))
+                {
+                    if (logger.IsVerbose)
+                        logger.Writer.WriteLine($"Info: Method `{MethodBeingCompiled}` was not compiled because it has a non referenceable catch clause");
+                    return;
+                }
+
+                if (MethodBeingCompiled.GetTypicalMethodDefinition() is EcmaMethod ecmaMethod)
+                {
+                    // At the moment the ILBody fixup generation is only safe for the System module, as further typerefs may not be safe to encode at this time. When we expand
+                    // cross module inlining to support other modules, this will need to be fixed.
+                    if (methodIL.GetMethodILScopeDefinition() is IEcmaMethodIL && _compilation.SymbolNodeFactory.VerifyTypeAndFieldLayout && ecmaMethod.Module == ecmaMethod.Context.SystemModule ||
+                        (!_compilation.NodeFactory.CompilationModuleGroup.VersionsWithMethodBody(MethodBeingCompiled) &&
+                            _compilation.NodeFactory.CompilationModuleGroup.CrossModuleInlineable(MethodBeingCompiled)))
                     {
-                        CompileMethodInternal(methodCodeNodeNeedingCode, methodIL);
-                        codeGotPublished = true;
+                        ISymbolNode ilBodyNode = _compilation.SymbolNodeFactory.CheckILBodyFixupSignature((EcmaMethod)MethodBeingCompiled.GetTypicalMethodDefinition());
+                        AddPrecodeFixup(ilBodyNode);
                     }
+
+                    // Harvest the method being compiled for the purpose of populating the type resolver
+                    var resolver = _compilation.NodeFactory.Resolver;
+                    resolver.AddModuleTokenForMethod(MethodBeingCompiled, new ModuleToken(ecmaMethod.Module, ecmaMethod.Handle));
+                }
+                var compilationResult = CompileMethodInternal(methodCodeNodeNeedingCode, methodIL);
+                codeGotPublished = true;
+
+                if (compilationResult == CompilationResult.CompilationRetryRequested && logger.IsVerbose)
+                {
+                    logger.Writer.WriteLine($"Info: Method `{MethodBeingCompiled}` triggered recompilation to acquire stable tokens for cross module inline.");
                 }
             }
             finally
@@ -507,7 +676,7 @@ namespace Internal.JitInterface
             return true;
         }
 
-        private void getReadyToRunDelegateCtorHelper(ref CORINFO_RESOLVED_TOKEN pTargetMethod, CORINFO_CLASS_STRUCT_* delegateType, ref CORINFO_LOOKUP pLookup)
+        private void getReadyToRunDelegateCtorHelper(ref CORINFO_RESOLVED_TOKEN pTargetMethod, mdToken targetConstraint, CORINFO_CLASS_STRUCT_* delegateType, ref CORINFO_LOOKUP pLookup)
         {
 #if DEBUG
             // In debug, write some bogus data to the struct to ensure we have filled everything
@@ -620,9 +789,6 @@ namespace Internal.JitInterface
                     break;
                 case CorInfoHelpFunc.CORINFO_HELP_NEW_MDARR:
                     id = ReadyToRunHelper.NewMultiDimArr;
-                    break;
-                case CorInfoHelpFunc.CORINFO_HELP_NEW_MDARR_NONVARARG:
-                    id = ReadyToRunHelper.NewMultiDimArr_NonVarArg;
                     break;
                 case CorInfoHelpFunc.CORINFO_HELP_NEWFAST:
                     id = ReadyToRunHelper.NewObject;
@@ -822,6 +988,8 @@ namespace Internal.JitInterface
                 case CorInfoHelpFunc.CORINFO_HELP_GETREFANY:
                 // For Vector256.Create and similar cases
                 case CorInfoHelpFunc.CORINFO_HELP_THROW_NOT_IMPLEMENTED:
+                // For x86 tailcall where helper is required we need runtime JIT.
+                case CorInfoHelpFunc.CORINFO_HELP_TAILCALL:
                     throw new RequiresRuntimeJitException(ftnNum.ToString());
 
                 default:
@@ -838,24 +1006,56 @@ namespace Internal.JitInterface
 
         private bool canTailCall(CORINFO_METHOD_STRUCT_* callerHnd, CORINFO_METHOD_STRUCT_* declaredCalleeHnd, CORINFO_METHOD_STRUCT_* exactCalleeHnd, bool fIsTailPrefix)
         {
-            if (fIsTailPrefix)
+            if (!fIsTailPrefix)
             {
-                // FUTURE: Delay load fixups for tailcalls
-                throw new RequiresRuntimeJitException(nameof(fIsTailPrefix));
+                MethodDesc caller = HandleToObject(callerHnd);
+
+                // Do not tailcall out of the entry point as it results in a confusing debugger experience.
+                if (caller is EcmaMethod em && em.Module.EntryPoint == caller)
+                {
+                    return false;
+                }
+
+                // Do not tailcall from methods that are marked as noinline (people often use no-inline
+                // to mean "I want to always see this method in stacktrace")
+                if (caller.IsNoInlining)
+                {
+                    return false;
+                }
+
+                // Methods with StackCrawlMark depend on finding their caller on the stack.
+                // If we tail call one of these guys, they get confused.  For lack of
+                // a better way of identifying them, we use DynamicSecurity attribute to identify
+                // them.
+                //
+                MethodDesc callee = exactCalleeHnd == null ? null : HandleToObject(exactCalleeHnd);
+                if (callee != null && callee.RequireSecObject)
+                {
+                    return false;
+                }
             }
 
-            return false;
+            return true;
         }
 
         private MethodWithToken ComputeMethodWithToken(MethodDesc method, ref CORINFO_RESOLVED_TOKEN pResolvedToken, TypeDesc constrainedType, bool unboxing)
         {
             ModuleToken token = HandleToModuleToken(ref pResolvedToken, method, out object context, ref constrainedType);
-            return new MethodWithToken(method, token, constrainedType: constrainedType, unboxing: unboxing, context: context);
+
+            TypeDesc devirtualizedMethodOwner = null;
+            if (pResolvedToken.tokenType == CorInfoTokenKind.CORINFO_TOKENKIND_DevirtualizedMethod)
+            {
+                devirtualizedMethodOwner = HandleToObject(pResolvedToken.hClass);
+            }
+
+            return new MethodWithToken(method, token, constrainedType: constrainedType, unboxing: unboxing, context: context, devirtualizedMethodOwner: devirtualizedMethodOwner);
         }
 
         private ModuleToken HandleToModuleToken(ref CORINFO_RESOLVED_TOKEN pResolvedToken, MethodDesc methodDesc, out object context, ref TypeDesc constrainedType)
         {
-            if (methodDesc != null && (_compilation.NodeFactory.CompilationModuleGroup.VersionsWithMethodBody(methodDesc) || methodDesc.IsPInvoke))
+            if (methodDesc != null && (_compilation.NodeFactory.CompilationModuleGroup.VersionsWithMethodBody(methodDesc)
+                || (pResolvedToken.tokenType == CorInfoTokenKind.CORINFO_TOKENKIND_DevirtualizedMethod)
+                || methodDesc.IsPInvoke))
             {
                 if ((CorTokenType)(unchecked((uint)pResolvedToken.token) & 0xFF000000u) == CorTokenType.mdtMethodDef &&
                     methodDesc?.GetTypicalMethodDefinition() is EcmaMethod ecmaMethod)
@@ -879,7 +1079,7 @@ namespace Internal.JitInterface
         {
             mdToken token = pResolvedToken.token;
             var methodIL = HandleToObject(pResolvedToken.tokenScope);
-            EcmaModule module;
+            IEcmaModule module;
 
             // If the method body is synthetized by the compiler (the definition of the MethodIL is not
             // an EcmaMethodIL), the tokens in the MethodIL are not actual tokens: they're just
@@ -891,8 +1091,8 @@ namespace Internal.JitInterface
             // within the current version bubble**, but this happens to be good enough because
             // we only do this replacement within CoreLib to replace method bodies in places
             // that we cannot express in C# right now and for p/invokes in large version bubbles).
-            MethodIL methodILDef = methodIL.GetMethodILDefinition();
-            bool isFauxMethodIL = !(methodILDef is EcmaMethodIL);
+            MethodILScope methodILDef = methodIL.GetMethodILScopeDefinition();
+            bool isFauxMethodIL = !(methodILDef is IEcmaMethodIL);
             if (isFauxMethodIL)
             {
                 object resultDef = methodILDef.GetObject((int)pResolvedToken.token);
@@ -920,7 +1120,7 @@ namespace Internal.JitInterface
                     resultField = resultField.GetTypicalFieldDefinition();
 
                     Debug.Assert(resultField is EcmaField);
-                    Debug.Assert(_compilation.NodeFactory.CompilationModuleGroup.VersionsWithType(((EcmaField)resultField).OwningType));
+                    Debug.Assert(_compilation.NodeFactory.CompilationModuleGroup.VersionsWithType(((EcmaField)resultField).OwningType) || ((MetadataType)resultField.OwningType).IsNonVersionable());
                     token = (mdToken)MetadataTokens.GetToken(((EcmaField)resultField).Handle);
                     module = ((EcmaField)resultField).Module;
                 }
@@ -938,13 +1138,13 @@ namespace Internal.JitInterface
                         Debug.Assert(resultDef is SignatureMethodVariable);
                         Debug.Assert(((SignatureMethodVariable)resultDef).Index == 0);
                         module = (EcmaModule)((MetadataType)methodILDef.OwningMethod.OwningType).Module;
-                        token = FindGenericMethodArgTypeSpec(module);
+                        token = FindGenericMethodArgTypeSpec((EcmaModule)module);
                     }
                 }
             }
             else
             {
-                module = ((EcmaMethodIL)methodILDef).Module;
+                module = ((IEcmaMethodIL)methodILDef).Module;
             }
 
             return new ModuleToken(module, token);
@@ -952,14 +1152,14 @@ namespace Internal.JitInterface
 
         private InfoAccessType constructStringLiteral(CORINFO_MODULE_STRUCT_* module, mdToken metaTok, ref void* ppValue)
         {
-            MethodIL methodIL = HandleToObject(module);
+            MethodILScope methodIL = HandleToObject(module);
 
             // If this is not a MethodIL backed by a physical method body, we need to remap the token.
-            Debug.Assert(methodIL.GetMethodILDefinition() is EcmaMethodIL);
+            Debug.Assert(methodIL.GetMethodILScopeDefinition() is IEcmaMethodIL);
 
-            EcmaMethod method = (EcmaMethod)methodIL.OwningMethod.GetTypicalMethodDefinition();
+            IEcmaModule metadataModule = ((IEcmaMethodIL)methodIL.GetMethodILScopeDefinition()).Module;
             ISymbolNode stringObject = _compilation.SymbolNodeFactory.StringLiteral(
-                new ModuleToken(method.Module, metaTok));
+                new ModuleToken(metadataModule, metaTok));
             ppValue = (void*)ObjectToHandle(stringObject);
             return InfoAccessType.IAT_PPVALUE;
         }
@@ -1012,6 +1212,9 @@ namespace Internal.JitInterface
             {
                 _debugVarInfos[i] = vars[i];
             }
+
+            // JIT gave the ownership of this to us, so need to free this.
+            freeArray(vars);
         }
 
         /// <summary>
@@ -1026,6 +1229,9 @@ namespace Internal.JitInterface
             {
                 _debugLocInfos[i] = pMap[i];
             }
+
+            // JIT gave the ownership of this to us, so need to free this.
+            freeArray(pMap);
         }
 
         private void PublishEmptyCode()
@@ -1049,6 +1255,10 @@ namespace Internal.JitInterface
             }
 
             pHasSideEffects = type.HasFinalizer;
+
+            // If the type isn't within the version bubble, it could gain a finalizer. Always treat it as if it has a finalizer
+            if (!pHasSideEffects && !_compilation.NodeFactory.CompilationModuleGroup.VersionsWithType(type))
+                pHasSideEffects = true;
 
             return CorInfoHelpFunc.CORINFO_HELP_NEWFAST;
         }
@@ -1203,7 +1413,7 @@ namespace Internal.JitInterface
                     if (_compilation.SymbolNodeFactory.VerifyTypeAndFieldLayout && (fieldOffset <= FieldFixupSignature.MaxCheckableOffset))
                     {
                         // ENCODE_CHECK_FIELD_OFFSET
-                        _methodCodeNode.Fixups.Add(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
+                        AddPrecodeFixup(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
                     }
                 }
                 else
@@ -1257,7 +1467,7 @@ namespace Internal.JitInterface
                         if (_compilation.SymbolNodeFactory.VerifyTypeAndFieldLayout && (fieldOffset <= FieldFixupSignature.MaxCheckableOffset))
                         {
                             // ENCODE_CHECK_FIELD_OFFSET
-                            _methodCodeNode.Fixups.Add(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
+                            AddPrecodeFixup(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
                         }
 
                         pResult->fieldLookup = CreateConstLookupToSymbol(
@@ -1334,7 +1544,7 @@ namespace Internal.JitInterface
             // Its basic meaning is that shared generic methods always need instantiating
             // stubs as the shared generic code needs the method dictionary parameter that cannot
             // be provided by other means.
-            useInstantiatingStub = originalMethod.GetCanonMethodTarget(CanonicalFormKind.Specific).RequiresInstMethodDescArg();
+            useInstantiatingStub = originalMethod.OwningType.IsArray || originalMethod.GetCanonMethodTarget(CanonicalFormKind.Specific).RequiresInstMethodDescArg();
 
             callerMethod = HandleToObject(callerHandle);
 
@@ -1348,10 +1558,13 @@ namespace Internal.JitInterface
                 throw new RequiresRuntimeJitException(callerMethod.ToString() + " -> " + originalMethod.ToString());
             }
 
-            if (!_compilation.NodeFactory.CompilationModuleGroup.VersionsWithMethodBody(callerMethod))
+            if (!_compilation.NodeFactory.CompilationModuleGroup.VersionsWithMethodBody(callerMethod) &&
+                !_compilation.NodeFactory.CompilationModuleGroup.CrossModuleInlineable(callerMethod))
             {
                 // We must abort inline attempts calling from outside of the version bubble being compiled
                 // because we have no way to remap the token relative to the external module to the current version bubble.
+                //
+                // Unless this is a call made while compiling a CrossModuleInlineable method
                 throw new RequiresRuntimeJitException(callerMethod.ToString() + " -> " + originalMethod.ToString());
             }
 
@@ -1404,7 +1617,7 @@ namespace Internal.JitInterface
                     // Either
                     //    1. no constraint resolution at compile time (!directMethod)
                     // OR 2. no code sharing lookup in call
-                    // OR 3. we have have resolved to an instantiating stub
+                    // OR 3. we have resolved to an instantiating stub
 
                     // This check for introducing an instantiation stub comes from the logic in
                     // MethodTable::TryResolveConstraintMethodApprox at
@@ -1454,7 +1667,7 @@ namespace Internal.JitInterface
                     exactType == MethodBeingCompiled.OwningType)
                 {
                     var methodIL = HandleToObject(pResolvedToken.tokenScope);
-                    var rawMethod = (MethodDesc)methodIL.GetMethodILDefinition().GetObject((int)pResolvedToken.token);
+                    var rawMethod = (MethodDesc)methodIL.GetMethodILScopeDefinition().GetObject((int)pResolvedToken.token);
                     if (IsTypeSpecForTypicalInstantiation(rawMethod.OwningType))
                     {
                         pResult->contextHandle = contextFromMethodBeingCompiled();
@@ -1472,6 +1685,7 @@ namespace Internal.JitInterface
 
             if ((flags & CORINFO_CALLINFO_FLAGS.CORINFO_CALLINFO_LDFTN) != 0)
             {
+                PrepareForUseAsAFunctionPointer(targetMethod);
                 directCall = true;
             }
             else
@@ -1517,7 +1731,7 @@ namespace Internal.JitInterface
                     //  3) JIT intrinsics - since they have pre-defined behavior
                     devirt = targetMethod.OwningType.IsValueType ||
                         (targetMethod.OwningType.IsDelegate && targetMethod.Name == "Invoke") ||
-                        (targetMethod.IsIntrinsic && getIntrinsicID(targetMethod, null) != CorInfoIntrinsics.CORINFO_INTRINSIC_Illegal);
+                        (targetMethod.OwningType.IsObject && targetMethod.Name == "GetType");
 
                     callVirtCrossingVersionBubble = true;
                 }
@@ -1534,7 +1748,8 @@ namespace Internal.JitInterface
             }
 
             methodToCall = targetMethod;
-            MethodDesc canonMethod = targetMethod.GetCanonMethodTarget(CanonicalFormKind.Specific);
+            bool isArrayConstructor = targetMethod.OwningType.IsArray && targetMethod.IsConstructor;
+            MethodDesc canonMethod = (isArrayConstructor ? null : targetMethod.GetCanonMethodTarget(CanonicalFormKind.Specific));
 
             if (directCall)
             {
@@ -1548,7 +1763,7 @@ namespace Internal.JitInterface
 
                 bool allowInstParam = (flags & CORINFO_CALLINFO_FLAGS.CORINFO_CALLINFO_ALLOWINSTPARAM) != 0;
 
-                if (!allowInstParam && canonMethod.RequiresInstArg())
+                if (!allowInstParam && canonMethod != null && canonMethod.RequiresInstArg())
                 {
                     useInstantiatingStub = true;
                 }
@@ -1572,7 +1787,17 @@ namespace Internal.JitInterface
                 const CORINFO_CALLINFO_FLAGS LdVirtFtnMask = CORINFO_CALLINFO_FLAGS.CORINFO_CALLINFO_LDFTN | CORINFO_CALLINFO_FLAGS.CORINFO_CALLINFO_CALLVIRT;
                 bool unresolvedLdVirtFtn = ((flags & LdVirtFtnMask) == LdVirtFtnMask) && !resolvedCallVirt;
 
-                if ((pResult->exactContextNeedsRuntimeLookup && useInstantiatingStub && (!allowInstParam || resolvedConstraint)) || forceUseRuntimeLookup)
+                if (isArrayConstructor)
+                {
+                    // Constructors on arrays are special and don't actually have entrypoints.
+                    // That would be fine by itself and wouldn't need special casing. But
+                    // constructors on SzArray have a weird property that causes them not to have canonical forms.
+                    // int[][] has a .ctor(int32,int32) to construct the jagged array in one go, but its canonical
+                    // form of __Canon[] doesn't have the two-parameter constructor. The canonical form would need
+                    // to have an unlimited number of constructors to cover stuff like "int[][][][][][]..."
+                    pResult->kind = CORINFO_CALL_KIND.CORINFO_CALL;
+                }
+                else if ((pResult->exactContextNeedsRuntimeLookup && useInstantiatingStub && (!allowInstParam || resolvedConstraint)) || forceUseRuntimeLookup)
                 {
                     if (unresolvedLdVirtFtn)
                     {
@@ -1597,7 +1822,7 @@ namespace Internal.JitInterface
                     if (allowInstParam)
                     {
                         useInstantiatingStub = false;
-                        methodToCall = canonMethod;
+                        methodToCall = canonMethod ?? methodToCall;
                     }
 
                     pResult->kind = CORINFO_CALL_KIND.CORINFO_CALL;
@@ -1675,7 +1900,7 @@ namespace Internal.JitInterface
 
             pResult->wrapperDelegateInvoke = false;
 
-            Get_CORINFO_SIG_INFO(methodToCall, &pResult->sig, useInstantiatingStub);
+            Get_CORINFO_SIG_INFO(methodToCall, &pResult->sig, scope: null, useInstantiatingStub);
         }
 
         private uint getMethodAttribs(CORINFO_METHOD_STRUCT_* ftn)
@@ -1683,6 +1908,17 @@ namespace Internal.JitInterface
             MethodDesc method = HandleToObject(ftn);
             return getMethodAttribsInternal(method);
             // OK, if the EE said we're not doing a stub dispatch then just return the kind to
+        }
+
+        private void PrepareForUseAsAFunctionPointer(MethodDesc method)
+        {
+            foreach (TypeDesc type in method.Signature)
+            {
+                if (type.IsValueType)
+                {
+                    classMustBeLoadedBeforeCodeIsRun(type);
+                }
+            }
         }
 
         private void classMustBeLoadedBeforeCodeIsRun(CORINFO_CLASS_STRUCT_* cls)
@@ -1696,7 +1932,7 @@ namespace Internal.JitInterface
             if (!type.IsPrimitive)
             {
                 ISymbolNode node = _compilation.SymbolNodeFactory.CreateReadyToRunHelper(ReadyToRunHelperId.TypeHandle, type);
-                _methodCodeNode.Fixups.Add(node);
+                AddPrecodeFixup(node);
             }
         }
 
@@ -1738,6 +1974,13 @@ namespace Internal.JitInterface
 
         private void getCallInfo(ref CORINFO_RESOLVED_TOKEN pResolvedToken, CORINFO_RESOLVED_TOKEN* pConstrainedResolvedToken, CORINFO_METHOD_STRUCT_* callerHandle, CORINFO_CALLINFO_FLAGS flags, CORINFO_CALL_INFO* pResult)
         {
+            if ((flags & CORINFO_CALLINFO_FLAGS.CORINFO_CALLINFO_CALLVIRT) == 0 && pConstrainedResolvedToken != null)
+            {
+                // Defer constrained call / ldftn instructions used for static virtual methods
+                // to runtime resolution.
+                throw new RequiresRuntimeJitException("SVM");
+            }
+
             MethodDesc methodToCall;
             MethodDesc targetMethod;
             TypeDesc constrainedType;
@@ -1771,8 +2014,22 @@ namespace Internal.JitInterface
 
                 // We allow this at least for primitives and enums because we control them
                 // and we know there's no state mutation.
-                if (getTypeForPrimitiveValueClass(pConstrainedResolvedToken->hClass) == CorInfoType.CORINFO_TYPE_UNDEF)
+                //
+                // We allow this for constrained calls to non-virtual methods, as its extremely unlikely they will become virtual (verified by fixup)
+                //
+                // TODO in the future we should consider allowing this for regular virtuals as well with a fixup that verifies the method wasn't implemented
+                if (getTypeForPrimitiveValueClass(pConstrainedResolvedToken->hClass) != CorInfoType.CORINFO_TYPE_UNDEF)
+                {
+                    // allowed
+                }
+                else if (!originalMethod.IsVirtual && originalMethod.Context.GetWellKnownType(WellKnownType.Object) == originalMethod.OwningType)
+                {
+                    // alllowed, non-virtual method's on Object will never become virtual, and will also always trigger a BOX_THIS pattern
+                }
+                else
+                {
                     throw new RequiresRuntimeJitException(pResult->thisTransform.ToString());
+                }
             }
 
             // OK, if the EE said we're not doing a stub dispatch then just return the kind to
@@ -1824,12 +2081,20 @@ namespace Internal.JitInterface
                             nonUnboxingMethod = rawPinvoke.Target;
                         }
 
-                        // READYTORUN: FUTURE: Direct calls if possible
-                        pResult->codePointerOrStubLookup.constLookup = CreateConstLookupToSymbol(
-                            _compilation.NodeFactory.MethodEntrypoint(
-                                ComputeMethodWithToken(nonUnboxingMethod, ref pResolvedToken, constrainedType, unboxing: isUnboxingStub),
-                                isInstantiatingStub: useInstantiatingStub,
-                                isPrecodeImportRequired: (flags & CORINFO_CALLINFO_FLAGS.CORINFO_CALLINFO_LDFTN) != 0));
+                        if (methodToCall.OwningType.IsArray && methodToCall.IsConstructor)
+                        {
+                            pResult->codePointerOrStubLookup.constLookup = default;
+                        }
+                        else
+                        {
+                            // READYTORUN: FUTURE: Direct calls if possible
+                            pResult->codePointerOrStubLookup.constLookup = CreateConstLookupToSymbol(
+                                _compilation.NodeFactory.MethodEntrypoint(
+                                    ComputeMethodWithToken(nonUnboxingMethod, ref pResolvedToken, constrainedType, unboxing: isUnboxingStub),
+                                    isInstantiatingStub: useInstantiatingStub,
+                                    isPrecodeImportRequired: (flags & CORINFO_CALLINFO_FLAGS.CORINFO_CALLINFO_LDFTN) != 0,
+                                    isJumpableImportRequired: false));
+                        }
 
                         // If the abi of the method isn't stable, this will cause a usage of the RequiresRuntimeJitSymbol, which will trigger a RequiresRuntimeJitException
                         UpdateConstLookupWithRequiresRuntimeJitSymbolIfNeeded(ref pResult->codePointerOrStubLookup.constLookup, targetMethod);
@@ -2075,6 +2340,18 @@ namespace Internal.JitInterface
             }
         }
 
+        private CORINFO_CLASS_STRUCT_* embedClassHandle(CORINFO_CLASS_STRUCT_* handle, ref void* ppIndirection)
+        {
+            TypeDesc type = HandleToObject(handle);
+            if (!_compilation.CompilationModuleGroup.VersionsWithType(type))
+                throw new RequiresRuntimeJitException(type.ToString());
+
+            Import typeHandleImport = (Import)_compilation.SymbolNodeFactory.CreateReadyToRunHelper(ReadyToRunHelperId.TypeHandle, type);
+            Debug.Assert(typeHandleImport.RepresentsIndirectionCell);
+            ppIndirection = (void*)ObjectToHandle(typeHandleImport);
+            return null;
+        }
+
         private void embedGenericHandle(ref CORINFO_RESOLVED_TOKEN pResolvedToken, bool fEmbedParent, ref CORINFO_GENERICHANDLE_RESULT pResult)
         {
             ceeInfoEmbedGenericHandle(ref pResolvedToken, fEmbedParent, ref pResult);
@@ -2108,7 +2385,12 @@ namespace Internal.JitInterface
                             TypeDesc td = HandleToObject(pResolvedToken.hClass);
 
                             bool unboxingStub = false;
-                            if ((td.IsValueType) && !md.Signature.IsStatic)
+                            //
+                            // This logic should be kept in sync with MethodTableBuilder::NeedsTightlyBoundUnboxingStub
+                            // Essentially all ValueType virtual methods will require an Unboxing Stub
+                            //
+                            if ((td.IsValueType) && !md.Signature.IsStatic
+                                && md.IsVirtual)
                             {
                                 unboxingStub = true;
                             }
@@ -2156,24 +2438,13 @@ namespace Internal.JitInterface
             return !_compilation.IsLayoutFixedInCurrentVersionBubble(type) || (_compilation.SymbolNodeFactory.VerifyTypeAndFieldLayout && !((MetadataType)type).IsNonVersionable());
         }
 
-        private bool HasLayoutMetadata(TypeDesc type)
-        {
-            if (type.IsValueType && (MarshalUtils.IsBlittableType(type) || ReadyToRunMetadataFieldLayoutAlgorithm.IsManagedSequentialType(type)))
-            {
-                // Sequential layout
-                return true;
-            }
-
-            return false;
-        }
-
         /// <summary>
         /// Throws if the JIT inlines a method outside the current version bubble and that inlinee accesses
         /// fields also outside the version bubble. ReadyToRun currently cannot encode such references.
         /// </summary>
         private void PreventRecursiveFieldInlinesOutsideVersionBubble(FieldDesc field, MethodDesc callerMethod)
         {
-            if (!_compilation.NodeFactory.CompilationModuleGroup.VersionsWithMethodBody(callerMethod))
+            if (!_compilation.NodeFactory.CompilationModuleGroup.VersionsWithMethodBody(callerMethod) && !_compilation.NodeFactory.CompilationModuleGroup.CrossModuleInlineable(callerMethod))
             {
                 // Prevent recursive inline attempts where an inlined method outside of the version bubble is
                 // referencing fields outside the version bubble.
@@ -2197,7 +2468,7 @@ namespace Internal.JitInterface
                     if (pResult->offset > FieldFixupSignature.MaxCheckableOffset)
                         throw new RequiresRuntimeJitException(callerMethod.ToString() + " -> " + field.ToString());
 
-                    _methodCodeNode.Fixups.Add(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
+                    AddPrecodeFixup(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
                     // No-op other than generating the check field offset fixup
                 }
                 else
@@ -2215,7 +2486,8 @@ namespace Internal.JitInterface
                 if (_compilation.SymbolNodeFactory.VerifyTypeAndFieldLayout && !callerMethod.IsNonVersionable() && (pResult->offset <= FieldFixupSignature.MaxCheckableOffset))
                 {
                     // ENCODE_CHECK_FIELD_OFFSET
-                    _methodCodeNode.Fixups.Add(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
+                    if (_compilation.CompilationModuleGroup.VersionsWithType(field.OwningType)) // Only verify versions with types
+                        AddPrecodeFixup(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
                 }
                 // ENCODE_NONE
             }
@@ -2224,20 +2496,16 @@ namespace Internal.JitInterface
                 if (_compilation.SymbolNodeFactory.VerifyTypeAndFieldLayout && !callerMethod.IsNonVersionable() && (pResult->offset <= FieldFixupSignature.MaxCheckableOffset))
                 {
                     // ENCODE_CHECK_FIELD_OFFSET
-                    _methodCodeNode.Fixups.Add(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
+                    if (_compilation.CompilationModuleGroup.VersionsWithType(field.OwningType)) // Only verify versions with types
+                        AddPrecodeFixup(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
                 }
                 // ENCODE_NONE
             }
-            else if (HasLayoutMetadata(pMT))
+            else if (TypeCannotUseBasePlusOffsetEncoding(pMT.BaseType as MetadataType))
             {
-                PreventRecursiveFieldInlinesOutsideVersionBubble(field, callerMethod);
-
-                // We won't try to be smart for classes with layout.
-                // They are complex to get right, and very rare anyway.
-                // ENCODE_FIELD_OFFSET
-                pResult->offset = 0;
-                pResult->fieldAccessor = CORINFO_FIELD_ACCESSOR.CORINFO_FIELD_INSTANCE_WITH_BASE;
-                pResult->fieldLookup = CreateConstLookupToSymbol(_compilation.SymbolNodeFactory.FieldOffset(field));
+                // ENCODE_CHECK_FIELD_OFFSET
+                AddPrecodeFixup(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
+                // No-op other than generating the check field offset fixup
             }
             else
             {
@@ -2246,16 +2514,33 @@ namespace Internal.JitInterface
                 if (_compilation.SymbolNodeFactory.VerifyTypeAndFieldLayout && !callerMethod.IsNonVersionable() && (pResult->offset <= FieldFixupSignature.MaxCheckableOffset))
                 {
                     // ENCODE_CHECK_FIELD_OFFSET
-                    _methodCodeNode.Fixups.Add(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
+                    if (_compilation.CompilationModuleGroup.VersionsWithType(field.OwningType)) // Only verify versions with types
+                        AddPrecodeFixup(_compilation.SymbolNodeFactory.CheckFieldOffset(field));
                 }
 
                 // ENCODE_FIELD_BASE_OFFSET
-                int fieldBaseOffset = pMT.FieldBaseOffset().AsInt;
+                int fieldBaseOffset = ((MetadataType)pMT).FieldBaseOffset().AsInt;
                 Debug.Assert(pResult->offset >= (uint)fieldBaseOffset);
                 pResult->offset -= (uint)fieldBaseOffset;
                 pResult->fieldAccessor = CORINFO_FIELD_ACCESSOR.CORINFO_FIELD_INSTANCE_WITH_BASE;
                 pResult->fieldLookup = CreateConstLookupToSymbol(_compilation.SymbolNodeFactory.FieldBaseOffset(field.OwningType));
             }
+        }
+
+        private bool TypeCannotUseBasePlusOffsetEncoding(MetadataType type)
+        {
+            if (type == null)
+                return true;
+
+            // Types which are encoded with sequential or explicit layout do not support an aligned base offset, and so we just encode with the exact offset
+            // of the field, and if that offset is incorrect, the method cannot be used.
+            if (type.IsSequentialLayout || type.IsExplicitLayout)
+                return true;
+            else if (type.BaseType is MetadataType metadataType)
+            {
+                return TypeCannotUseBasePlusOffsetEncoding(metadataType);
+            }
+            return false;
         }
 
         private void getGSCookie(IntPtr* pCookieVal, IntPtr** ppCookieVal)
@@ -2282,16 +2567,6 @@ namespace Internal.JitInterface
         }
 
         private byte[] _bbCounts;
-        private ProfileDataNode _profileDataNode;
-
-        partial void PublishProfileData()
-        {
-            if (_profileDataNode != null)
-            {
-                MethodIL methodIL = _compilation.GetMethodIL(MethodBeingCompiled);
-                _profileDataNode.SetProfileData(methodIL.GetILBytes().Length, _bbCounts.Length / sizeof(BlockCounts), _bbCounts);
-            }
-        }
 
         partial void findKnownBBCountBlock(ref BlockType blockType, void* location, ref int offset)
         {
@@ -2359,118 +2634,20 @@ namespace Internal.JitInterface
                 blockCounts[iSchema].ILOffset = (uint)pSchema[iSchema].ILOffset;
             }
 
-            if (_profileDataNode == null)
-            {
-                _profileDataNode = _compilation.NodeFactory.ProfileData(_methodCodeNode);
-            }
             return 0;
-        }
-
-        private PgoSchemaElem[] getPgoInstrumentationResults(MethodDesc method)
-        {
-            return _compilation.ProfileData[method]?.SchemaData;
-        }
-
-        private HRESULT getPgoInstrumentationResults(CORINFO_METHOD_STRUCT_* ftnHnd, ref PgoInstrumentationSchema* pSchema, ref uint countSchemaItems, byte** pInstrumentationData)
-        {
-            MethodDesc methodDesc = HandleToObject(ftnHnd);
-
-            if (!_pgoResults.TryGetValue(methodDesc, out PgoInstrumentationResults pgoResults))
-            {
-                var pgoResultsSchemas = getPgoInstrumentationResults(methodDesc);
-                if (pgoResultsSchemas == null)
-                {
-                    pgoResults.hr = HRESULT.E_NOTIMPL;
-                }
-                else
-                {
-                    PgoInstrumentationSchema[] nativeSchemas = new PgoInstrumentationSchema[pgoResultsSchemas.Length];
-                    MemoryStream msInstrumentationData = new MemoryStream();
-                    BinaryWriter bwInstrumentationData = new BinaryWriter(msInstrumentationData);
-                    for (int i = 0; i < nativeSchemas.Length; i++)
-                    {
-                        if ((bwInstrumentationData.BaseStream.Position % 8) == 4)
-                        {
-                            bwInstrumentationData.Write(0);
-                        }
-
-                        Debug.Assert((bwInstrumentationData.BaseStream.Position % 8) == 0);
-                        nativeSchemas[i].Offset = new IntPtr(checked((int)bwInstrumentationData.BaseStream.Position));
-                        nativeSchemas[i].ILOffset = pgoResultsSchemas[i].ILOffset;
-                        nativeSchemas[i].Count = pgoResultsSchemas[i].Count;
-                        nativeSchemas[i].Other = pgoResultsSchemas[i].Other;
-                        nativeSchemas[i].InstrumentationKind = (PgoInstrumentationKind)pgoResultsSchemas[i].InstrumentationKind;
-
-                        if (pgoResultsSchemas[i].DataObject == null)
-                        {
-                            bwInstrumentationData.Write(pgoResultsSchemas[i].DataLong);
-                        }
-                        else
-                        {
-                            object dataObject = pgoResultsSchemas[i].DataObject;
-                            if (dataObject is int[] intArray)
-                            {
-                                foreach (int intVal in intArray)
-                                    bwInstrumentationData.Write(intVal);
-                            }
-                            else if (dataObject is long[] longArray)
-                            {
-                                foreach (long longVal in longArray)
-                                    bwInstrumentationData.Write(longVal);
-                            }
-                            else if (dataObject is TypeSystemEntityOrUnknown[] typeArray)
-                            {
-                                foreach (TypeSystemEntityOrUnknown typeVal in typeArray)
-                                {
-                                    IntPtr ptrVal = IntPtr.Zero;
-                                    if (typeVal.AsType != null)
-                                        ptrVal = (IntPtr)ObjectToHandle(typeVal.AsType);
-                                    else
-                                    {
-                                        // The "Unknown types are the values from 1-33
-                                        ptrVal = new IntPtr((typeVal.AsUnknown % 32) + 1);
-                                    }
-
-                                    if (IntPtr.Size == 4)
-                                        bwInstrumentationData.Write((int)ptrVal);
-                                    else
-                                        bwInstrumentationData.Write((long)ptrVal);
-                                }
-                            }
-                        }
-                    }
-
-                    bwInstrumentationData.Flush();
-                    pgoResults.pInstrumentationData = (byte*)GetPin(msInstrumentationData.ToArray());
-                    pgoResults.countSchemaItems = (uint)nativeSchemas.Length;
-                    pgoResults.pSchema = (PgoInstrumentationSchema*)GetPin(nativeSchemas);
-                    pgoResults.hr = HRESULT.S_OK;
-                }
-
-                _pgoResults.Add(methodDesc, pgoResults);
-            }
-
-            pSchema = pgoResults.pSchema;
-            countSchemaItems = pgoResults.countSchemaItems;
-            *pInstrumentationData = pgoResults.pInstrumentationData;
-            return pgoResults.hr;
-        }
-
-        private CORINFO_CLASS_STRUCT_* getLikelyClass(CORINFO_METHOD_STRUCT_* ftnHnd, CORINFO_CLASS_STRUCT_* baseHnd, uint IlOffset, ref uint pLikelihood, ref uint pNumberOfClasses)
-        {
-            return null;
         }
 
         private void getAddressOfPInvokeTarget(CORINFO_METHOD_STRUCT_* method, ref CORINFO_CONST_LOOKUP pLookup)
         {
             MethodDesc methodDesc = HandleToObject(method);
+            Debug.Assert(_compilation.CompilationModuleGroup.VersionsWithMethodBody(methodDesc));
             if (methodDesc is IL.Stubs.PInvokeTargetNativeMethod rawPInvoke)
                 methodDesc = rawPInvoke.Target;
             EcmaMethod ecmaMethod = (EcmaMethod)methodDesc;
             ModuleToken moduleToken = new ModuleToken(ecmaMethod.Module, ecmaMethod.Handle);
             MethodWithToken methodWithToken = new MethodWithToken(ecmaMethod, moduleToken, constrainedType: null, unboxing: false, context: null);
 
-            if (ecmaMethod.IsSuppressGCTransition())
+            if ((ecmaMethod.GetPInvokeMethodCallingConventions() & UnmanagedCallingConventions.IsSuppressGcTransition) != 0)
             {
                 pLookup.addr = (void*)ObjectToHandle(_compilation.SymbolNodeFactory.GetPInvokeTargetNode(methodWithToken));
                 pLookup.accessType = InfoAccessType.IAT_PVALUE;
@@ -2492,6 +2669,13 @@ namespace Internal.JitInterface
                     return false;
                 }
 
+                // If this method is in another versioning unit, then the compilation cannot inline the pinvoke (as we aren't currently
+                // able to construct a token correctly to refer to the pinvoke method.
+                if (!_compilation.CompilationModuleGroup.VersionsWithMethodBody(method))
+                {
+                    return true;
+                }
+
                 MethodIL stubIL = null;
                 try
                 {
@@ -2502,6 +2686,11 @@ namespace Internal.JitInterface
                         Debug.Assert(!_compilation.NodeFactory.CompilationModuleGroup.GeneratesPInvoke(method));
                         return true;
                     }
+
+                    // Marshalling behavior isn't modeled as protected by R2R rules, so disable pinvoke inlining for code outside
+                    // of the version bubble
+                    if (!_compilation.CompilationModuleGroup.VersionsWithMethodBody(method))
+                        return true;
                 }
                 catch (RequiresRuntimeJitException)
                 {
@@ -2517,7 +2706,7 @@ namespace Internal.JitInterface
             else
             {
                 var sig = HandleToObject(callSiteSig->methodSignature);
-                return Marshaller.IsMarshallingRequired(sig, Array.Empty<ParameterMetadata>());
+                return Marshaller.IsMarshallingRequired(sig, Array.Empty<ParameterMetadata>(), ((MetadataType)HandleToObject(callSiteSig->scope).OwningMethod.OwningType).Module);
             }
         }
 
@@ -2533,8 +2722,17 @@ namespace Internal.JitInterface
             throw new RequiresRuntimeJitException($"{MethodBeingCompiled} -> {nameof(canGetCookieForPInvokeCalliSig)}");
         }
 
-        private int SizeOfPInvokeTransitionFrame => ReadyToRunRuntimeConstants.READYTORUN_PInvokeTransitionFrameSizeInPointerUnits * _compilation.NodeFactory.Target.PointerSize;
-        private int SizeOfReversePInvokeTransitionFrame => ReadyToRunRuntimeConstants.READYTORUN_ReversePInvokeTransitionFrameSizeInPointerUnits(_compilation.NodeFactory.Target.Architecture) * _compilation.NodeFactory.Target.PointerSize;
+        private int SizeOfPInvokeTransitionFrame => ReadyToRunRuntimeConstants.READYTORUN_PInvokeTransitionFrameSizeInPointerUnits * PointerSize;
+        private int SizeOfReversePInvokeTransitionFrame
+        {
+            get
+            {
+                if (_compilation.NodeFactory.Target.Architecture == TargetArchitecture.X86)
+                    return ReadyToRunRuntimeConstants.READYTORUN_ReversePInvokeTransitionFrameSizeInPointerUnits_X86 * PointerSize;
+                else
+                    return ReadyToRunRuntimeConstants.READYTORUN_ReversePInvokeTransitionFrameSizeInPointerUnits_Universal * PointerSize;
+            }
+        }
 
         private void setEHcount(uint cEH)
         {
@@ -2579,14 +2777,108 @@ namespace Internal.JitInterface
             _ehClauses[EHnumber] = clause;
         }
 
+        private readonly Stack<List<ISymbolNode>> _stashedPrecodeFixups = new Stack<List<ISymbolNode>>();
+        private readonly Stack<HashSet<MethodDesc>> _stashedInlinedMethods = new Stack<HashSet<MethodDesc>>();
+
+        private void beginInlining(CORINFO_METHOD_STRUCT_* inlinerHnd, CORINFO_METHOD_STRUCT_* inlineeHnd)
+        {
+            _stashedPrecodeFixups.Push(_precodeFixups);
+            _precodeFixups = null;
+            _stashedInlinedMethods.Push(_inlinedMethods);
+            _inlinedMethods = null;
+        }
+
         private void reportInliningDecision(CORINFO_METHOD_STRUCT_* inlinerHnd, CORINFO_METHOD_STRUCT_* inlineeHnd, CorInfoInline inlineResult, byte* reason)
         {
             if (inlineResult == CorInfoInline.INLINE_PASS)
             {
                 // We deliberately ignore inlinerHnd because we have no interest to track intermediate links now.
                 MethodDesc inlinee = HandleToObject(inlineeHnd);
+
+                // If during inlining we found Precode fixups, then only if the inline was successful, add them to the set of
+                // fixups that will be used for the entire method
+                List<ISymbolNode> previouslyStashedFixups = _stashedPrecodeFixups.Pop();
+
+                if (_precodeFixups != null)
+                {
+                    previouslyStashedFixups = previouslyStashedFixups ?? new List<ISymbolNode>();
+                    previouslyStashedFixups.AddRange(_precodeFixups);
+                }
+                _precodeFixups = previouslyStashedFixups;
+
+                // If during inlining we found new inlinees, then if the inline was successful, add them to the set of fixups
+                // for the entire method.
+                HashSet<MethodDesc> previouslyStashedInlinees = _stashedInlinedMethods.Pop();
+                if (_inlinedMethods != null)
+                {
+                    previouslyStashedInlinees = previouslyStashedInlinees ?? new HashSet<MethodDesc>();
+                    foreach (var inlineeInHashSet in _inlinedMethods)
+                        previouslyStashedInlinees.Add(inlineeInHashSet);
+                }
+                _inlinedMethods = previouslyStashedInlinees;
+
+                // Then add the fact we inlined this method.
+                _inlinedMethods = _inlinedMethods ?? new HashSet<MethodDesc>();
                 _inlinedMethods.Add(inlinee);
+
+                var typicalMethod = inlinee.GetTypicalMethodDefinition();
+                if (!_compilation.CompilationModuleGroup.VersionsWithMethodBody(typicalMethod) &&
+                    typicalMethod is EcmaMethod ecmaMethod)
+                {
+                    Debug.Assert(_compilation.CompilationModuleGroup.CrossModuleInlineable(typicalMethod) ||
+                                 _compilation.CompilationModuleGroup.IsNonVersionableWithILTokensThatDoNotNeedTranslation(typicalMethod));
+                    bool needsTokenTranslation = !_compilation.CompilationModuleGroup.IsNonVersionableWithILTokensThatDoNotNeedTranslation(typicalMethod);
+
+                    if (needsTokenTranslation)
+                    {
+                        // This can happen if the method is marked as NonVersionable if there are tokens of interest
+                        // or if we are working with a full cross module inline
+                        ISymbolNode ilBodyNode = _compilation.SymbolNodeFactory.CheckILBodyFixupSignature(ecmaMethod);
+                        AddPrecodeFixup(ilBodyNode);
+                    }
+
+                    // For cross module inlines, we will compile in a potentially 2 step process
+                    // 1. Compile the method using the set of il bodies available at the start of a multi-threaded compilation run
+                    // 2. If at any time, the set of methods that are inlined includes a method which has an IL body without
+                    //    tokens that are useable in compilation, record that information, and once the multi-threaded portion
+                    //    of the build finishes, it will then compute the IL bodies for those methods, then run the compilation again.
+                    MethodIL methodIL = _compilation.GetMethodIL(typicalMethod);
+                    if (needsTokenTranslation && !(methodIL is IMethodTokensAreUseableInCompilation) && methodIL is EcmaMethodIL)
+                    {
+                        // We may have already acquired the right type of MethodIL here, or be working with a method that is an IL Intrinsic
+                        _ilBodiesNeeded = _ilBodiesNeeded ?? new List<EcmaMethod>();
+                        _ilBodiesNeeded.Add(ecmaMethod);
+                    }
+                }
             }
+            else
+            {
+                // If we didn't succeed on the inline, just pop back to the state before inlining
+                _precodeFixups = _stashedPrecodeFixups.Pop();
+                _inlinedMethods = _stashedInlinedMethods.Pop();
+            }
+        }
+
+        private void updateEntryPointForTailCall(ref CORINFO_CONST_LOOKUP entryPoint)
+        {
+            // In x64 we normally use a return address to find the indirection cell for delay load.
+            // For tailcalls we instead expect the JIT to leave the indirection in rax.
+            if (_compilation.TypeSystemContext.Target.Architecture != TargetArchitecture.X64)
+                return;
+
+            object node = HandleToObject((IntPtr)entryPoint.addr);
+            if (node is not DelayLoadMethodImport imp)
+                return;
+
+            Debug.Assert(imp.GetType() == typeof(DelayLoadMethodImport));
+            IMethodNode newEntryPoint =
+                _compilation.NodeFactory.MethodEntrypoint(
+                    imp.MethodWithToken,
+                    ((MethodFixupSignature)imp.ImportSignature.Target).IsInstantiatingStub,
+                    isPrecodeImportRequired: false,
+                    isJumpableImportRequired: true);
+
+            entryPoint = CreateConstLookupToSymbol(newEntryPoint);
         }
     }
 }

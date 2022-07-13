@@ -6,6 +6,8 @@
 // Sets up basic environment for CLR GC
 //
 
+#include <minipal/utils.h>
+
 #ifdef _MSC_VER
 #include <intrin.h>
 #endif // _MSC_VER
@@ -72,13 +74,14 @@ inline HRESULT HRESULT_FROM_WIN32(unsigned long x)
     return (HRESULT)(x) <= 0 ? (HRESULT)(x) : (HRESULT) (((x) & 0x0000FFFF) | (7 << 16) | 0x80000000);
 }
 
-#define S_OK                    0x0
-#define E_FAIL                  0x80004005
-#define E_OUTOFMEMORY           0x8007000E
-#define E_INVALIDARG            0x80070057
-#define COR_E_EXECUTIONENGINE   0x80131506
-#define CLR_E_GC_BAD_AFFINITY_CONFIG 0x8013200A
-#define CLR_E_GC_BAD_AFFINITY_CONFIG_FORMAT 0x8013200B
+#define S_OK                                   0x0
+#define E_FAIL                                 0x80004005
+#define E_OUTOFMEMORY                          0x8007000E
+#define COR_E_EXECUTIONENGINE                  0x80131506
+#define CLR_E_GC_BAD_AFFINITY_CONFIG           0x8013200A
+#define CLR_E_GC_BAD_AFFINITY_CONFIG_FORMAT    0x8013200B
+#define CLR_E_GC_BAD_HARD_LIMIT                0x8013200D
+#define CLR_E_GC_LARGE_PAGE_MISSING_HARD_LIMIT 0x8013200E
 
 #define NOERROR                 0x0
 #define ERROR_TIMEOUT           1460
@@ -92,10 +95,6 @@ inline HRESULT HRESULT_FROM_WIN32(unsigned long x)
 #define INFINITE 0xFFFFFFFF
 
 #define ZeroMemory(Destination,Length) memset((Destination),0,(Length))
-
-#ifndef _countof
-#define _countof(_array) (sizeof(_array)/sizeof(_array[0]))
-#endif
 
 #ifndef min
 #define min(a,b) (((a) < (b)) ? (a) : (b))
@@ -112,7 +111,6 @@ inline HRESULT HRESULT_FROM_WIN32(unsigned long x)
 #ifdef TARGET_UNIX
 #define _vsnprintf_s(string, sizeInBytes, count, format, args) vsnprintf(string, sizeInBytes, format, args)
 #define sprintf_s snprintf
-#define swprintf_s swprintf
 #define _snprintf_s(string, sizeInBytes, count, format, ...) \
   snprintf(string, sizeInBytes, format, ## __VA_ARGS__)
 #endif
@@ -120,12 +118,10 @@ inline HRESULT HRESULT_FROM_WIN32(unsigned long x)
 #ifdef UNICODE
 #define _tcslen wcslen
 #define _tcscpy wcscpy
-#define _stprintf_s swprintf_s
 #define _tfopen _wfopen
 #else
 #define _tcslen strlen
 #define _tcscpy strcpy
-#define _stprintf_s sprintf_s
 #define _tfopen fopen
 #endif
 
@@ -226,15 +222,15 @@ typedef DWORD (WINAPI *PTHREAD_START_ROUTINE)(void* lpThreadParameter);
 
 #endif // defined(__i386__) || defined(__x86_64__)
 
-#ifdef __aarch64__
+#if defined(__arm__) || defined(__aarch64__)
  #define YieldProcessor() asm volatile ("yield")
  #define MemoryBarrier __sync_synchronize
-#endif // __aarch64__
+#endif // __arm__ || __aarch64__
 
-#ifdef __arm__
- #define YieldProcessor()
+#ifdef __loongarch64
+ #define YieldProcessor() __asm__ volatile( "dbar 0; \n")
  #define MemoryBarrier __sync_synchronize
-#endif // __arm__
+#endif // __loongarch64
 
 #endif // _MSC_VER
 
@@ -533,7 +529,11 @@ namespace ETW
         GC_ROOT_HANDLES = 2,
         GC_ROOT_OLDER = 3,
         GC_ROOT_SIZEDREF = 4,
-        GC_ROOT_OVERFLOW = 5
+        GC_ROOT_OVERFLOW = 5,
+        GC_ROOT_DH_HANDLES = 6,
+        GC_ROOT_NEW_FQ = 7,
+        GC_ROOT_STEAL = 8,
+        GC_ROOT_BGC = 9
     } GC_ROOT_KIND;
 };
 

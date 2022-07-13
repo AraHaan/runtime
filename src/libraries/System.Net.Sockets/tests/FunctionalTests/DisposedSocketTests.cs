@@ -16,9 +16,9 @@ namespace System.Net.Sockets.Tests
         private static readonly IList<ArraySegment<byte>> s_buffers = new List<ArraySegment<byte>> { new ArraySegment<byte>(s_buffer) };
         private static readonly SocketAsyncEventArgs s_eventArgs = new SocketAsyncEventArgs();
 
-        private static Socket GetDisposedSocket(AddressFamily addressFamily = AddressFamily.InterNetwork)
+        private static Socket GetDisposedSocket(AddressFamily addressFamily = AddressFamily.InterNetwork, SocketType socketType = SocketType.Stream, ProtocolType protocolType = ProtocolType.Tcp)
         {
-            using (var socket = new Socket(addressFamily, SocketType.Stream, ProtocolType.Tcp))
+            using (var socket = new Socket(addressFamily, socketType, protocolType))
             {
                 return socket;
             }
@@ -245,7 +245,7 @@ namespace System.Net.Sockets.Tests
         [Fact]
         public void EnableBroadcast_Throws_ObjectDisposed()
         {
-            Assert.Throws<ObjectDisposedException>(() => GetDisposedSocket().EnableBroadcast);
+            Assert.Throws<ObjectDisposedException>(() => GetDisposedSocket(socketType: SocketType.Dgram, protocolType: ProtocolType.Udp).EnableBroadcast);
         }
 
         [Fact]
@@ -253,7 +253,7 @@ namespace System.Net.Sockets.Tests
         {
             Assert.Throws<ObjectDisposedException>(() =>
             {
-                GetDisposedSocket().EnableBroadcast = true;
+                GetDisposedSocket(socketType: SocketType.Dgram, protocolType: ProtocolType.Udp).EnableBroadcast = true;
             });
         }
 
@@ -374,7 +374,7 @@ namespace System.Net.Sockets.Tests
         [Fact]
         public void SendTo_Buffer_Size_Throws_ObjectDisposed()
         {
-            Assert.Throws<ObjectDisposedException>(() => GetDisposedSocket().SendTo(s_buffer,  s_buffer.Length, SocketFlags.None, new IPEndPoint(IPAddress.Loopback, 1)));
+            Assert.Throws<ObjectDisposedException>(() => GetDisposedSocket().SendTo(s_buffer, s_buffer.Length, SocketFlags.None, new IPEndPoint(IPAddress.Loopback, 1)));
         }
 
         [Fact]
@@ -459,7 +459,7 @@ namespace System.Net.Sockets.Tests
         public void ReceiveFrom_Buffer_Size_Throws_ObjectDisposed()
         {
             EndPoint remote = new IPEndPoint(IPAddress.Loopback, 1);
-            Assert.Throws<ObjectDisposedException>(() => GetDisposedSocket().ReceiveFrom(s_buffer,  s_buffer.Length, SocketFlags.None, ref remote));
+            Assert.Throws<ObjectDisposedException>(() => GetDisposedSocket().ReceiveFrom(s_buffer, s_buffer.Length, SocketFlags.None, ref remote));
         }
 
         [Fact]
@@ -747,20 +747,6 @@ namespace System.Net.Sockets.Tests
             Assert.Throws<ObjectDisposedException>(() => GetDisposedSocket().EndAccept(null));
         }
 
-        [ConditionalTheory(typeof(PlatformDetection), nameof(PlatformDetection.IsPreciseGcSupported))]
-        [InlineData(false)]
-        [InlineData(true)]
-        public async Task NonDisposedSocket_SafeHandlesCollected(bool clientAsync)
-        {
-            List<WeakReference> handles = await CreateHandlesAsync(clientAsync);
-            RetryHelper.Execute(() =>
-            {
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                Assert.Equal(0, handles.Count(h => h.IsAlive));
-            });
-        }
-
         [Fact]
         public void SocketWithDanglingReferenceDoesntHangFinalizerThread()
         {
@@ -775,6 +761,25 @@ namespace System.Net.Sockets.Tests
             Socket socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
             bool dummy = false;
             socket.SafeHandle.DangerousAddRef(ref dummy);
+        }
+    }
+
+    [Collection(nameof(DisableParallelization))]
+    public class DisposedSocketTestsNonParallel
+    {
+        [ConditionalTheory(typeof(PlatformDetection), nameof(PlatformDetection.IsPreciseGcSupported))]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task NonDisposedSocket_SafeHandlesCollected(bool clientAsync)
+        {
+            TimeSpan timeout = TimeSpan.FromMilliseconds(TestSettings.PassingTestTimeout);
+            List<WeakReference> handles = await CreateHandlesAsync(clientAsync).WaitAsync(timeout);
+            await RetryHelper.ExecuteAsync(() => Task.Run(() =>
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Assert.Equal(0, handles.Count(h => h.IsAlive));
+            })).WaitAsync(timeout);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

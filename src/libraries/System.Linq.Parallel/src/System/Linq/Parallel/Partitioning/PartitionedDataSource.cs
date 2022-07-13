@@ -43,7 +43,7 @@ namespace System.Linq.Parallel
     ///     This is used as the default partitioning strategy by much of the PLINQ infrastructure.
     /// </summary>
     /// <typeparam name="T"></typeparam>
-    internal class PartitionedDataSource<T> : PartitionedStream<T, int>
+    internal sealed class PartitionedDataSource<T> : PartitionedStream<T, int>
     {
         //---------------------------------------------------------------------------------------
         // Just constructs a new partition stream.
@@ -219,7 +219,7 @@ namespace System.Linq.Parallel
             private readonly int _sectionCount; // Precomputed in ctor: the number of sections the range is split into.
             private Mutables? _mutables; // Lazily allocated mutable variables.
 
-            private class Mutables
+            private sealed class Mutables
             {
                 internal Mutables()
                 {
@@ -258,11 +258,7 @@ namespace System.Linq.Parallel
             internal override bool MoveNext([MaybeNullWhen(false), AllowNull] ref T currentElement, ref int currentKey)
             {
                 // Lazily allocate the mutable holder.
-                Mutables? mutables = _mutables;
-                if (mutables == null)
-                {
-                    mutables = _mutables = new Mutables();
-                }
+                Mutables mutables = _mutables ??= new Mutables();
 
                 // If we are aren't within the chunk, we need to find another.
                 if (++mutables._currentPositionInChunk < mutables._currentChunkSize || MoveNextSlowPath())
@@ -367,10 +363,7 @@ namespace System.Linq.Parallel
             internal override bool MoveNext([MaybeNullWhen(false), AllowNull] ref T currentElement, ref int currentKey)
             {
                 // Lazily allocate the current index if needed.
-                if (_currentIndex == null)
-                {
-                    _currentIndex = new Shared<int>(_startIndex);
-                }
+                _currentIndex ??= new Shared<int>(_startIndex);
 
                 // Now increment the current index, check bounds, and so on.
                 int current = ++_currentIndex.Value;
@@ -397,7 +390,7 @@ namespace System.Linq.Parallel
             private readonly int _sectionCount; // Precomputed in ctor: the number of sections the range is split into.
             private Mutables? _mutables; // Lazily allocated mutable variables.
 
-            private class Mutables
+            private sealed class Mutables
             {
                 internal Mutables()
                 {
@@ -436,11 +429,7 @@ namespace System.Linq.Parallel
             internal override bool MoveNext([MaybeNullWhen(false), AllowNull] ref T currentElement, ref int currentKey)
             {
                 // Lazily allocate the mutable holder.
-                Mutables? mutables = _mutables;
-                if (mutables == null)
-                {
-                    mutables = _mutables = new Mutables();
-                }
+                Mutables mutables = _mutables ??= new Mutables();
 
                 // If we are aren't within the chunk, we need to find another.
                 if (++mutables._currentPositionInChunk < mutables._currentChunkSize || MoveNextSlowPath())
@@ -545,10 +534,7 @@ namespace System.Linq.Parallel
             internal override bool MoveNext([MaybeNullWhen(false), AllowNull] ref T currentElement, ref int currentKey)
             {
                 // Lazily allocate the current index if needed.
-                if (_currentIndex == null)
-                {
-                    _currentIndex = new Shared<int>(_startIndex);
-                }
+                _currentIndex ??= new Shared<int>(_startIndex);
 
                 // Now increment the current index, check bounds, and so on.
                 int current = ++_currentIndex.Value;
@@ -569,7 +555,7 @@ namespace System.Linq.Parallel
         // been written to perform proper synchronization.
         //
 
-        private class ContiguousChunkLazyEnumerator : QueryOperatorEnumerator<T, int>
+        private sealed class ContiguousChunkLazyEnumerator : QueryOperatorEnumerator<T, int>
         {
             private const int chunksPerChunkSize = 7; // the rate at which to double the chunksize (double chunksize every 'r' chunks). MUST BE == (2^n)-1 for some n.
             private readonly IEnumerator<T> _source; // Data source to enumerate.
@@ -579,7 +565,7 @@ namespace System.Linq.Parallel
             private readonly Shared<bool> _exceptionTracker;
             private Mutables? _mutables; // Any mutable fields on this enumerator. These mutables are local and persistent
 
-            private class Mutables
+            private sealed class Mutables
             {
                 internal Mutables()
                 {
@@ -623,11 +609,7 @@ namespace System.Linq.Parallel
 
             internal override bool MoveNext([MaybeNullWhen(false), AllowNull] ref T currentElement, ref int currentKey)
             {
-                Mutables? mutables = _mutables;
-                if (mutables == null)
-                {
-                    mutables = _mutables = new Mutables();
-                }
+                Mutables? mutables = _mutables ??= new Mutables();
 
                 Debug.Assert(mutables._chunkBuffer != null);
 
@@ -703,7 +685,7 @@ namespace System.Linq.Parallel
                     {
                         if ((mutables._chunkCounter++ & chunksPerChunkSize) == chunksPerChunkSize)
                         {
-                            mutables._nextChunkMaxSize = mutables._nextChunkMaxSize * 2;
+                            mutables._nextChunkMaxSize *= 2;
                             if (mutables._nextChunkMaxSize > chunkBuffer.Length)
                             {
                                 mutables._nextChunkMaxSize = chunkBuffer.Length;

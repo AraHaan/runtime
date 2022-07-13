@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Collections.Generic;
 using Debug = System.Diagnostics.Debug;
 
 namespace Internal.TypeSystem
@@ -42,8 +43,9 @@ namespace Internal.TypeSystem
             "Exception",
 
             "TypedReference",
-            "ByReference`1",
         };
+
+        public static IEnumerable<string> WellKnownTypeNames => s_wellKnownTypeNames;
 
         private MetadataType[] _wellKnownTypes;
 
@@ -68,9 +70,9 @@ namespace Internal.TypeSystem
             // Initialize all well known types - it will save us from checking the name for each loaded type
             for (int typeIndex = 0; typeIndex < _wellKnownTypes.Length; typeIndex++)
             {
-                // Require System.Object to be present as a minimal sanity check. 
+                // Require System.Object to be present as a minimal sanity check.
                 // The set of required well-known types is not strictly defined since different .NET profiles implement different subsets.
-                MetadataType type = systemModule.GetType("System", s_wellKnownTypeNames[typeIndex], typeIndex == (int)WellKnownType.Object);
+                MetadataType type = systemModule.GetType("System", s_wellKnownTypeNames[typeIndex], throwIfNotFound: typeIndex == (int)WellKnownType.Object);
                 if (type != null)
                 {
                     type.SetWellKnownType((WellKnownType)(typeIndex + 1));
@@ -85,13 +87,13 @@ namespace Internal.TypeSystem
 
             int typeIndex = (int)wellKnownType - 1;
             DefType type = _wellKnownTypes[typeIndex];
-            if (type == null && throwIfNotFound) 
+            if (type == null && throwIfNotFound)
                 ThrowHelper.ThrowTypeLoadException("System", s_wellKnownTypeNames[typeIndex], SystemModule);
 
             return type;
         }
 
-        protected sealed internal override bool ComputeHasStaticConstructor(TypeDesc type)
+        protected internal sealed override bool ComputeHasStaticConstructor(TypeDesc type)
         {
             if (type is MetadataType)
             {
@@ -100,7 +102,7 @@ namespace Internal.TypeSystem
             return false;
         }
 
-        protected sealed internal override bool IsIDynamicInterfaceCastableInterface(DefType type)
+        protected internal sealed override bool IsIDynamicInterfaceCastableInterface(DefType type)
         {
             MetadataType t = (MetadataType)type;
             return t.Module == SystemModule

@@ -40,7 +40,7 @@ namespace System.Threading
         {
         }
 
-        [Obsolete("Use the SafeWaitHandle property instead.")]
+        [Obsolete("WaitHandle.Handle has been deprecated. Use the SafeWaitHandle property instead.")]
         public virtual IntPtr Handle
         {
             get => _waitHandle == null ? InvalidHandle : _waitHandle.DangerousGetHandle();
@@ -196,7 +196,7 @@ namespace System.Threading
                     WaitHandle waitHandle = waitHandles[i];
                     if (waitHandle == null)
                     {
-                        throw new ArgumentNullException("waitHandles[" + i + ']', SR.ArgumentNull_ArrayElement);
+                        throw new ArgumentNullException($"waitHandles[{i}]", SR.ArgumentNull_ArrayElement);
                     }
 
                     SafeWaitHandle safeWaitHandle = waitHandle._waitHandle ??
@@ -240,10 +240,7 @@ namespace System.Threading
 
         private static int WaitMultiple(WaitHandle[] waitHandles, bool waitAll, int millisecondsTimeout)
         {
-            if (waitHandles == null)
-            {
-                throw new ArgumentNullException(nameof(waitHandles), SR.ArgumentNull_Waithandles);
-            }
+            ArgumentNullException.ThrowIfNull(waitHandles);
 
             return WaitMultiple(new ReadOnlySpan<WaitHandle>(waitHandles), waitAll, millisecondsTimeout);
         }
@@ -355,14 +352,9 @@ namespace System.Threading
 
         private static bool SignalAndWait(WaitHandle toSignal, WaitHandle toWaitOn, int millisecondsTimeout)
         {
-            if (toSignal == null)
-            {
-                throw new ArgumentNullException(nameof(toSignal));
-            }
-            if (toWaitOn == null)
-            {
-                throw new ArgumentNullException(nameof(toWaitOn));
-            }
+            ArgumentNullException.ThrowIfNull(toSignal);
+            ArgumentNullException.ThrowIfNull(toWaitOn);
+
             if (millisecondsTimeout < -1)
             {
                 throw new ArgumentOutOfRangeException(nameof(millisecondsTimeout), SR.ArgumentOutOfRange_NeedNonNegOrNegative1);
@@ -409,6 +401,13 @@ namespace System.Threading
             }
         }
 
+        internal static void ThrowInvalidHandleException()
+        {
+            var ex = new InvalidOperationException(SR.InvalidOperation_InvalidHandle);
+            ex.HResult = HResults.E_HANDLE;
+            throw ex;
+        }
+
         public virtual bool WaitOne(TimeSpan timeout) => WaitOneNoCheck(ToTimeoutMilliseconds(timeout));
         public virtual bool WaitOne() => WaitOneNoCheck(-1);
         public virtual bool WaitOne(int millisecondsTimeout, bool exitContext) => WaitOne(millisecondsTimeout);
@@ -429,6 +428,8 @@ namespace System.Threading
             WaitMultiple(waitHandles, false, millisecondsTimeout);
         internal static int WaitAny(ReadOnlySpan<SafeWaitHandle> safeWaitHandles, int millisecondsTimeout) =>
             WaitAnyMultiple(safeWaitHandles, millisecondsTimeout);
+        internal static int WaitAny(ReadOnlySpan<WaitHandle> waitHandles, int millisecondsTimeout) =>
+            WaitMultiple(waitHandles, false, millisecondsTimeout);
         public static int WaitAny(WaitHandle[] waitHandles, TimeSpan timeout) =>
             WaitMultiple(waitHandles, false, ToTimeoutMilliseconds(timeout));
         public static int WaitAny(WaitHandle[] waitHandles) =>

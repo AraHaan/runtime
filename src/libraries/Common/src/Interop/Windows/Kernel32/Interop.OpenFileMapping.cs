@@ -4,11 +4,14 @@
 using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Kernel32
+    internal static partial class Kernel32
     {
-        [DllImport(Libraries.Kernel32, EntryPoint = "OpenFileMappingW", CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern SafeMemoryMappedFileHandle OpenFileMapping(int dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, string lpName);
+        [LibraryImport(Libraries.Kernel32, EntryPoint = "OpenFileMappingW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        internal static partial SafeMemoryMappedFileHandle OpenFileMapping(
+            int dwDesiredAccess,
+            [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle,
+            string lpName);
     }
 }

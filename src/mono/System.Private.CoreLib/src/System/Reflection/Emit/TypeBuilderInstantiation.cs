@@ -50,12 +50,12 @@ namespace System.Reflection.Emit
     internal sealed class TypeBuilderInstantiation :
         TypeInfo
     {
-        #region Keep in sync with object-internals.h MonoReflectionGenericClass
+#region Keep in sync with object-internals.h MonoReflectionGenericClass
 #pragma warning disable 649
         internal Type generic_type;
         private Type[] type_arguments;
 #pragma warning restore 649
-        #endregion
+#endregion
 
         private Dictionary<FieldInfo, FieldInfo>? fields;
         private Dictionary<ConstructorInfo, ConstructorInfo>? ctors;
@@ -164,6 +164,7 @@ namespace System.Reflection.Emit
             get { return generic_type.BaseType; }
         }
 
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
         public override Type[] GetInterfaces()
         {
             throw new NotSupportedException();
@@ -176,29 +177,32 @@ namespace System.Reflection.Emit
 
         internal override MethodInfo GetMethod(MethodInfo fromNoninstanciated)
         {
-            if (methods == null)
-                methods = new Dictionary<MethodInfo, MethodInfo>();
-            if (!methods.ContainsKey(fromNoninstanciated))
-                methods[fromNoninstanciated] = new MethodOnTypeBuilderInst(this, fromNoninstanciated);
-            return methods[fromNoninstanciated]!;
+            methods ??= new Dictionary<MethodInfo, MethodInfo>();
+            if (!methods.TryGetValue(fromNoninstanciated, out MethodInfo? mi))
+            {
+                methods[fromNoninstanciated] = mi = new MethodOnTypeBuilderInst(this, fromNoninstanciated);
+            }
+            return mi;
         }
 
         internal override ConstructorInfo GetConstructor(ConstructorInfo fromNoninstanciated)
         {
-            if (ctors == null)
-                ctors = new Dictionary<ConstructorInfo, ConstructorInfo>();
-            if (!ctors.ContainsKey(fromNoninstanciated))
-                ctors[fromNoninstanciated] = new ConstructorOnTypeBuilderInst(this, fromNoninstanciated);
-            return ctors[fromNoninstanciated]!;
+            ctors ??= new Dictionary<ConstructorInfo, ConstructorInfo>();
+            if (!ctors.TryGetValue(fromNoninstanciated, out ConstructorInfo? ci))
+            {
+                ctors[fromNoninstanciated] = ci = new ConstructorOnTypeBuilderInst(this, fromNoninstanciated);
+            }
+            return ci;
         }
 
         internal override FieldInfo GetField(FieldInfo fromNoninstanciated)
         {
-            if (fields == null)
-                fields = new Dictionary<FieldInfo, FieldInfo>();
-            if (!fields.ContainsKey(fromNoninstanciated))
-                fields[fromNoninstanciated] = new FieldOnTypeBuilderInst(this, fromNoninstanciated);
-            return fields[fromNoninstanciated]!;
+            fields ??= new Dictionary<FieldInfo, FieldInfo>();
+            if (!fields.TryGetValue(fromNoninstanciated, out FieldInfo? fi))
+            {
+                fields[fromNoninstanciated] = fi = new FieldOnTypeBuilderInst(this, fromNoninstanciated);
+            }
+            return fi;
         }
 
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)]
@@ -439,6 +443,10 @@ namespace System.Reflection.Emit
         }
 
         //stuff that throws
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
+        [return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2063:UnrecognizedReflectionPattern",
+            Justification = "Linker doesn't recognize always throwing method. https://github.com/mono/linker/issues/2025")]
         public override Type GetInterface(string name, bool ignoreCase)
         {
             throw new NotSupportedException();
@@ -456,7 +464,7 @@ namespace System.Reflection.Emit
             throw new NotSupportedException();
         }
 
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+        [DynamicallyAccessedMembers(GetAllMembers)]
         public override MemberInfo[] GetMembers(BindingFlags bindingAttr)
         {
             throw new NotSupportedException();

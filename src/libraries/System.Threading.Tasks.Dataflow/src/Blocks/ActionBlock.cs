@@ -68,9 +68,14 @@ namespace System.Threading.Tasks.Dataflow
         /// <exception cref="System.ArgumentNullException">The <paramref name="dataflowBlockOptions"/> is null (Nothing in Visual Basic).</exception>
         private ActionBlock(Delegate action, ExecutionDataflowBlockOptions dataflowBlockOptions)
         {
-            // Validate arguments
-            if (action == null) throw new ArgumentNullException(nameof(action));
-            if (dataflowBlockOptions == null) throw new ArgumentNullException(nameof(dataflowBlockOptions));
+            if (action is null)
+            {
+                throw new ArgumentNullException(nameof(action));
+            }
+            if (dataflowBlockOptions is null)
+            {
+                throw new ArgumentNullException(nameof(dataflowBlockOptions));
+            }
 
             // Ensure we have options that can't be changed by the caller
             dataflowBlockOptions = dataflowBlockOptions.DefaultOrClone();
@@ -114,13 +119,11 @@ namespace System.Threading.Tasks.Dataflow
                 Common.WireCancellationToComplete(
                     dataflowBlockOptions.CancellationToken, Completion, state => ((TargetCore<TInput>)state!).Complete(exception: null, dropPendingMessages: true), _defaultTarget);
             }
-#if FEATURE_TRACING
             DataflowEtwProvider etwLog = DataflowEtwProvider.Log;
             if (etwLog.IsEnabled())
             {
                 etwLog.DataflowBlockCreated(this, dataflowBlockOptions);
             }
-#endif
 
             Debug.Assert((_spscTarget != null) ^ (_defaultTarget != null), "One and only one of the two targets must be non-null after construction");
         }
@@ -234,7 +237,10 @@ namespace System.Threading.Tasks.Dataflow
         /// <include file='XmlDocs/CommonXmlDocComments.xml' path='CommonXmlDocComments/Blocks/Member[@name="Fault"]/*' />
         void IDataflowBlock.Fault(Exception exception)
         {
-            if (exception == null) throw new ArgumentNullException(nameof(exception));
+            if (exception is null)
+            {
+                throw new ArgumentNullException(nameof(exception));
+            }
 
             if (_defaultTarget != null)
             {
@@ -307,15 +313,9 @@ namespace System.Threading.Tasks.Dataflow
         }
 
         /// <summary>The data to display in the debugger display attribute.</summary>
-        private object DebuggerDisplayContent
-        {
-            get
-            {
-                return string.Format("{0}, InputCount={1}",
-                    Common.GetNameForDebugger(this, _defaultTarget != null ? _defaultTarget.DataflowBlockOptions : _spscTarget!.DataflowBlockOptions),
-                    InputCountForDebugger);
-            }
-        }
+        private object DebuggerDisplayContent =>
+            $"{(Common.GetNameForDebugger(this, _defaultTarget != null ? _defaultTarget.DataflowBlockOptions : _spscTarget!.DataflowBlockOptions))}, InputCount={InputCountForDebugger}";
+
         /// <summary>Gets the data to display in the debugger display attribute for this instance.</summary>
         object IDebuggerDisplay.Content { get { return DebuggerDisplayContent; } }
 
@@ -353,7 +353,7 @@ namespace System.Threading.Tasks.Dataflow
             /// <summary>Gets any postponed messages.</summary>
             public QueuedMap<ISourceBlock<TInput>, DataflowMessageHeader>? PostponedMessages
             {
-                get { return _defaultDebugInfo != null ? _defaultDebugInfo.PostponedMessages : null; }
+                get { return _defaultDebugInfo?.PostponedMessages; }
             }
 
             /// <summary>Gets the number of outstanding input operations.</summary>

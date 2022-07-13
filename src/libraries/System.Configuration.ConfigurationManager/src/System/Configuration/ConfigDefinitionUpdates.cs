@@ -1,12 +1,12 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Collections;
+
 namespace System.Configuration
 {
-    using Collections;
-
     // Contains all the updates to section definitions across all location sections.
-    internal class ConfigDefinitionUpdates
+    internal sealed class ConfigDefinitionUpdates
     {
         internal ConfigDefinitionUpdates()
         {

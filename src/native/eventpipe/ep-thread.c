@@ -38,6 +38,7 @@ ep_thread_alloc (void)
 	memset (instance->session_state, 0, sizeof (instance->session_state));
 
 	instance->writing_event_in_progress = UINT32_MAX;
+	instance->unregistered = 0;
 
 ep_on_exit:
 	return instance;
@@ -141,6 +142,7 @@ ep_thread_unregister (EventPipeThread *thread)
 		while (!ep_rt_thread_list_iterator_end (&_ep_threads, &iterator)) {
 			if (ep_rt_thread_list_iterator_value (&iterator) == thread) {
 				ep_rt_thread_list_remove (&_ep_threads, thread);
+				ep_rt_volatile_store_uint32_t(&thread->unregistered, 1);
 				ep_thread_release (thread);
 				found = true;
 				break;
@@ -373,6 +375,19 @@ ep_on_error:
 	ep_exit_error_handler ();
 }
 
+uint32_t
+ep_thread_session_state_get_buffer_count_estimate(const EventPipeThreadSessionState *thread_session_state)
+{
+	// this is specifically unprotected and allowed to be incorrect due to memory ordering
+	//
+	// buffer_list won't become NULL after getting this reference in the scope of this function.
+	//
+	// buffer_list is only set to NULL when the session is being freed
+	// when this code won't be called.
+	EventPipeBufferList *buffer_list = thread_session_state->buffer_list;
+	return buffer_list == NULL ? 0 : buffer_list->buffer_count;
+}
+
 void
 ep_thread_session_state_free (EventPipeThreadSessionState *thread_session_state)
 {
@@ -468,7 +483,7 @@ ep_thread_session_state_increment_sequence_number (EventPipeThreadSessionState *
 #endif /* !defined(EP_INCLUDE_SOURCE_FILES) || defined(EP_FORCE_INCLUDE_SOURCE_FILES) */
 #endif /* ENABLE_PERFTRACING */
 
-#ifndef EP_INCLUDE_SOURCE_FILES
+#if !defined(ENABLE_PERFTRACING) || (defined(EP_INCLUDE_SOURCE_FILES) && !defined(EP_FORCE_INCLUDE_SOURCE_FILES))
 extern const char quiet_linker_empty_file_warning_eventpipe_thread;
 const char quiet_linker_empty_file_warning_eventpipe_thread = 0;
 #endif

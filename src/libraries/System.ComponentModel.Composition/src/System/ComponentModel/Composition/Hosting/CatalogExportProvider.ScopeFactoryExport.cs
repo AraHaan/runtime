@@ -9,7 +9,7 @@ namespace System.ComponentModel.Composition.Hosting
 {
     public partial class CatalogExportProvider
     {
-        internal class ScopeFactoryExport : FactoryExport
+        internal sealed class ScopeFactoryExport : FactoryExport
         {
             private readonly ScopeManager _scopeManager;
             private readonly CompositionScopeDefinition _catalog;
@@ -66,10 +66,7 @@ namespace System.ComponentModel.Composition.Hosting
                                 export = null;
                             }
                         }
-                        if (childContainer != null)
-                        {
-                            childContainer.Dispose();
-                        }
+                        childContainer?.Dispose();
                     }
 
                     return _export.Value;
@@ -78,7 +75,7 @@ namespace System.ComponentModel.Composition.Hosting
                 public void Dispose()
                 {
                     CompositionContainer? childContainer = null;
-                    Export? export = null;
+                    Export? export;
 
                     if (_export != null)
                     {
@@ -93,10 +90,7 @@ namespace System.ComponentModel.Composition.Hosting
                         }
                     }
 
-                    if (childContainer != null)
-                    {
-                        childContainer.Dispose();
-                    }
+                    childContainer?.Dispose();
                 }
             }
         }

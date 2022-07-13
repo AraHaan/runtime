@@ -83,8 +83,7 @@ namespace System.Management
         //Fires IdentifierChanged event
         private void FireIdentifierChanged()
         {
-            if (IdentifierChanged != null)
-                IdentifierChanged(this, null);
+            IdentifierChanged?.Invoke(this, null);
         }
 
         //internal factory
@@ -257,9 +256,13 @@ namespace System.Management
         {
             // Test/utilize isWbemPathShared *only* on public + internal members!
             if (wmiPath == null)
+            {
                 wmiPath = CreateWbemPath(path);
+            }
             else
+            {
                 SetWbemPath(wmiPath, path);
+            }
         }
 
         private static void SetWbemPath(IWbemPath wbemPath, string path)
@@ -272,7 +275,7 @@ namespace System.Management
                 //  this is because in the case of "root", the path parser cannot tell whether
                 //  this is a namespace name or a class name
                 if (string.Equals(path, "root", StringComparison.OrdinalIgnoreCase))
-                    flags = flags | (uint)tag_WBEM_PATH_CREATE_FLAG.WBEMPATH_TREAT_SINGLE_IDENT_AS_NS;
+                    flags |= (uint)tag_WBEM_PATH_CREATE_FLAG.WBEMPATH_TREAT_SINGLE_IDENT_AS_NS;
 
                 int status = wbemPath.SetText_(flags, path);
 
@@ -634,7 +637,7 @@ namespace System.Management
                 string oldValue = Server;
 
                 // Only set if changed
-                if (0 != string.Compare(oldValue, value, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(oldValue, value, StringComparison.OrdinalIgnoreCase))
                 {
                     if (null == wmiPath)
                         wmiPath = (IWbemPath)MTAHelper.CreateInMTA(typeof(WbemDefPath)); //new WbemDefPath ();
@@ -677,7 +680,9 @@ namespace System.Management
 
             wmiPathTmp = CreateWbemPath(nsPath);
             if (wmiPath == null)
+            {
                 wmiPath = this.CreateWbemPath("");
+            }
             else if (isWbemPathShared)
             {
                 // Check if this IWbemPath is shared among multiple managed objects.
@@ -888,7 +893,7 @@ namespace System.Management
                 string oldValue = ClassName;
 
                 // Only set if changed
-                if (0 != string.Compare(oldValue, value, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(oldValue, value, StringComparison.OrdinalIgnoreCase))
                 {
                     // isWbemPathShared handled in internal className property accessor.
                     internalClassName = value;
@@ -927,7 +932,9 @@ namespace System.Management
                 int status = (int)ManagementStatus.NoError;
 
                 if (wmiPath == null)
+                {
                     wmiPath = (IWbemPath)MTAHelper.CreateInMTA(typeof(WbemDefPath)); //new WbemDefPath();
+                }
                 else if (isWbemPathShared)
                 {
                     // Check if this IWbemPath is shared among multiple managed objects.
@@ -1046,7 +1053,7 @@ namespace System.Management
     /// <summary>
     /// Converts a String to a ManagementPath
     /// </summary>
-    internal class ManagementPathConverter : ExpandableObjectConverter
+    internal sealed class ManagementPathConverter : ExpandableObjectConverter
     {
 
         /// <summary>

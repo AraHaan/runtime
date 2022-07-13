@@ -7,16 +7,14 @@ namespace System.ComponentModel.Composition.Hosting
 {
     public partial class CompositionContainer
     {
-        private class CompositionServiceShim : ICompositionService
+        private sealed class CompositionServiceShim : ICompositionService
         {
             private readonly CompositionContainer _innerContainer;
 
             public CompositionServiceShim(CompositionContainer innerContainer)
             {
-                if (innerContainer == null)
-                {
-                    throw new ArgumentNullException(nameof(innerContainer));
-                }
+                ArgumentNullException.ThrowIfNull(innerContainer);
+
                 _innerContainer = innerContainer;
             }
 

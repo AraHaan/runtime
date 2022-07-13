@@ -19,7 +19,7 @@ namespace Internal.Cryptography.Pal.Windows
 {
     internal sealed partial class PkcsPalWindows : PkcsPal
     {
-        public sealed unsafe override byte[] Encrypt(CmsRecipientCollection recipients, ContentInfo contentInfo, AlgorithmIdentifier contentEncryptionAlgorithm, X509Certificate2Collection originatorCerts, CryptographicAttributeObjectCollection unprotectedAttributes)
+        public sealed override unsafe byte[] Encrypt(CmsRecipientCollection recipients, ContentInfo contentInfo, AlgorithmIdentifier contentEncryptionAlgorithm, X509Certificate2Collection originatorCerts, CryptographicAttributeObjectCollection unprotectedAttributes)
         {
             using (SafeCryptMsgHandle hCryptMsg = EncodeHelpers.CreateCryptMsgHandleToEncode(recipients, contentInfo.ContentType, contentEncryptionAlgorithm, originatorCerts, unprotectedAttributes))
             {
@@ -377,7 +377,7 @@ namespace Internal.Cryptography.Pal.Windows
                     pEncryptedKey->RecipientPublicKey = pCertInfo->SubjectPublicKeyInfo.PublicKey;
 
                     pEncryptedKey->RecipientId = EncodeRecipientId(recipient, hCertContext, pCertContext, pCertInfo, hb);
-                    pEncryptedKey->Date = default(FILETIME);
+                    pEncryptedKey->Date = default(Interop.Crypt32.FILETIME);
                     pEncryptedKey->pOtherAttr = null;
 
                     CMSG_RECIPIENT_ENCRYPTED_KEY_ENCODE_INFO** ppEncryptedKey = (CMSG_RECIPIENT_ENCRYPTED_KEY_ENCODE_INFO**)(hb.Alloc(sizeof(CMSG_RECIPIENT_ENCRYPTED_KEY_ENCODE_INFO*)));

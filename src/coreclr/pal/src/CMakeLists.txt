@@ -10,16 +10,16 @@ elseif (CLR_CMAKE_TARGET_FREEBSD)
 endif()
 
 if(NOT CLR_CMAKE_USE_SYSTEM_LIBUNWIND)
-  include_directories(libunwind/include)
-  include_directories(libunwind/include/tdep)
-  include_directories(${CMAKE_CURRENT_BINARY_DIR}/libunwind/include)
-  include_directories(${CMAKE_CURRENT_BINARY_DIR}/libunwind/include/tdep)
+  include_directories(${CLR_SRC_NATIVE_DIR}/external/libunwind/include)
+  include_directories(${CLR_SRC_NATIVE_DIR}/external/libunwind/include/tdep)
+  include_directories(${CLR_ARTIFACTS_OBJ_DIR}/external/libunwind/include)
+  include_directories(${CLR_ARTIFACTS_OBJ_DIR}/external/libunwind/include/tdep)
 
-  add_subdirectory(libunwind)
+  add_subdirectory(${CLR_SRC_NATIVE_DIR}/external/libunwind_extras ${CLR_ARTIFACTS_OBJ_DIR}/external/libunwind)
 elseif(NOT CLR_CMAKE_TARGET_OSX)
   find_unwind_libs(UNWIND_LIBS)
 else()
-  add_subdirectory(libunwind)
+  add_subdirectory(${CLR_SRC_NATIVE_DIR}/external/libunwind_extras ${CLR_ARTIFACTS_OBJ_DIR}/external/libunwind)
 endif(NOT CLR_CMAKE_USE_SYSTEM_LIBUNWIND)
 
 include(configure.cmake)
@@ -45,10 +45,19 @@ if(CLR_CMAKE_HOST_ARCH_AMD64)
   set(PAL_ARCH_SOURCES_DIR amd64)
 elseif(CLR_CMAKE_HOST_ARCH_ARM)
   set(PAL_ARCH_SOURCES_DIR arm)
+elseif(CLR_CMAKE_HOST_ARCH_ARMV6)
+  set(PAL_ARCH_SOURCES_DIR arm)
+  add_definitions(-D__armv6__)
 elseif(CLR_CMAKE_HOST_ARCH_ARM64)
   set(PAL_ARCH_SOURCES_DIR arm64)
+elseif(CLR_CMAKE_HOST_ARCH_LOONGARCH64)
+  set(PAL_ARCH_SOURCES_DIR loongarch64)
 elseif(CLR_CMAKE_HOST_ARCH_I386)
   set(PAL_ARCH_SOURCES_DIR i386)
+elseif(CLR_CMAKE_HOST_ARCH_S390X)
+  set(PAL_ARCH_SOURCES_DIR s390x)
+elseif(CLR_CMAKE_HOST_ARCH_POWERPC64)
+  set(PAL_ARCH_SOURCES_DIR ppc64le)
 endif()
 
 if(CLR_CMAKE_USE_SYSTEM_LIBUNWIND)
@@ -74,7 +83,6 @@ endif(FEATURE_ENABLE_NO_ADDRESS_SPACE_RANDOMIZATION)
 add_definitions(-DLP64COMPATIBLE)
 add_definitions(-DCORECLR)
 add_definitions(-DPIC)
-add_definitions(-D_FILE_OFFSET_BITS=64)
 
 if(CLR_CMAKE_HOST_ARCH_AMD64 AND CLR_CMAKE_TARGET_LINUX AND NOT CLR_CMAKE_HOST_ALPINE_LINUX)
   # Currently the _xstate is not available on Alpine Linux
@@ -112,11 +120,9 @@ if(CLR_CMAKE_HOST_ARCH_ARM)
   endif()
 endif(CLR_CMAKE_HOST_ARCH_ARM)
 
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND (CLR_CMAKE_HOST_ARCH_AMD64 OR CLR_CMAKE_HOST_ARCH_I386))
   add_compile_options(-Wa,--divide)
 endif()
-
-include_directories("${CLR_SRC_NATIVE_DIR}/common")
 
 set(SOURCES
   cruntime/file.cpp
@@ -124,7 +130,6 @@ set(SOURCES
   cruntime/malloc.cpp
   cruntime/math.cpp
   cruntime/misc.cpp
-  cruntime/path.cpp
   cruntime/printf.cpp
   cruntime/printfcpp.cpp
   cruntime/silent_printf.cpp
@@ -132,7 +137,6 @@ set(SOURCES
   cruntime/stringtls.cpp
   cruntime/thread.cpp
   cruntime/wchar.cpp
-  cruntime/wchartls.cpp
   debug/debug.cpp
   exception/seh.cpp
   exception/signal.cpp
@@ -146,14 +150,12 @@ set(SOURCES
   init/pal.cpp
   init/sxs.cpp
   loader/module.cpp
-  loader/modulename.cpp
   locale/unicode.cpp
   locale/unicodedata.cpp
   locale/utf8.cpp
   map/common.cpp
   map/map.cpp
   map/virtual.cpp
-  memory/local.cpp
   misc/cgroup.cpp
   misc/dbgmsg.cpp
   misc/environ.cpp
@@ -162,7 +164,6 @@ set(SOURCES
   misc/fmtmessage.cpp
   misc/jitsupport.cpp
   misc/miscpalapi.cpp
-  misc/msgbox.cpp
   misc/perfjitdump.cpp
   misc/strutil.cpp
   misc/sysinfo.cpp
@@ -251,11 +252,10 @@ endif(CLR_CMAKE_TARGET_OSX)
 
 if(NOT FEATURE_CROSSBITNESS)
   target_include_directories(coreclrpal_dac PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/libunwind/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/libunwind/include/tdep
-    ${CMAKE_CURRENT_BINARY_DIR}
-    ${CMAKE_CURRENT_BINARY_DIR}/libunwind/include
-    ${CMAKE_CURRENT_BINARY_DIR}/libunwind/include/tdep
+    ${CLR_SRC_NATIVE_DIR}/external/libunwind/include
+    ${CLR_SRC_NATIVE_DIR}/external/libunwind/include/tdep
+    ${CLR_ARTIFACTS_OBJ_DIR}/external/libunwind/include
+    ${CLR_ARTIFACTS_OBJ_DIR}/external/libunwind/include/tdep
   )
 endif(NOT FEATURE_CROSSBITNESS)
 
@@ -345,4 +345,4 @@ if(FEATURE_EVENT_TRACE)
 endif(FEATURE_EVENT_TRACE)
 
 # Install the static PAL library for VS
-_install (TARGETS coreclrpal DESTINATION lib)
+install_clr (TARGETS coreclrpal DESTINATIONS lib)

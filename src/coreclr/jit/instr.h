@@ -6,7 +6,11 @@
 #define _INSTR_H_
 /*****************************************************************************/
 
+#ifdef TARGET_LOONGARCH64
+#define BAD_CODE 0XFFFFFFFF
+#else
 #define BAD_CODE 0x0BADC0DE // better not match a real encoding!
+#endif
 
 /*****************************************************************************/
 
@@ -47,6 +51,11 @@ enum instruction : unsigned
 
     INS_lea,   // Not a real instruction. It is used for load the address of stack locals
 
+#elif defined(TARGET_LOONGARCH64)
+    #define INST(id, nm, ldst, e1) INS_##id,
+    #include "instrs.h"
+
+    INS_lea,   // Not a real instruction. It is used for load the address of stack locals
 #else
 #error Unsupported target architecture
 #endif
@@ -86,19 +95,61 @@ enum GCtype : unsigned
 };
 
 #if defined(TARGET_XARCH)
-enum insFlags: uint8_t
+
+enum insFlags : uint32_t
 {
-    INS_FLAGS_None = 0x00,
-    INS_FLAGS_ReadsFlags = 0x01,
-    INS_FLAGS_WritesFlags = 0x02,
-    INS_FLAGS_x87Instr = 0x04,
-    INS_Flags_IsDstDstSrcAVXInstruction = 0x08,
-    INS_Flags_IsDstSrcSrcAVXInstruction = 0x10,
+    INS_FLAGS_None = 0,
+
+    // Reads
+    Reads_OF = 1 << 0,
+    Reads_SF = 1 << 1,
+    Reads_ZF = 1 << 2,
+    Reads_PF = 1 << 3,
+    Reads_CF = 1 << 4,
+    Reads_DF = 1 << 5,
+
+    // Writes
+    Writes_OF = 1 << 6,
+    Writes_SF = 1 << 7,
+    Writes_ZF = 1 << 8,
+    Writes_AF = 1 << 9,
+    Writes_PF = 1 << 10,
+    Writes_CF = 1 << 11,
+
+    // Resets
+    Resets_OF = 1 << 12,
+    Resets_SF = 1 << 13,
+    Resets_AF = 1 << 14,
+    Resets_PF = 1 << 15,
+    Resets_CF = 1 << 16,
+
+    // Undefined
+    Undefined_OF = 1 << 17,
+    Undefined_SF = 1 << 18,
+    Undefined_ZF = 1 << 19,
+    Undefined_AF = 1 << 20,
+    Undefined_PF = 1 << 21,
+    Undefined_CF = 1 << 22,
+
+    // Restore
+    Restore_SF_ZF_AF_PF_CF = 1 << 23,
+
+    // x87 instruction
+    INS_FLAGS_x87Instr = 1 << 24,
+
+    // Avx
+    INS_Flags_IsDstDstSrcAVXInstruction = 1 << 25,
+    INS_Flags_IsDstSrcSrcAVXInstruction = 1 << 26,
+    
+    // w and s bits
+    INS_FLAGS_Has_Wbit = 1 << 27,
+    INS_FLAGS_Has_Sbit = 1 << 28,
 
     //  TODO-Cleanup:  Remove this flag and its usage from TARGET_XARCH
     INS_FLAGS_DONT_CARE = 0x00,
 };
-#elif defined(TARGET_ARM) || defined(TARGET_ARM64)
+
+#elif defined(TARGET_ARM) || defined(TARGET_ARM64) || defined(TARGET_LOONGARCH64)
 // TODO-Cleanup: Move 'insFlags' under TARGET_ARM
 enum insFlags: unsigned
 {
@@ -122,6 +173,10 @@ enum insOpts: unsigned
     INS_OPTS_LSR,
     INS_OPTS_ASR,
     INS_OPTS_ROR
+};
+enum insBarrier : unsigned
+{
+    INS_BARRIER_SY = 15
 };
 #elif defined(TARGET_ARM64)
 enum insOpts : unsigned
@@ -177,7 +232,11 @@ enum insOpts : unsigned
     INS_OPTS_H_TO_D,      // Half to Double
 
     INS_OPTS_S_TO_H,      // Single to Half
-    INS_OPTS_D_TO_H,      // Double to Half
+    INS_OPTS_D_TO_H       // Double to Half
+
+#if FEATURE_LOOP_ALIGN
+    , INS_OPTS_ALIGN      // Align instruction
+#endif
 };
 
 enum insCond : unsigned
@@ -242,6 +301,33 @@ enum insBarrier : unsigned
     INS_BARRIER_ST    = 14,
     INS_BARRIER_SY    = 15,
 };
+#elif defined(TARGET_LOONGARCH64)
+enum insOpts : unsigned
+{
+    INS_OPTS_NONE,
+
+    INS_OPTS_RC,     // see ::emitIns_R_C().
+    INS_OPTS_RL,     // see ::emitIns_R_L().
+    INS_OPTS_JIRL,   // see ::emitIns_J_R().
+    INS_OPTS_J,      // see ::emitIns_J().
+    INS_OPTS_J_cond, // see ::emitIns_J_cond_la().
+    INS_OPTS_I,      // see ::emitIns_I_la().
+    INS_OPTS_C,      // see ::emitIns_Call().
+    INS_OPTS_RELOC,  // see ::emitIns_R_AI().
+};
+
+enum insBarrier : unsigned
+{
+    // TODO-LOONGARCH64-CQ: ALL there are the same value right now.
+    // These are reserved for future extention.
+    // Because the LoongArch64 doesn't support these right now.
+    INS_BARRIER_FULL  =  0,
+    INS_BARRIER_WMB   =  INS_BARRIER_FULL,//4,
+    INS_BARRIER_MB    =  INS_BARRIER_FULL,//16,
+    INS_BARRIER_ACQ   =  INS_BARRIER_FULL,//17,
+    INS_BARRIER_REL   =  INS_BARRIER_FULL,//18,
+    INS_BARRIER_RMB   =  INS_BARRIER_FULL,//19,
+};
 #endif
 
 #undef EA_UNKNOWN
@@ -268,15 +354,15 @@ enum emitAttr : unsigned
                 EA_GCREF         = EA_GCREF_FLG |  EA_PTRSIZE,       /* size == -1 */
                 EA_BYREF_FLG     = 0x100,
                 EA_BYREF         = EA_BYREF_FLG |  EA_PTRSIZE,       /* size == -2 */
-                EA_DSP_RELOC_FLG = 0x200,
-                EA_CNS_RELOC_FLG = 0x400,
+                EA_DSP_RELOC_FLG = 0x200, // Is the displacement of the instruction relocatable?
+                EA_CNS_RELOC_FLG = 0x400, // Is the immediate of the instruction relocatable?
 };
 
 #define EA_ATTR(x)                  ((emitAttr)(x))
 #define EA_SIZE(x)                  ((emitAttr)(((unsigned)(x)) &  EA_SIZE_MASK))
 #define EA_SIZE_IN_BYTES(x)         ((UNATIVE_OFFSET)(EA_SIZE(x)))
-#define EA_SET_SIZE(x, sz)          ((emitAttr)((((unsigned)(x)) & ~EA_SIZE_MASK) | (sz)))
 #define EA_SET_FLG(x, flg)          ((emitAttr)(((unsigned)(x)) | (flg)))
+#define EA_REMOVE_FLG(x, flg)       ((emitAttr)(((unsigned)(x)) & ~(flg)))
 #define EA_4BYTE_DSP_RELOC          (EA_SET_FLG(EA_4BYTE, EA_DSP_RELOC_FLG))
 #define EA_PTR_DSP_RELOC            (EA_SET_FLG(EA_PTRSIZE, EA_DSP_RELOC_FLG))
 #define EA_HANDLE_CNS_RELOC         (EA_SET_FLG(EA_PTRSIZE, EA_CNS_RELOC_FLG))
@@ -288,8 +374,6 @@ enum emitAttr : unsigned
 #define EA_IS_CNS_RELOC(x)          ((((unsigned)(x)) & ((unsigned)EA_CNS_RELOC_FLG)) != 0)
 #define EA_IS_RELOC(x)              (EA_IS_DSP_RELOC(x) || EA_IS_CNS_RELOC(x))
 #define EA_TYPE(x)                  ((emitAttr)(((unsigned)(x)) & ~(EA_OFFSET_FLG | EA_DSP_RELOC_FLG | EA_CNS_RELOC_FLG)))
-
-#define EmitSize(x)                 (EA_ATTR(genTypeSize(TypeGet(x))))
 
 // clang-format on
 

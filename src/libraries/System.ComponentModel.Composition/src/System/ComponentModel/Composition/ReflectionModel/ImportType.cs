@@ -9,7 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace System.ComponentModel.Composition.ReflectionModel
 {
     // Describes the import type of a Reflection-based import definition
-    internal class ImportType
+    internal sealed class ImportType
     {
         private static readonly Type LazyOfTType = typeof(Lazy<>);
         private static readonly Type LazyOfTMType = typeof(Lazy<,>);
@@ -28,16 +28,13 @@ namespace System.ComponentModel.Composition.ReflectionModel
         {
             get
             {
-                return _castSingleValueCache = _castSingleValueCache ?? new Dictionary<Type, Func<Export, object>?>();
+                return _castSingleValueCache ??= new Dictionary<Type, Func<Export, object>?>();
             }
         }
 
         public ImportType(Type type, ImportCardinality cardinality)
         {
-            if (type == null)
-            {
-                throw new ArgumentNullException(nameof(type));
-            }
+            ArgumentNullException.ThrowIfNull(type);
 
             _type = type;
             Type contractType = type;
@@ -110,15 +107,8 @@ namespace System.ComponentModel.Composition.ReflectionModel
 
         public static bool IsDescendentOf(Type type, Type baseType)
         {
-            if (type == null)
-            {
-                throw new ArgumentNullException(nameof(type));
-            }
-
-            if (baseType == null)
-            {
-                throw new ArgumentNullException(nameof(baseType));
-            }
+            ArgumentNullException.ThrowIfNull(type);
+            ArgumentNullException.ThrowIfNull(baseType);
 
             if (!baseType.IsGenericTypeDefinition)
             {

@@ -23,7 +23,7 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 /*****************************************************************************/
 
-#ifdef TARGET_ARM64
+#if defined(TARGET_ARM64)
 const regMaskSmall regMasks[] = {
 #define REGDEF(name, rnum, mask, xname, wname) mask,
 #include "register.h"
@@ -228,9 +228,9 @@ RegSet::RegSet(Compiler* compiler, GCInfo& gcInfo) : m_rsCompiler(compiler), m_r
 
     rsMaskResvd = RBM_NONE;
 
-#ifdef TARGET_ARMARCH
+#if defined(TARGET_ARMARCH) || defined(TARGET_LOONGARCH64)
     rsMaskCalleeSaved = RBM_NONE;
-#endif // TARGET_ARMARCH
+#endif // TARGET_ARMARCH || TARGET_LOONGARCH64
 
 #ifdef TARGET_ARM
     rsMaskPreSpillRegArg = RBM_NONE;
@@ -320,9 +320,8 @@ void RegSet::rsSpillTree(regNumber reg, GenTree* tree, unsigned regIdx /* =0 */)
 #endif // TARGET_ARM
     else if (tree->IsMultiRegLclVar())
     {
-        GenTreeLclVar* lcl    = tree->AsLclVar();
-        LclVarDsc*     varDsc = m_rsCompiler->lvaGetDesc(lcl->GetLclNum());
-        treeType              = varDsc->TypeGet();
+        LclVarDsc* varDsc = m_rsCompiler->lvaGetDesc(tree->AsLclVar());
+        treeType          = varDsc->TypeGet();
     }
     else
     {
@@ -353,7 +352,7 @@ void RegSet::rsSpillTree(regNumber reg, GenTree* tree, unsigned regIdx /* =0 */)
     // The spill flag on the node should be cleared by the caller of this method.
     assert((tree->gtFlags & GTF_SPILL) != 0);
 
-    unsigned regFlags = 0;
+    GenTreeFlags regFlags = GTF_EMPTY;
     if (call != nullptr)
     {
         regFlags = call->GetRegSpillFlagByIdx(regIdx);
@@ -559,7 +558,7 @@ TempDsc* RegSet::rsUnspillInPlace(GenTree* tree, regNumber oldReg, unsigned regI
     if (tree->IsMultiRegCall())
     {
         GenTreeCall* call  = tree->AsCall();
-        unsigned     flags = call->GetRegSpillFlagByIdx(regIdx);
+        GenTreeFlags flags = call->GetRegSpillFlagByIdx(regIdx);
         flags &= ~GTF_SPILLED;
         call->SetRegSpillFlagByIdx(flags, regIdx);
     }
@@ -567,14 +566,14 @@ TempDsc* RegSet::rsUnspillInPlace(GenTree* tree, regNumber oldReg, unsigned regI
     else if (tree->OperIsPutArgSplit())
     {
         GenTreePutArgSplit* splitArg = tree->AsPutArgSplit();
-        unsigned            flags    = splitArg->GetRegSpillFlagByIdx(regIdx);
+        GenTreeFlags        flags    = splitArg->GetRegSpillFlagByIdx(regIdx);
         flags &= ~GTF_SPILLED;
         splitArg->SetRegSpillFlagByIdx(flags, regIdx);
     }
     else if (tree->OperIsMultiRegOp())
     {
         GenTreeMultiRegOp* multiReg = tree->AsMultiRegOp();
-        unsigned           flags    = multiReg->GetRegSpillFlagByIdx(regIdx);
+        GenTreeFlags       flags    = multiReg->GetRegSpillFlagByIdx(regIdx);
         flags &= ~GTF_SPILLED;
         multiReg->SetRegSpillFlagByIdx(flags, regIdx);
     }
@@ -582,7 +581,7 @@ TempDsc* RegSet::rsUnspillInPlace(GenTree* tree, regNumber oldReg, unsigned regI
     else if (tree->IsMultiRegLclVar())
     {
         GenTreeLclVar* lcl   = tree->AsLclVar();
-        unsigned       flags = lcl->GetRegSpillFlagByIdx(regIdx);
+        GenTreeFlags   flags = lcl->GetRegSpillFlagByIdx(regIdx);
         flags &= ~GTF_SPILLED;
         lcl->SetRegSpillFlagByIdx(flags, regIdx);
     }
@@ -625,7 +624,7 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 void RegSet::tmpInit()
 {
     tmpCount = 0;
-    tmpSize  = 0;
+    tmpSize  = UINT_MAX;
 #ifdef DEBUG
     tmpGetCount = 0;
 #endif
@@ -921,7 +920,7 @@ bool RegSet::tmpAllFree() const
         return false;
     }
 
-    for (unsigned i = 0; i < _countof(tmpUsed); i++)
+    for (unsigned i = 0; i < ArrLen(tmpUsed); i++)
     {
         if (tmpUsed[i] != nullptr)
         {

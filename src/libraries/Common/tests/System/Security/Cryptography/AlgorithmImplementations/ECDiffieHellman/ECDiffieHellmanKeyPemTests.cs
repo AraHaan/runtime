@@ -6,11 +6,9 @@ using Xunit;
 
 namespace System.Security.Cryptography.EcDsa.Tests
 {
-    [SkipOnMono("Not supported on Browser", TestPlatforms.Browser)]
+    [SkipOnPlatform(TestPlatforms.Browser, "Not supported on Browser")]
     public sealed class ECDiffieHellmanKeyPemTests : ECKeyPemTests<ECDiffieHellman>
     {
         protected override ECDiffieHellman CreateKey() => ECDiffieHellman.Create();
-        protected override ECParameters ExportParameters(ECDiffieHellman key, bool includePrivateParameters) =>
-            key.ExportParameters(includePrivateParameters);
     }
 }

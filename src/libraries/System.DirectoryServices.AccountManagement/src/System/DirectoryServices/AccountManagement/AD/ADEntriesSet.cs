@@ -9,7 +9,7 @@ using System.DirectoryServices;
 
 namespace System.DirectoryServices.AccountManagement
 {
-    internal class ADEntriesSet : ResultSet
+    internal sealed class ADEntriesSet : ResultSet
     {
         private readonly SearchResultCollection _searchResults;
         private readonly ADStoreCtx _storeCtx;
@@ -88,8 +88,7 @@ namespace System.DirectoryServices.AccountManagement
             _endReached = false;
             _current = null;
 
-            if (_enumerator != null)
-                _enumerator.Reset();
+            _enumerator?.Reset();
         }
 
         // IDisposable implementation
@@ -113,5 +112,3 @@ namespace System.DirectoryServices.AccountManagement
         }
     }
 }
-
-// #endif // PAPI_AD

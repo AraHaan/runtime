@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using ManagedTests.DynamicCSharp.Conformance.dynamic.dynamicType.conversions.common.common;
+using System;
 using Xunit;
 
 namespace ManagedTests.DynamicCSharp.Conformance.dynamic.dynamicType.conversions.common.common
@@ -4374,6 +4375,7 @@ namespace ManagedTests.DynamicCSharp.Conformance.dynamic.dynamicType.conversions
         }
 
         [Fact]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/55117", TestPlatforms.iOS | TestPlatforms.tvOS | TestPlatforms.MacCatalyst)]
         public static void DynamicCSharpRunTest()
         {
             Assert.Equal(0, MainMethod());

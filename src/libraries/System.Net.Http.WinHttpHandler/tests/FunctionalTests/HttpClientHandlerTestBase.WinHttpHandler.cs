@@ -10,15 +10,13 @@ namespace System.Net.Http.Functional.Tests
     {
         protected static bool IsWinHttpHandler => true;
 
-        protected static bool AllowAllCertificates { get; set; } = true;
-
-        protected static WinHttpClientHandler CreateHttpClientHandler(Version useVersion = null)
+        protected static WinHttpClientHandler CreateHttpClientHandler(Version useVersion = null, bool allowAllCertificates = true)
         {
             useVersion ??= HttpVersion.Version11;
 
             WinHttpClientHandler handler = new WinHttpClientHandler(useVersion);
 
-            if (useVersion >= HttpVersion20.Value && AllowAllCertificates)
+            if (useVersion >= HttpVersion20.Value && allowAllCertificates)
             {
                 handler.ServerCertificateCustomValidationCallback = TestHelper.AllowAllCertificates;
             }

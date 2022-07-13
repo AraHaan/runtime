@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Xml.Serialization;
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 
 namespace System.Data.Common
 {
@@ -90,14 +91,10 @@ namespace System.Data.Common
 
         public override void SetCapacity(int capacity)
         {
-            SqlBinary[] newValues = new SqlBinary[capacity];
-            if (null != _values)
-            {
-                Array.Copy(_values, newValues, Math.Min(capacity, _values.Length));
-            }
-            _values = newValues;
+            Array.Resize(ref _values, capacity);
         }
 
+        [RequiresUnreferencedCode(DataSet.RequiresUnreferencedCodeMessage)]
         public override object ConvertXmlToObject(string s)
         {
             SqlBinary newValue = default;
@@ -113,6 +110,7 @@ namespace System.Data.Common
             return ((SqlBinary)tmp);
         }
 
+        [RequiresUnreferencedCode(DataSet.RequiresUnreferencedCodeMessage)]
         public override string ConvertObjectToXml(object value)
         {
             Debug.Assert(!DataStorage.IsObjectNull(value), "we should have null here");

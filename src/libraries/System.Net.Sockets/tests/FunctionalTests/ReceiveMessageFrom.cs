@@ -89,7 +89,7 @@ namespace System.Net.Sockets.Tests
         [InlineData(true)]
         public async Task ReceiveSent_TCP_Success(bool ipv6)
         {
-            if (ipv6 && PlatformDetection.IsOSX)
+            if (ipv6 && PlatformDetection.IsOSXLike)
             {
                 // [ActiveIssue("https://github.com/dotnet/runtime/issues/47335")]
                 // accept() will create a (seemingly) DualMode socket on Mac,
@@ -174,6 +174,7 @@ namespace System.Net.Sockets.Tests
         [Theory]
         [InlineData(true)]
         [InlineData(false)]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/52124", TestPlatforms.iOS | TestPlatforms.tvOS | TestPlatforms.MacCatalyst)]
         public async Task ClosedDuringOperation_Throws_ObjectDisposedExceptionOrSocketException(bool closeOrDispose)
         {
             if (UsesSync && PlatformDetection.IsOSX)
@@ -209,13 +210,11 @@ namespace System.Net.Sockets.Tests
 
                 if (DisposeDuringOperationResultsInDisposedException)
                 {
-                    await Assert.ThrowsAsync<ObjectDisposedException>(() => receiveTask)
-                        .TimeoutAfter(CancellationTestTimeout);
+                    await Assert.ThrowsAsync<ObjectDisposedException>(() => receiveTask).WaitAsync(CancellationTestTimeout);
                 }
                 else
                 {
-                    SocketException ex = await Assert.ThrowsAsync<SocketException>(() => receiveTask)
-                        .TimeoutAfter(CancellationTestTimeout);
+                    SocketException ex = await Assert.ThrowsAsync<SocketException>(() => receiveTask).WaitAsync(CancellationTestTimeout);
                     SocketError expectedError = UsesSync ? SocketError.Interrupted : SocketError.OperationAborted;
                     Assert.Equal(expectedError, ex.SocketErrorCode);
                 }
@@ -237,7 +236,7 @@ namespace System.Net.Sockets.Tests
             if (shutdown == SocketShutdown.Both) await Task.Delay(50);
 
             SocketException exception = await Assert.ThrowsAnyAsync<SocketException>(() => ReceiveMessageFromAsync(socket, new byte[1], GetGetDummyTestEndpoint()))
-                .TimeoutAfter(CancellationTestTimeout);
+                .WaitAsync(CancellationTestTimeout);
 
             Assert.Equal(SocketError.Shutdown, exception.SocketErrorCode);
         }
@@ -256,6 +255,40 @@ namespace System.Net.Sockets.Tests
 
             var r = await ReceiveMessageFromAsync(receiver, new byte[1], sender.LocalEndPoint);
             Assert.Equal(1, r.ReceivedBytes);
+        }
+
+        [Fact]
+        [PlatformSpecific(TestPlatforms.Windows)] // MSG_BCAST is Windows-specifc
+        public async Task SendBroadcast_BroadcastFlagIsSetOnReceive()
+        {
+            using var receiver = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            ConfigureNonBlocking(receiver);
+            int receiverPort = receiver.BindToAnonymousPort(IPAddress.Loopback);
+
+            using var sender = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            sender.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, 1);
+            int senderPort = sender.BindToAnonymousPort(IPAddress.Loopback);
+            var destEp = new IPEndPoint(IPAddress.Parse("127.255.255.255"), receiverPort);
+
+            sender.SendTo(new byte[1], destEp);
+
+            var sourceEp = new IPEndPoint(IPAddress.Any, senderPort);
+            var r = await ReceiveMessageFromAsync(receiver, new byte[1], sourceEp);
+            Assert.Equal(SocketFlags.Broadcast, r.SocketFlags);
+        }
+
+        [Fact]
+        [PlatformSpecific(TestPlatforms.AnyUnix)] // Windows doesn't report MSG_TRUNC
+        public async Task ReceiveTruncated_TruncatedFlagIsSetOnReceive()
+        {
+            using var receiver = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            receiver.BindToAnonymousPort(IPAddress.Loopback);
+            using var sender = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+
+            sender.SendTo(new byte[2], receiver.LocalEndPoint);
+
+            var r = await ReceiveMessageFromAsync(receiver, new byte[1], sender.LocalEndPoint);
+            Assert.Equal(SocketFlags.Truncated, r.SocketFlags);
         }
     }
 
@@ -370,7 +403,7 @@ namespace System.Net.Sockets.Tests
 
             OperationCanceledException ex = await Assert.ThrowsAnyAsync<OperationCanceledException>(
                 () => socket.ReceiveMessageFromAsync(buffer, SocketFlags.None, dummy.LocalEndPoint, cts.Token).AsTask())
-                .TimeoutAfter(CancellationTestTimeout);
+                .WaitAsync(CancellationTestTimeout);
             Assert.Equal(cts.Token, ex.CancellationToken);
         }
     }

@@ -5,7 +5,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Internal.Runtime.CompilerServices;
+
 using X86 = System.Runtime.Intrinsics.X86;
 
 namespace System
@@ -17,11 +17,7 @@ namespace System
         internal uint Low => (uint)_lo64;
         internal uint Mid => (uint)(_lo64 >> 32);
 
-        internal bool IsNegative => _flags < 0;
-
-        internal int Scale => (byte)(_flags >> ScaleShift);
-
-        private ulong Low64 => _lo64;
+        internal ulong Low64 => _lo64;
 
         private static ref DecCalc AsMutable(ref decimal d) => ref Unsafe.As<decimal, DecCalc>(ref d);
 
@@ -152,13 +148,6 @@ namespace System
                 1e70, 1e71, 1e72, 1e73, 1e74, 1e75, 1e76, 1e77, 1e78, 1e79,
                 1e80
             };
-
-            // Used to fill uninitialized stack variables with non-zero pattern in debug builds
-            [Conditional("DEBUG")]
-            private static unsafe void DebugPoison<T>(ref T s) where T : unmanaged
-            {
-                MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref s, 1)).Fill(0xCD);
-            }
 
 #region Decimal Math Helpers
 
@@ -990,7 +979,6 @@ ThrowOverflow:
                     // Have to scale by a bunch. Move the number to a buffer where it has room to grow as it's scaled.
                     //
                     Unsafe.SkipInit(out Buf24 bufNum);
-                    DebugPoison(ref bufNum);
 
                     bufNum.Low64 = low64;
                     bufNum.Mid64 = tmp64;
@@ -1339,7 +1327,6 @@ ThrowOverflow:
                 ulong tmp;
                 uint hiProd;
                 Unsafe.SkipInit(out Buf24 bufProd);
-                DebugPoison(ref bufProd);
 
                 if ((d1.High | d1.Mid) == 0)
                 {
@@ -1888,7 +1875,7 @@ ReturnZero:
                 double dbl = ((double)value.Low64 +
                     (double)value.High * ds2to64) / s_doublePowers10[value.Scale];
 
-                if (value.IsNegative)
+                if (decimal.IsNegative(value))
                     dbl = -dbl;
 
                 return dbl;
@@ -1920,7 +1907,6 @@ ReturnZero:
             internal static unsafe void VarDecDiv(ref DecCalc d1, ref DecCalc d2)
             {
                 Unsafe.SkipInit(out Buf12 bufQuo);
-                DebugPoison(ref bufQuo);
 
                 uint power;
                 int curScale;
@@ -2021,7 +2007,6 @@ ReturnZero:
                     // Shift both dividend and divisor left by curScale.
                     //
                     Unsafe.SkipInit(out Buf16 bufRem);
-                    DebugPoison(ref bufRem);
 
                     bufRem.Low64 = d1.Low64 << curScale;
                     bufRem.High64 = (d1.Mid + ((ulong)d1.High << 32)) >> (32 - curScale);
@@ -2090,7 +2075,6 @@ ReturnZero:
                         // Start by finishing the shift left by curScale.
                         //
                         Unsafe.SkipInit(out Buf12 bufDivisor);
-                        DebugPoison(ref bufDivisor);
 
                         bufDivisor.Low64 = divisor;
                         bufDivisor.U2 = (uint)((d2.Mid + ((ulong)d2.High << 32)) >> (32 - curScale));
@@ -2243,7 +2227,6 @@ ThrowOverflow:
                         d1.uflags = d2.uflags;
                         // Try to scale up dividend to match divisor.
                         Unsafe.SkipInit(out Buf12 bufQuo);
-                        DebugPoison(ref bufQuo);
 
                         bufQuo.Low64 = d1.Low64;
                         bufQuo.U2 = d1.High;
@@ -2303,7 +2286,6 @@ ThrowOverflow:
                 int shift = BitOperations.LeadingZeroCount(tmp);
 
                 Unsafe.SkipInit(out Buf28 b);
-                DebugPoison(ref b);
 
                 b.Buf24.Low64 = d1.Low64 << shift;
                 b.Buf24.Mid64 = (d1.Mid + ((ulong)d1.High << 32)) >> (32 - shift);
@@ -2358,7 +2340,6 @@ ThrowOverflow:
                 else
                 {
                     Unsafe.SkipInit(out Buf12 bufDivisor);
-                    DebugPoison(ref bufDivisor);
 
                     bufDivisor.Low64 = d2.Low64 << shift;
                     bufDivisor.U2 = (uint)((d2.Mid + ((ulong)d2.High << 32)) >> (32 - shift));

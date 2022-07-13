@@ -4,12 +4,13 @@
 using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Kernel32
+    internal static partial class Kernel32
     {
-        [DllImport(Libraries.Kernel32, SetLastError = true, CharSet = CharSet.Auto)]
-        internal static extern bool GetCommProperties(
+        [LibraryImport(Libraries.Kernel32, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool GetCommProperties(
             SafeFileHandle hFile,
             ref COMMPROP lpCommProp);
     }

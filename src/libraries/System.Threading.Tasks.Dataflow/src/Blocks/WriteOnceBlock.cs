@@ -62,8 +62,10 @@ namespace System.Threading.Tasks.Dataflow
         /// <exception cref="System.ArgumentNullException">The <paramref name="dataflowBlockOptions"/> is null (Nothing in Visual Basic).</exception>
         public WriteOnceBlock(Func<T, T>? cloningFunction, DataflowBlockOptions dataflowBlockOptions)
         {
-            // Validate arguments
-            if (dataflowBlockOptions == null) throw new ArgumentNullException(nameof(dataflowBlockOptions));
+            if (dataflowBlockOptions is null)
+            {
+                throw new ArgumentNullException(nameof(dataflowBlockOptions));
+            }
 
             // Store the option
             _cloningFunction = cloningFunction;
@@ -96,13 +98,11 @@ namespace System.Threading.Tasks.Dataflow
                         dataflowBlockOptions.CancellationToken, _lazyCompletionTaskSource.Task, state => ((WriteOnceBlock<T>)state!).Complete(), this);
                 }
             }
-#if FEATURE_TRACING
             DataflowEtwProvider etwLog = DataflowEtwProvider.Log;
             if (etwLog.IsEnabled())
             {
                 etwLog.DataflowBlockCreated(this, dataflowBlockOptions);
             }
-#endif
         }
 
         /// <summary>Asynchronously completes the block on another task.</summary>
@@ -123,14 +123,12 @@ namespace System.Threading.Tasks.Dataflow
                 var taskForOutputProcessing = new Task(state => ((WriteOnceBlock<T>)state!).OfferToTargetsAndCompleteBlock(), this,
                                                         Common.GetCreationOptionsForTask());
 
-#if FEATURE_TRACING
                 DataflowEtwProvider etwLog = DataflowEtwProvider.Log;
                 if (etwLog.IsEnabled())
                 {
                     etwLog.TaskLaunchedForMessageHandling(
                         this, taskForOutputProcessing, DataflowEtwProvider.TaskLaunchedReason.OfferingOutputMessages, _header.IsValid ? 1 : 0);
                 }
-#endif
 
                 // Start the task handling scheduling exceptions
                 Exception? exception = Common.StartTaskSafe(taskForOutputProcessing, _dataflowBlockOptions.TaskScheduler);
@@ -200,19 +198,20 @@ namespace System.Threading.Tasks.Dataflow
 
             // Now that the completion task is completed, we may propagate completion to the linked targets
             _targetRegistry.PropagateCompletion(linkedTargets);
-#if FEATURE_TRACING
             DataflowEtwProvider etwLog = DataflowEtwProvider.Log;
             if (etwLog.IsEnabled())
             {
                 etwLog.DataflowBlockCompleted(this);
             }
-#endif
         }
 
         /// <include file='XmlDocs/CommonXmlDocComments.xml' path='CommonXmlDocComments/Blocks/Member[@name="Fault"]/*' />
         void IDataflowBlock.Fault(Exception exception)
         {
-            if (exception == null) throw new ArgumentNullException(nameof(exception));
+            if (exception is null)
+            {
+                throw new ArgumentNullException(nameof(exception));
+            }
 
             CompleteCore(exception, storeExceptionEvenIfAlreadyCompleting: false);
         }
@@ -287,7 +286,7 @@ namespace System.Threading.Tasks.Dataflow
             // Try to receive the one item this block may have.
             // If we can, give back an array of one item. Otherwise,
             // give back null.
-            T item;
+            T? item;
             if (TryReceive(null, out item))
             {
                 items = new T[] { item };
@@ -303,9 +302,14 @@ namespace System.Threading.Tasks.Dataflow
         /// <include file='XmlDocs/CommonXmlDocComments.xml' path='CommonXmlDocComments/Sources/Member[@name="LinkTo"]/*' />
         public IDisposable LinkTo(ITargetBlock<T> target, DataflowLinkOptions linkOptions)
         {
-            // Validate arguments
-            if (target == null) throw new ArgumentNullException(nameof(target));
-            if (linkOptions == null) throw new ArgumentNullException(nameof(linkOptions));
+            if (target is null)
+            {
+                throw new ArgumentNullException(nameof(target));
+            }
+            if (linkOptions is null)
+            {
+                throw new ArgumentNullException(nameof(linkOptions));
+            }
 
             bool hasValue;
             bool isCompleted;
@@ -357,7 +361,7 @@ namespace System.Threading.Tasks.Dataflow
                 if (consumeToAccept)
                 {
                     bool consumed;
-                    messageValue = source!.ConsumeMessage(messageHeader, this, out consumed);
+                    messageValue = source!.ConsumeMessage(messageHeader, this, out consumed)!;
                     if (!consumed) return DataflowMessageStatus.NotAvailable;
                 }
 
@@ -511,14 +515,9 @@ namespace System.Threading.Tasks.Dataflow
         public override string ToString() { return Common.GetNameForDebugger(this, _dataflowBlockOptions); }
 
         /// <summary>The data to display in the debugger display attribute.</summary>
-        private object DebuggerDisplayContent
-        {
-            get
-            {
-                return string.Format("{0}, HasValue={1}, Value={2}",
-                    Common.GetNameForDebugger(this, _dataflowBlockOptions), HasValue, Value);
-            }
-        }
+        private object DebuggerDisplayContent =>
+            $"{Common.GetNameForDebugger(this, _dataflowBlockOptions)}, HasValue={HasValue}, Value={Value}";
+
         /// <summary>Gets the data to display in the debugger display attribute for this instance.</summary>
         object IDebuggerDisplay.Content { get { return DebuggerDisplayContent; } }
 

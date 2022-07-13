@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
+using System.Runtime.Loader;
 using System.Text;
 using Xunit;
 
@@ -137,28 +139,24 @@ namespace DispatchProxyTests
         }
 
         [Fact]
-        [SkipOnMono("https://github.com/dotnet/runtime/issues/47989")]
         public static void Create_Using_PrivateProxy()
         {
             Assert.NotNull(TestType_PrivateProxy.Proxy<TestType_IHelloService>());
         }
 
         [Fact]
-        [SkipOnMono("https://github.com/dotnet/runtime/issues/47989")]
         public static void Create_Using_PrivateProxyAndInternalService()
         {
             Assert.NotNull(TestType_PrivateProxy.Proxy<TestType_InternalInterfaceService>());
         }
 
         [Fact]
-        [SkipOnMono("https://github.com/dotnet/runtime/issues/47989")]
         public static void Create_Using_PrivateProxyAndInternalServiceWithExternalGenericArgument()
         {
             Assert.NotNull(TestType_PrivateProxy.Proxy<TestType_InternalInterfaceWithNonPublicExternalGenericArgument>());
         }
 
         [Fact]
-        [SkipOnMono("https://github.com/dotnet/runtime/issues/47989")]
         public static void Create_Using_InternalProxy()
         {
             Assert.NotNull(DispatchProxy.Create<TestType_InternalInterfaceService, InternalInvokeProxy>());
@@ -171,7 +169,6 @@ namespace DispatchProxyTests
         }
 
         [Fact]
-        [SkipOnMono("https://github.com/dotnet/runtime/issues/47989")]
         public static void Create_Using_InternalProxyWithExternalNonPublicBaseType()
         {
             Assert.NotNull(DispatchProxy.Create<TestType_IHelloService, TestType_InternalProxyInternalBaseType>());
@@ -190,7 +187,6 @@ namespace DispatchProxyTests
         }
 
         [Fact]
-        [SkipOnMono("https://github.com/dotnet/runtime/issues/47989")]
         public static void Create_Using_InternalProxyWithBaseTypeImplementingServiceWithgenericArgumentBeingNonPublicExternalService()
         {
             Assert.NotNull(DispatchProxy.Create<TestType_IHelloService, TestType_InternalProxyImplementingInterfaceWithGenericArgumentBeingNonPublicExternalType>());
@@ -609,6 +605,7 @@ namespace DispatchProxyTests
             testRefOutInInvocation(p => p.Out(out _), null);
             testRefOutInInvocation(p => p.OutAttribute(value), "Hello");
             testRefOutInInvocation(p => p.Ref(ref value), "Hello");
+            testRefOutInInvocation(p => p.In(in value), "Hello");
         }
 
         private static void testRefOutInInvocation(Action<TestType_IOut_Ref> invocation, string expected)
@@ -626,6 +623,63 @@ namespace DispatchProxyTests
             invocation(proxy);
 
             Assert.Equal(expected, result);
+        }
+
+        private static TestType_IHelloService CreateTestHelloProxy() =>
+            DispatchProxy.Create<TestType_IHelloService, TestDispatchProxy>();
+
+	[ActiveIssue("https://github.com/dotnet/runtime/issues/62503", TestRuntimes.Mono)]
+        [Fact]
+        public static void Test_Unloadability()
+        {
+            if (typeof(DispatchProxyTests).Assembly.Location == "")
+                return;
+
+            WeakReference wr = CreateProxyInUnloadableAlc();
+
+            for (int i = 0; i < 10 && wr.IsAlive; i++)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+
+            Assert.False(wr.IsAlive, "The ALC could not be unloaded.");
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            static WeakReference CreateProxyInUnloadableAlc()
+            {
+                var alc = new AssemblyLoadContext(nameof(Test_Unloadability), true);
+                alc.LoadFromAssemblyPath(typeof(DispatchProxyTests).Assembly.Location)
+                    .GetType(typeof(DispatchProxyTests).FullName, true)
+                    .GetMethod(nameof(CreateTestHelloProxy), BindingFlags.Static | BindingFlags.NonPublic)
+                    .Invoke(null, null);
+                return new WeakReference(alc);
+            }
+        }
+
+        [Fact]
+        public static void Test_Multiple_AssemblyLoadContexts()
+        {
+            if (typeof(DispatchProxyTests).Assembly.Location == "")
+                return;
+
+            object proxyDefaultAlc = CreateTestDispatchProxy(typeof(TestDispatchProxy));
+            Assert.True(proxyDefaultAlc.GetType().IsAssignableTo(typeof(TestDispatchProxy)));
+
+            Type proxyCustomAlcType =
+                new AssemblyLoadContext(nameof(Test_Multiple_AssemblyLoadContexts))
+                    .LoadFromAssemblyPath(typeof(DispatchProxyTests).Assembly.Location)
+                    .GetType(typeof(TestDispatchProxy).FullName, true);
+
+            object proxyCustomAlc = CreateTestDispatchProxy(proxyCustomAlcType);
+            Assert.True(proxyCustomAlc.GetType().IsAssignableTo(proxyCustomAlcType));
+
+            static object CreateTestDispatchProxy(Type type) =>
+                typeof(DispatchProxy)
+                    .GetMethod(nameof(DispatchProxy.Create))
+                    // It has to be a type shared in both ALCs.
+                    .MakeGenericMethod(typeof(IDisposable), type)
+                    .Invoke(null, null);
         }
     }
 }

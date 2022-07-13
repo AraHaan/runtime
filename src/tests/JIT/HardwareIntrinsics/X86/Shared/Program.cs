@@ -12,6 +12,7 @@ namespace JIT.HardwareIntrinsics.X86
     {
         private const int PASS = 100;
         private const int FAIL = 0;
+        private const int MaximumTestCountGCStress = 30;
 
         private static readonly IDictionary<string, Action> TestList;
 
@@ -63,7 +64,17 @@ namespace JIT.HardwareIntrinsics.X86
                 testsToRun.Add(testName);
             }
 
-            return (testsToRun.Count == 0) ? TestList.Keys : testsToRun;
+            if (testsToRun.Count != 0)
+            {
+                return testsToRun;
+            }
+
+            if (TestLibrary.Utilities.IsGCStress)
+            {
+                return TestList.Keys.Take(MaximumTestCountGCStress).ToArray();
+            }
+
+            return TestList.Keys;
         }
 
         private static void PrintSupportedIsa()
@@ -72,6 +83,7 @@ namespace JIT.HardwareIntrinsics.X86
             TestLibrary.TestFramework.LogInformation($"  AES:       {Aes.IsSupported}");
             TestLibrary.TestFramework.LogInformation($"  AVX:       {Avx.IsSupported}");
             TestLibrary.TestFramework.LogInformation($"  AVX2:      {Avx2.IsSupported}");
+            TestLibrary.TestFramework.LogInformation($"  AVXVNNI:   {AvxVnni.IsSupported}");
             TestLibrary.TestFramework.LogInformation($"  BMI1:      {Bmi1.IsSupported}");
             TestLibrary.TestFramework.LogInformation($"  BMI2:      {Bmi2.IsSupported}");
             TestLibrary.TestFramework.LogInformation($"  FMA:       {Fma.IsSupported}");
@@ -84,6 +96,7 @@ namespace JIT.HardwareIntrinsics.X86
             TestLibrary.TestFramework.LogInformation($"  SSE4.1:    {Sse41.IsSupported}");
             TestLibrary.TestFramework.LogInformation($"  SSE4.2:    {Sse42.IsSupported}");
             TestLibrary.TestFramework.LogInformation($"  SSSE3:     {Ssse3.IsSupported}");
+            TestLibrary.TestFramework.LogInformation($"  X86Serialize: {X86Serialize.IsSupported}");
             TestLibrary.TestFramework.LogInformation(string.Empty);
         }
 

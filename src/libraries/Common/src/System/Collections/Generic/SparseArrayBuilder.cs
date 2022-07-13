@@ -71,15 +71,10 @@ namespace System.Collections.Generic
         /// <summary>
         /// Constructs a new builder.
         /// </summary>
-        /// <param name="initialize">Pass <c>true</c>.</param>
-        public SparseArrayBuilder(bool initialize)
-            : this()
+        public SparseArrayBuilder()
         {
-            // Once C# gains parameterless struct constructors, please
-            // remove this workaround.
-            Debug.Assert(initialize);
-
-            _builder = new LargeArrayBuilder<T>(initialize: true);
+            this = default;
+            _builder = new LargeArrayBuilder<T>();
         }
 
         /// <summary>
@@ -190,7 +185,7 @@ namespace System.Collections.Generic
         public bool ReserveOrAdd(IEnumerable<T> items)
         {
             int itemCount;
-            if (EnumerableHelpers.TryGetCount(items, out itemCount))
+            if (System.Linq.Enumerable.TryGetNonEnumeratedCount(items, out itemCount))
             {
                 if (itemCount > 0)
                 {

@@ -5,16 +5,13 @@ using System.Reflection;
 
 namespace System.ComponentModel.Composition.ReflectionModel
 {
-    internal class ReflectionType : ReflectionMember
+    internal sealed class ReflectionType : ReflectionMember
     {
         private readonly Type _type;
 
         public ReflectionType(Type type)
         {
-            if (type == null)
-            {
-                throw new ArgumentNullException(nameof(type));
-            }
+            ArgumentNullException.ThrowIfNull(type);
 
             _type = type;
         }

@@ -16,7 +16,7 @@ namespace System.Xml.Xsl.Runtime
     /// XmlNodeOrder.Unknown, a stable order between documents is maintained by an ordered list mapping each root node
     /// to an ordering index.
     /// </summary>
-    internal class DocumentOrderComparer : IComparer<XPathNavigator>
+    internal sealed class DocumentOrderComparer : IComparer<XPathNavigator>
     {
         private List<XPathNavigator> _roots;
 
@@ -36,8 +36,7 @@ namespace System.Xml.Xsl.Runtime
             }
 
             // Use this.roots to impose stable ordering
-            if (_roots == null)
-                _roots = new List<XPathNavigator>();
+            _roots ??= new List<XPathNavigator>();
 
             Debug.Assert(GetDocumentIndex(navThis) != GetDocumentIndex(navThat));
             return GetDocumentIndex(navThis) < GetDocumentIndex(navThat) ? -1 : 1;
@@ -55,8 +54,7 @@ namespace System.Xml.Xsl.Runtime
             XPathNavigator navRoot;
 
             // Use this.roots to impose stable ordering
-            if (_roots == null)
-                _roots = new List<XPathNavigator>();
+            _roots ??= new List<XPathNavigator>();
 
             // Position navigator to root
             navRoot = nav.Clone();

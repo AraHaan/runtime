@@ -31,7 +31,7 @@ namespace ILCompiler.Reflection.ReadyToRun
         PgoSchemaElem[] _pgoData;
         int _size;
 
-        class PgoDataLoader : IPgoSchemaDataLoader<string>
+        class PgoDataLoader : IPgoSchemaDataLoader<string, string>
         {
             ReadyToRunReader _r2rReader;
             SignatureFormattingOptions _formatOptions;
@@ -42,7 +42,7 @@ namespace ILCompiler.Reflection.ReadyToRun
                 _r2rReader = r2rReader;
             }
 
-            string IPgoSchemaDataLoader<string>.TypeFromLong(long input)
+            string IPgoSchemaDataLoader<string, string>.TypeFromLong(long input)
             {
                 int tableIndex = checked((int)(input & 0xF));
                 int fixupIndex = checked((int)(input >> 4));
@@ -55,18 +55,40 @@ namespace ILCompiler.Reflection.ReadyToRun
                     return _r2rReader.ImportSections[tableIndex].Entries[fixupIndex].Signature.ToString(_formatOptions);
                 }
             }
+
+            string IPgoSchemaDataLoader<string, string>.MethodFromLong(long input)
+            {
+                int tableIndex = checked((int)(input & 0xF));
+                int fixupIndex = checked((int)(input >> 4));
+                if (tableIndex == 0xF)
+                {
+                    return $"Unknown method {fixupIndex}";
+                }
+                else
+                {
+                    return _r2rReader.ImportSections[tableIndex].Entries[fixupIndex].Signature.ToString(_formatOptions);
+                }
+            }
         }
 
         void EnsurePgoData()
         {
             if (_pgoData == null)
             {
-                var compressedIntParser = new PgoProcessor.PgoEncodedCompressedIntParser(Image, Offset);
+                if (Image == null)
+                {
+                    _pgoData = Array.Empty<PgoSchemaElem>();
+                    _size = 0;
+                }
+                else
+                {
+                    var compressedIntParser = new PgoProcessor.PgoEncodedCompressedIntParser(Image, Offset);
 
-                SignatureFormattingOptions formattingOptions = new SignatureFormattingOptions();
+                    SignatureFormattingOptions formattingOptions = new SignatureFormattingOptions();
 
-                _pgoData = PgoProcessor.ParsePgoData<string>(new PgoDataLoader(_r2rReader, formattingOptions), compressedIntParser, true).ToArray();
-                _size = compressedIntParser.Offset - Offset;
+                    _pgoData = PgoProcessor.ParsePgoData<string, string>(new PgoDataLoader(_r2rReader, formattingOptions), compressedIntParser, true).ToArray();
+                    _size = compressedIntParser.Offset - Offset;
+                }
             }
         }
 
@@ -100,9 +122,12 @@ namespace ILCompiler.Reflection.ReadyToRun
                 }
                 else
                 {
-                    foreach (object o in elem.DataObject)
+                    if (elem.DataObject != null)
                     {
-                        sb.AppendLine(o.ToString());
+                        foreach (object o in elem.DataObject)
+                        {
+                            sb.AppendLine(o.ToString());
+                        }
                     }
                 }
             }

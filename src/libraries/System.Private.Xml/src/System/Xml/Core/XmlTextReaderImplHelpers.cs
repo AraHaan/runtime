@@ -15,7 +15,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace System.Xml
 {
-    internal partial class XmlTextReaderImpl
+    internal sealed partial class XmlTextReaderImpl
     {
         //
         // ParsingState
@@ -92,9 +92,9 @@ namespace System.Xml
                     {
                         stream.Dispose();
                     }
-                    else if (textReader != null)
+                    else
                     {
-                        textReader.Dispose();
+                        textReader?.Dispose();
                     }
                 }
             }
@@ -119,7 +119,7 @@ namespace System.Xml
         //
         // XmlContext
         //
-        private class XmlContext
+        private sealed class XmlContext
         {
             internal XmlSpace xmlSpace;
             internal string xmlLang;
@@ -146,7 +146,7 @@ namespace System.Xml
         //
         // NoNamespaceManager
         //
-        private class NoNamespaceManager : XmlNamespaceManager
+        private sealed class NoNamespaceManager : XmlNamespaceManager
         {
             public NoNamespaceManager() : base() { }
             public override string DefaultNamespace { get { return string.Empty; } }
@@ -164,7 +164,7 @@ namespace System.Xml
         //
         // DtdParserProxy: IDtdParserAdapter proxy for XmlTextReaderImpl
         //
-        internal partial class DtdParserProxy : IDtdParserAdapterV1
+        internal sealed partial class DtdParserProxy : IDtdParserAdapterV1
         {
             // Fields
             private readonly XmlTextReaderImpl _reader;
@@ -330,24 +330,15 @@ namespace System.Xml
         //
         // NodeData
         //
-        private class NodeData : IComparable
+        private sealed class NodeData : IComparable
         {
             // static instance with no data - is used when XmlTextReader is closed
             private static volatile NodeData? s_None;
 
             // NOTE: Do not use this property for reference comparison. It may not be unique.
-            internal static NodeData None
-            {
-                get
-                {
-                    if (s_None == null)
-                    {
-                        // no locking; s_None is immutable so it's not a problem that it may get initialized more than once
-                        s_None = new NodeData();
-                    }
-                    return s_None;
-                }
-            }
+            internal static NodeData None =>
+                // no locking; s_None is immutable so it's not a problem that it may get initialized more than once
+                s_None ??= new NodeData();
 
             // type
             internal XmlNodeType type;
@@ -681,7 +672,7 @@ namespace System.Xml
                 }
                 else
                 {
-                    nameWPrefix = nt.Add(string.Concat(prefix, ":", localName));
+                    nameWPrefix = nt.Add($"{prefix}:{localName}");
                 }
                 return nameWPrefix;
             }
@@ -720,7 +711,7 @@ namespace System.Xml
         // DtdDefaultAttributeInfoToNodeDataComparer
         //
         // Compares IDtdDefaultAttributeInfo to NodeData
-        private class DtdDefaultAttributeInfoToNodeDataComparer : IComparer<object>
+        private sealed class DtdDefaultAttributeInfoToNodeDataComparer : IComparer<object>
         {
             private static readonly IComparer<object> s_instance = new DtdDefaultAttributeInfoToNodeDataComparer();
 

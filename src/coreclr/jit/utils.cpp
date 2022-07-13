@@ -24,19 +24,6 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #include "opcode.h"
 
 /*****************************************************************************/
-// Define the string platform name based on compilation #ifdefs. This is the
-// same code for all platforms, hence it is here instead of in the targetXXX.cpp
-// files.
-
-#ifdef TARGET_UNIX
-// Should we distinguish Mac? Can we?
-// Should we distinguish flavors of Unix? Can we?
-const char* Target::g_tgtPlatformName = "Unix";
-#else  // !TARGET_UNIX
-const char* Target::g_tgtPlatformName = "Windows";
-#endif // !TARGET_UNIX
-
-/*****************************************************************************/
 
 #define DECLARE_DATA
 
@@ -92,7 +79,7 @@ const signed char       opcodeSizes[] =
 // clang-format on
 
 const BYTE varTypeClassification[] = {
-#define DEF_TP(tn, nm, jitType, verType, sz, sze, asze, st, al, tf, howUsed) tf,
+#define DEF_TP(tn, nm, jitType, verType, sz, sze, asze, st, al, tf) tf,
 #include "typelist.h"
 #undef DEF_TP
 };
@@ -118,12 +105,12 @@ extern const BYTE opcodeArgKinds[] = {
 const char* varTypeName(var_types vt)
 {
     static const char* const varTypeNames[] = {
-#define DEF_TP(tn, nm, jitType, verType, sz, sze, asze, st, al, tf, howUsed) nm,
+#define DEF_TP(tn, nm, jitType, verType, sz, sze, asze, st, al, tf) nm,
 #include "typelist.h"
 #undef DEF_TP
     };
 
-    assert((unsigned)vt < _countof(varTypeNames));
+    assert((unsigned)vt < ArrLen(varTypeNames));
 
     return varTypeNames[vt];
 }
@@ -134,7 +121,7 @@ const char* varTypeName(var_types vt)
  *  Return the name of the given register.
  */
 
-const char* getRegName(regNumber reg, bool isFloat)
+const char* getRegName(regNumber reg)
 {
     // Special-case REG_NA; it's not in the regNames array, but we might want to print it.
     if (reg == REG_NA)
@@ -142,27 +129,21 @@ const char* getRegName(regNumber reg, bool isFloat)
         return "NA";
     }
 
+    static const char* const regNames[] = {
 #if defined(TARGET_ARM64)
-    static const char* const regNames[] = {
 #define REGDEF(name, rnum, mask, xname, wname) xname,
-#include "register.h"
-    };
-    assert(reg < ArrLen(regNames));
-    return regNames[reg];
 #else
-    static const char* const regNames[] = {
 #define REGDEF(name, rnum, mask, sname) sname,
+#endif
 #include "register.h"
     };
     assert(reg < ArrLen(regNames));
     return regNames[reg];
-#endif
 }
 
-const char* getRegName(unsigned reg,
-                       bool     isFloat) // this is for gcencode.cpp and disasm.cpp that dont use the regNumber type
+const char* getRegName(unsigned reg) // this is for gcencode.cpp and disasm.cpp that dont use the regNumber type
 {
-    return getRegName((regNumber)reg, isFloat);
+    return getRegName((regNumber)reg);
 }
 #endif // defined(DEBUG) || defined(LATE_DISASM) || DUMP_GC_TABLES
 
@@ -242,6 +223,17 @@ const char* getRegNameFloat(regNumber reg, var_types type)
 #define REGDEF(name, rnum, mask, xname, wname) xname,
 #include "register.h"
     };
+    assert((unsigned)reg < ArrLen(regNamesFloat));
+
+    return regNamesFloat[reg];
+
+#elif defined(TARGET_LOONGARCH64)
+
+    static const char* regNamesFloat[] = {
+#define REGDEF(name, rnum, mask, sname) sname,
+#include "register.h"
+    };
+
     assert((unsigned)reg < ArrLen(regNamesFloat));
 
     return regNamesFloat[reg];
@@ -335,6 +327,14 @@ void dspRegMask(regMaskTP regMask, size_t minSiz)
                 }
 #elif defined(TARGET_X86)
 // No register ranges
+
+#elif defined(TARGET_LOONGARCH64)
+                if (REG_A0 <= regNum && regNum <= REG_T8)
+                {
+                    regHead    = regNum;
+                    inRegRange = true;
+                    sep        = "-";
+                }
 #else // TARGET*
 #error Unsupported or unset target architecture
 #endif // TARGET*
@@ -344,10 +344,12 @@ void dspRegMask(regMaskTP regMask, size_t minSiz)
             // We've already printed a register. Is this the end of a range?
             else if ((regNum == REG_INT_LAST) || (regNum == REG_R17) // last register before TEB
                      || (regNum == REG_R28))                         // last register before FP
-#else                                                                // TARGET_ARM64
+#elif defined(TARGET_LOONGARCH64)
+            else if ((regNum == REG_INT_LAST) || (regNum == REG_A7) || (regNum == REG_T8))
+#else  // TARGET_LOONGARCH64
             // We've already printed a register. Is this the end of a range?
             else if (regNum == REG_INT_LAST)
-#endif                                                               // TARGET_ARM64
+#endif // TARGET_LOONGARCH64
             {
                 const char* nam = getRegName(regNum);
                 printf("%s%s", sep, nam);
@@ -620,7 +622,7 @@ void dumpILRange(const BYTE* const codeAddr, unsigned codeSize) // in bytes
     for (IL_OFFSET offs = 0; offs < codeSize;)
     {
         char prefix[100];
-        sprintf_s(prefix, _countof(prefix), "IL_%04x ", offs);
+        sprintf_s(prefix, ArrLen(prefix), "IL_%04x ", offs);
         unsigned codeBytesDumped = dumpSingleInstr(codeAddr, offs, prefix);
         offs += codeBytesDumped;
     }
@@ -646,7 +648,7 @@ const char* genES2str(BitVecTraits* traits, EXPSET_TP set)
     return temp;
 }
 
-const char* refCntWtd2str(BasicBlock::weight_t refCntWtd)
+const char* refCntWtd2str(weight_t refCntWtd)
 {
     const int    bufSize = 17;
     static char  num1[bufSize];
@@ -657,16 +659,16 @@ const char* refCntWtd2str(BasicBlock::weight_t refCntWtd)
 
     nump = (nump == num1) ? num2 : num1;
 
-    if (refCntWtd == BB_MAX_WEIGHT)
+    if (refCntWtd >= BB_MAX_WEIGHT)
     {
         sprintf_s(temp, bufSize, "MAX   ");
     }
     else
     {
-        float scaledWeight = refCntWtd / BB_UNITY_WEIGHT;
-        float intPart      = (float)floor(scaledWeight);
-        bool  isLarge      = intPart > 1e9;
-        bool  isSmall      = (intPart < 1e-2) && (intPart != 0);
+        weight_t scaledWeight = refCntWtd / BB_UNITY_WEIGHT;
+        weight_t intPart      = (weight_t)floor(scaledWeight);
+        bool     isLarge      = intPart > 1e9;
+        bool     isSmall      = (intPart < 1e-2) && (intPart != 0);
 
         // Use g format for high dynamic range counts.
         //
@@ -1150,10 +1152,10 @@ UINT FixedBitVect::bitVectGetNextAndClear()
     return bitNum;
 }
 
-int SimpleSprintf_s(__in_ecount(cbBufSize - (pWriteStart - pBufStart)) char* pWriteStart,
-                    __in_ecount(cbBufSize) char*                             pBufStart,
-                    size_t                                                   cbBufSize,
-                    __in_z const char*                                       fmt,
+int SimpleSprintf_s(_In_reads_(cbBufSize - (pWriteStart - pBufStart)) char* pWriteStart,
+                    _In_reads_(cbBufSize) char*                             pBufStart,
+                    size_t                                                  cbBufSize,
+                    _In_z_ const char*                                      fmt,
                     ...)
 {
     assert(fmt);
@@ -1217,6 +1219,7 @@ void HelperCallProperties::init()
         //
         bool isPure        = false; // true if the result only depends upon input args and not any global state
         bool noThrow       = false; // true if the helper will never throw
+        bool alwaysThrow   = false; // true if the helper will always throw
         bool nonNullReturn = false; // true if the result will never be null or zero
         bool isAllocator   = false; // true if the result is usually a newly created heap item, or may throw OutOfMemory
         bool mutatesHeap   = false; // true if any previous heap objects [are|can be] modified
@@ -1395,7 +1398,6 @@ void HelperCallProperties::init()
             case CORINFO_HELP_CLASSINIT_SHARED_DYNAMICCLASS:
             case CORINFO_HELP_GETSHARED_GCTHREADSTATIC_BASE_DYNAMICCLASS:
             case CORINFO_HELP_GETSHARED_NONGCTHREADSTATIC_BASE_DYNAMICCLASS:
-            case CORINFO_HELP_GETSTATICFIELDADDR_CONTEXT:
             case CORINFO_HELP_GETSTATICFIELDADDR_TLS:
             case CORINFO_HELP_GETGENERICS_GCSTATIC_BASE:
             case CORINFO_HELP_GETGENERICS_NONGCSTATIC_BASE:
@@ -1458,7 +1460,12 @@ void HelperCallProperties::init()
             case CORINFO_HELP_THROW_NOT_IMPLEMENTED:
             case CORINFO_HELP_THROW_PLATFORM_NOT_SUPPORTED:
             case CORINFO_HELP_THROW_TYPE_NOT_SUPPORTED:
+            case CORINFO_HELP_FAIL_FAST:
+            case CORINFO_HELP_METHOD_ACCESS_EXCEPTION:
+            case CORINFO_HELP_FIELD_ACCESS_EXCEPTION:
+            case CORINFO_HELP_CLASS_ACCESS_EXCEPTION:
 
+                alwaysThrow = true;
                 break;
 
             // These helper calls may throw an exception
@@ -1498,6 +1505,7 @@ void HelperCallProperties::init()
 
         m_isPure[helper]        = isPure;
         m_noThrow[helper]       = noThrow;
+        m_alwaysThrow[helper]   = alwaysThrow;
         m_nonNullReturn[helper] = nonNullReturn;
         m_isAllocator[helper]   = isAllocator;
         m_mutatesHeap[helper]   = mutatesHeap;
@@ -1700,6 +1708,11 @@ MethodSet::MethodSet(const WCHAR* filename, HostAllocator alloc) : m_pInfos(null
         }
     }
 
+    if (fclose(methodSetFile))
+    {
+        JITDUMP("Unable to close %ws\n", filename);
+    }
+
     if (m_pInfos == nullptr)
     {
         JITDUMP("No methods read from %ws\n", filename);
@@ -1785,8 +1798,47 @@ bool MethodSet::IsActiveMethod(const char* methodName, int methodHash)
     return false;
 }
 
+//------------------------------------------------------------------------
+// CachedCyclesPerSecond - Return the cached value of CycleTimer::CyclesPerSecond().
+//
+// Calling CycleTimer::CyclesPerSecond() can be expensive: it runs a loop of non-empty
+// code to compute its value. So call it once and cache the result.
+//
+double CachedCyclesPerSecond()
+{
+    static volatile LONG s_CachedCyclesPerSecondInitialized = 0;
+    static double        s_CachedCyclesPerSecond            = 0.0;
+    static CritSecObject s_CachedCyclesPerSecondLock;
+
+    if (s_CachedCyclesPerSecondInitialized == 1)
+    {
+        return s_CachedCyclesPerSecond;
+    }
+
+    // It wasn't initialized yet, so initialize it. There might be a race,
+    // so lock the update.
+
+    CritSecHolder cachedCyclesPerSecondLock(s_CachedCyclesPerSecondLock);
+
+    if (s_CachedCyclesPerSecondInitialized == 1)
+    {
+        // Someone else initialized it first.
+        return s_CachedCyclesPerSecond;
+    }
+
+    s_CachedCyclesPerSecond = CycleTimer::CyclesPerSecond();
+
+    LONG originalInitializedValue = InterlockedCompareExchange(&s_CachedCyclesPerSecondInitialized, 1, 0);
+    if (originalInitializedValue == 1)
+    {
+        // This is unexpected; the critical section should have protected us.
+    }
+
+    return s_CachedCyclesPerSecond;
+}
+
 #ifdef FEATURE_JIT_METHOD_PERF
-CycleCount::CycleCount() : cps(CycleTimer::CyclesPerSecond())
+CycleCount::CycleCount() : cps(CachedCyclesPerSecond())
 {
 }
 
@@ -1847,7 +1899,7 @@ unsigned CountDigits(unsigned num, unsigned base /* = 10 */)
     return count;
 }
 
-unsigned CountDigits(float num, unsigned base /* = 10 */)
+unsigned CountDigits(double num, unsigned base /* = 10 */)
 {
     assert(2 <= base && base <= 16); // sanity check
     unsigned count = 1;
@@ -1882,7 +1934,7 @@ double FloatingPointUtils::convertUInt64ToDouble(unsigned __int64 uIntVal)
         uint64_t adjHex = 0x43F0000000000000UL;
         d               = (double)s64 + *(double*)&adjHex;
 #else
-        d                             = (double)uIntVal;
+        d = (double)uIntVal;
 #endif
     }
     else
@@ -1930,7 +1982,7 @@ unsigned __int64 FloatingPointUtils::convertDoubleToUInt64(double d)
 
     u64 = UINT64(INT64(d));
 #else
-    u64                               = UINT64(d);
+    u64   = UINT64(d);
 #endif // TARGET_XARCH
 
     return u64;
@@ -2103,6 +2155,21 @@ bool FloatingPointUtils::isNormal(float x)
 }
 
 //------------------------------------------------------------------------
+// infinite_double: return an infinite double value
+//
+// Returns:
+//    Infinite double value.
+//
+// Notes:
+//    This is the predefined constant HUGE_VAL on many platforms.
+//
+double FloatingPointUtils::infinite_double()
+{
+    int64_t bits = 0x7FF0000000000000;
+    return *reinterpret_cast<double*>(&bits);
+}
+
+//------------------------------------------------------------------------
 // infinite_float: return an infinite float value
 //
 // Returns:
@@ -2165,6 +2232,232 @@ bool FloatingPointUtils::hasPreciseReciprocal(float x)
     return mantissa == 0 && exponent != 0 && exponent != 127;
 }
 
+//------------------------------------------------------------------------
+// isAllBitsSet: Determines whether the specified value is AllBitsSet
+//
+// Arguments:
+//    val - value to check for AllBitsSet
+//
+// Return Value:
+//    True if val is AllBitsSet
+//
+
+bool FloatingPointUtils::isAllBitsSet(float val)
+{
+    UINT32 bits = *reinterpret_cast<UINT32*>(&val);
+    return bits == 0xFFFFFFFFU;
+}
+
+//------------------------------------------------------------------------
+// isAllBitsSet: Determines whether the specified value is AllBitsSet
+//
+// Arguments:
+//    val - value to check for AllBitsSet
+//
+// Return Value:
+//    True if val is AllBitsSet
+//
+
+bool FloatingPointUtils::isAllBitsSet(double val)
+{
+    UINT64 bits = *reinterpret_cast<UINT64*>(&val);
+    return bits == 0xFFFFFFFFFFFFFFFFULL;
+}
+
+//------------------------------------------------------------------------
+// isNegative: Determines whether the specified value is negative
+//
+// Arguments:
+//    val - value to check
+//
+// Return Value:
+//    True if val is negative
+//
+
+bool FloatingPointUtils::isNegative(float val)
+{
+    return *reinterpret_cast<INT32*>(&val) < 0;
+}
+
+//------------------------------------------------------------------------
+// isNegative: Determines whether the specified value is negative
+//
+// Arguments:
+//    val - value to check
+//
+// Return Value:
+//    True if val is negative
+//
+
+bool FloatingPointUtils::isNegative(double val)
+{
+    return *reinterpret_cast<INT64*>(&val) < 0;
+}
+
+//------------------------------------------------------------------------
+// isNaN: Determines whether the specified value is NaN
+//
+// Arguments:
+//    val - value to check for NaN
+//
+// Return Value:
+//    True if val is NaN
+//
+
+bool FloatingPointUtils::isNaN(float val)
+{
+    UINT32 bits = *reinterpret_cast<UINT32*>(&val);
+    return (bits & 0x7FFFFFFFU) > 0x7F800000U;
+}
+
+//------------------------------------------------------------------------
+// isNaN: Determines whether the specified value is NaN
+//
+// Arguments:
+//    val - value to check for NaN
+//
+// Return Value:
+//    True if val is NaN
+//
+
+bool FloatingPointUtils::isNaN(double val)
+{
+    UINT64 bits = *reinterpret_cast<UINT64*>(&val);
+    return (bits & 0x7FFFFFFFFFFFFFFFULL) > 0x7FF0000000000000ULL;
+}
+
+//------------------------------------------------------------------------
+// isNegativeZero: Determines whether the specified value is negative zero (-0.0)
+//
+// Arguments:
+//    val - value to check for (-0.0)
+//
+// Return Value:
+//    True if val is (-0.0)
+//
+
+bool FloatingPointUtils::isNegativeZero(double val)
+{
+    UINT64 bits = *reinterpret_cast<UINT64*>(&val);
+    return bits == 0x8000000000000000ULL;
+}
+
+//------------------------------------------------------------------------
+// isPositiveZero: Determines whether the specified value is positive zero (+0.0)
+//
+// Arguments:
+//    val - value to check for (+0.0)
+//
+// Return Value:
+//    True if val is (+0.0)
+//
+
+bool FloatingPointUtils::isPositiveZero(double val)
+{
+    UINT64 bits = *reinterpret_cast<UINT64*>(&val);
+    return bits == 0x0000000000000000ULL;
+}
+
+//------------------------------------------------------------------------
+// maximum: This matches the IEEE 754:2019 `maximum` function
+//    It propagates NaN inputs back to the caller and
+//    otherwise returns the larger of the inputs. It
+//    treats +0 as larger than -0 as per the specification.
+//
+// Arguments:
+//    val1 - left operand
+//    val2 - right operand
+//
+// Return Value:
+//    Either val1 or val2
+//
+
+double FloatingPointUtils::maximum(double val1, double val2)
+{
+    if (val1 != val2)
+    {
+        if (!isNaN(val1))
+        {
+            return val2 < val1 ? val1 : val2;
+        }
+        return val1;
+    }
+    return isNegative(val2) ? val1 : val2;
+}
+
+//------------------------------------------------------------------------
+// maximum: This matches the IEEE 754:2019 `maximum` function
+//    It propagates NaN inputs back to the caller and
+//    otherwise returns the larger of the inputs. It
+//    treats +0 as larger than -0 as per the specification.
+//
+// Arguments:
+//    val1 - left operand
+//    val2 - right operand
+//
+// Return Value:
+//    Either val1 or val2
+//
+
+float FloatingPointUtils::maximum(float val1, float val2)
+{
+    if (val1 != val2)
+    {
+        if (!isNaN(val1))
+        {
+            return val2 < val1 ? val1 : val2;
+        }
+        return val1;
+    }
+    return isNegative(val2) ? val1 : val2;
+}
+
+//------------------------------------------------------------------------
+// minimum: This matches the IEEE 754:2019 `minimum` function
+//    It propagates NaN inputs back to the caller and
+//    otherwise returns the larger of the inputs. It
+//    treats +0 as larger than -0 as per the specification.
+//
+// Arguments:
+//    val1 - left operand
+//    val2 - right operand
+//
+// Return Value:
+//    Either val1 or val2
+//
+
+double FloatingPointUtils::minimum(double val1, double val2)
+{
+    if (val1 != val2 && !isNaN(val1))
+    {
+        return val1 < val2 ? val1 : val2;
+    }
+    return isNegative(val1) ? val1 : val2;
+}
+
+//------------------------------------------------------------------------
+// minimum: This matches the IEEE 754:2019 `minimum` function
+//    It propagates NaN inputs back to the caller and
+//    otherwise returns the larger of the inputs. It
+//    treats +0 as larger than -0 as per the specification.
+//
+// Arguments:
+//    val1 - left operand
+//    val2 - right operand
+//
+// Return Value:
+//    Either val1 or val2
+//
+
+float FloatingPointUtils::minimum(float val1, float val2)
+{
+    if (val1 != val2 && !isNaN(val1))
+    {
+        return val1 < val2 ? val1 : val2;
+    }
+    return isNegative(val1) ? val1 : val2;
+}
+
 namespace MagicDivide
 {
 template <int TableBase = 0, int TableSize, typename Magic>
@@ -2191,8 +2484,8 @@ struct UnsignedMagic
     typedef T DivisorType;
 
     T    magic;
-    bool add;
-    int  shift;
+    bool increment;
+    char postShift;
 };
 
 template <typename T>
@@ -2209,7 +2502,7 @@ const UnsignedMagic<uint32_t>* TryGetUnsignedMagic(uint32_t divisor)
         {},
         {0xcccccccd, false, 2}, // 5
         {0xaaaaaaab, false, 2}, // 6
-        {0x24924925, true, 3},  // 7
+        {0x49249249, true, 1},  // 7
         {},
         {0x38e38e39, false, 1}, // 9
         {0xcccccccd, false, 3}, // 10
@@ -2228,7 +2521,7 @@ const UnsignedMagic<uint64_t>* TryGetUnsignedMagic(uint64_t divisor)
         {},
         {0xcccccccccccccccd, false, 2}, // 5
         {0xaaaaaaaaaaaaaaab, false, 2}, // 6
-        {0x2492492492492493, true, 3},  // 7
+        {0x9249249249249249, true, 2},  // 7
         {},
         {0xe38e38e38e38e38f, false, 3}, // 9
         {0xcccccccccccccccd, false, 3}, // 10
@@ -2245,99 +2538,141 @@ const UnsignedMagic<uint64_t>* TryGetUnsignedMagic(uint64_t divisor)
 //
 // Arguments:
 //    d     - The divisor
-//    add   - Pointer to a flag indicating the kind of code to generate
-//    shift - Pointer to the shift value to be returned
+//    increment   - Pointer to a flag indicating if incrementing the numerator is required
+//    preShift - Pointer to the pre-shift value to be returned
+//    postShift - Pointer to the post-shift value to be returned
 //
 // Returns:
 //    The magic number.
 //
 // Notes:
-//    This code is adapted from _The_PowerPC_Compiler_Writer's_Guide_, pages 57-58.
-//    The paper is based on "Division by invariant integers using multiplication"
-//    by Torbjorn Granlund and Peter L. Montgomery in PLDI 94
+//    Based on "Faster Unsigned Division by Constants" by ridiculous_fish.
+//    https://ridiculousfish.com/files/faster_unsigned_division_by_constants.pdf
+//    https://github.com/ridiculousfish/libdivide/blob/master/doc/divide_by_constants_codegen_reference.c
 
 template <typename T>
-T GetUnsignedMagic(T d, bool* add /*out*/, int* shift /*out*/)
+T GetUnsignedMagic(T d, bool* increment /*out*/, int* preShift /*out*/, int* postShift /*out*/, unsigned num_bits)
 {
     assert((d >= 3) && !isPow2(d));
 
-    const UnsignedMagic<T>* magic = TryGetUnsignedMagic(d);
+    // The numerator must fit in a uint
+    assert(num_bits > 0 && num_bits <= sizeof(T) * CHAR_BIT);
 
-    if (magic != nullptr)
+    // Bits in a uint
+    const unsigned UINT_BITS = sizeof(T) * CHAR_BIT;
+
+    if (num_bits == UINT_BITS)
     {
-        *shift = magic->shift;
-        *add   = magic->add;
-        return magic->magic;
+        const UnsignedMagic<T>* magic = TryGetUnsignedMagic(d);
+
+        if (magic != nullptr)
+        {
+            *increment = magic->increment;
+            *preShift  = 0;
+            *postShift = magic->postShift;
+            return magic->magic;
+        }
     }
 
-    typedef typename std::make_signed<T>::type ST;
+    // The extra shift implicit in the difference between UINT_BITS and num_bits
+    const unsigned extra_shift = UINT_BITS - num_bits;
 
-    const unsigned bits       = sizeof(T) * 8;
-    const unsigned bitsMinus1 = bits - 1;
-    const T        twoNMinus1 = T(1) << bitsMinus1;
+    // The initial power of 2 is one less than the first one that can possibly work
+    const T initial_power_of_2 = (T)1 << (UINT_BITS - 1);
 
-    *add        = false;
-    const T  nc = -ST(1) - -ST(d) % ST(d);
-    unsigned p  = bitsMinus1;
-    T        q1 = twoNMinus1 / nc;
-    T        r1 = twoNMinus1 - (q1 * nc);
-    T        q2 = (twoNMinus1 - 1) / d;
-    T        r2 = (twoNMinus1 - 1) - (q2 * d);
-    T        delta;
+    // The remainder and quotient of our power of 2 divided by d
+    T quotient = initial_power_of_2 / d, remainder = initial_power_of_2 % d;
 
-    do
+    // The magic info for the variant "round down" algorithm
+    T        down_multiplier = 0;
+    unsigned down_exponent   = 0;
+    int      has_magic_down  = 0;
+
+    // Compute ceil(log_2 D)
+    unsigned ceil_log_2_D = 0;
+    for (T tmp = d; tmp > 0; tmp >>= 1)
+        ceil_log_2_D += 1;
+
+    // Begin a loop that increments the exponent, until we find a power of 2 that works.
+    unsigned exponent;
+    for (exponent = 0;; exponent++)
     {
-        p++;
-
-        if (r1 >= (nc - r1))
+        // Quotient and remainder is from previous exponent; compute it for this exponent.
+        if (remainder >= d - remainder)
         {
-            q1 = 2 * q1 + 1;
-            r1 = 2 * r1 - nc;
+            // Doubling remainder will wrap around D
+            quotient  = quotient * 2 + 1;
+            remainder = remainder * 2 - d;
         }
         else
         {
-            q1 = 2 * q1;
-            r1 = 2 * r1;
+            // Remainder will not wrap
+            quotient  = quotient * 2;
+            remainder = remainder * 2;
         }
 
-        if ((r2 + 1) >= (d - r2))
+        // We're done if this exponent works for the round_up algorithm.
+        // Note that exponent may be larger than the maximum shift supported,
+        // so the check for >= ceil_log_2_D is critical.
+        if ((exponent + extra_shift >= ceil_log_2_D) || (d - remainder) <= ((T)1 << (exponent + extra_shift)))
+            break;
+
+        // Set magic_down if we have not set it yet and this exponent works for the round_down algorithm
+        if (!has_magic_down && remainder <= ((T)1 << (exponent + extra_shift)))
         {
-            if (q2 >= (twoNMinus1 - 1))
-            {
-                *add = true;
-            }
-
-            q2 = 2 * q2 + 1;
-            r2 = 2 * r2 + 1 - d;
+            has_magic_down  = 1;
+            down_multiplier = quotient;
+            down_exponent   = exponent;
         }
-        else
+    }
+
+    if (exponent < ceil_log_2_D)
+    {
+        // magic_up is efficient
+        *increment = false;
+        *preShift  = 0;
+        *postShift = (int)exponent;
+        return quotient + 1;
+    }
+    else if (d & 1)
+    {
+        // Odd divisor, so use magic_down, which must have been set
+        assert(has_magic_down);
+        *increment = true;
+        *preShift  = 0;
+        *postShift = (int)down_exponent;
+        return down_multiplier;
+    }
+    else
+    {
+        // Even divisor, so use a prefix-shifted dividend
+        unsigned pre_shift = 0;
+        T        shifted_D = d;
+        while ((shifted_D & 1) == 0)
         {
-            if (q2 >= twoNMinus1)
-            {
-                *add = true;
-            }
-
-            q2 = 2 * q2;
-            r2 = 2 * r2 + 1;
+            shifted_D >>= 1;
+            pre_shift += 1;
         }
-
-        delta = d - 1 - r2;
-
-    } while ((p < (bits * 2)) && ((q1 < delta) || ((q1 == delta) && (r1 == 0))));
-
-    *shift = p - bits; // resulting shift
-    return q2 + 1;     // resulting magic number
+        T result = GetUnsignedMagic<T>(shifted_D, increment, preShift, postShift, num_bits - pre_shift);
+        assert(*increment == 0 && *preShift == 0); // expect no increment or pre_shift in this path
+        *preShift = (int)pre_shift;
+        return result;
+    }
 }
 
-uint32_t GetUnsigned32Magic(uint32_t d, bool* add /*out*/, int* shift /*out*/)
+uint32_t GetUnsigned32Magic(
+    uint32_t d, bool* increment /*out*/, int* preShift /*out*/, int* postShift /*out*/, unsigned bits)
 {
-    return GetUnsignedMagic<uint32_t>(d, add, shift);
+    assert(bits <= 32);
+    return GetUnsignedMagic<uint32_t>(d, increment, preShift, postShift, bits);
 }
 
 #ifdef TARGET_64BIT
-uint64_t GetUnsigned64Magic(uint64_t d, bool* add /*out*/, int* shift /*out*/)
+uint64_t GetUnsigned64Magic(
+    uint64_t d, bool* increment /*out*/, int* preShift /*out*/, int* postShift /*out*/, unsigned bits)
 {
-    return GetUnsignedMagic<uint64_t>(d, add, shift);
+    assert(bits <= 64);
+    return GetUnsignedMagic<uint64_t>(d, increment, preShift, postShift, bits);
 }
 #endif
 
@@ -2494,4 +2829,202 @@ int64_t GetSigned64Magic(int64_t d, int* shift /*out*/)
     return GetSignedMagic<int64_t>(d, shift);
 }
 #endif
+}
+
+namespace CheckedOps
+{
+bool CastFromIntOverflows(int32_t fromValue, var_types toType, bool fromUnsigned)
+{
+    switch (toType)
+    {
+        case TYP_BOOL:
+        case TYP_BYTE:
+        case TYP_UBYTE:
+        case TYP_SHORT:
+        case TYP_USHORT:
+        case TYP_INT:
+        case TYP_UINT:
+        case TYP_LONG:
+        case TYP_ULONG:
+            return fromUnsigned ? !FitsIn(toType, static_cast<uint32_t>(fromValue)) : !FitsIn(toType, fromValue);
+
+        case TYP_FLOAT:
+        case TYP_DOUBLE:
+            return false;
+
+        default:
+            unreached();
+    }
+}
+
+bool CastFromLongOverflows(int64_t fromValue, var_types toType, bool fromUnsigned)
+{
+    switch (toType)
+    {
+        case TYP_BOOL:
+        case TYP_BYTE:
+        case TYP_UBYTE:
+        case TYP_SHORT:
+        case TYP_USHORT:
+        case TYP_INT:
+        case TYP_UINT:
+        case TYP_LONG:
+        case TYP_ULONG:
+            return fromUnsigned ? !FitsIn(toType, static_cast<uint64_t>(fromValue)) : !FitsIn(toType, fromValue);
+
+        case TYP_FLOAT:
+        case TYP_DOUBLE:
+            return false;
+
+        default:
+            unreached();
+    }
+}
+
+//  ________________________________________________
+// |                                                |
+// |  Casting from floating point to integer types  |
+// |________________________________________________|
+//
+// The code below uses the following pattern to determine if an overflow would
+// occur when casting from a floating point type to an integer type:
+//
+//     return !(MIN <= fromValue && fromValue <= MAX);
+//
+// This section will provide some background on how MIN and MAX were derived
+// and why they are in fact the values to use in that comparison.
+//
+// First - edge cases:
+// 1) NaNs - they compare "false" to normal numbers, which MIN and MAX are, making
+//    the condition return "false" as well, which is flipped to true via "!", indicating
+//    overflow - exactly what we want.
+// 2) Infinities - they are outside of range of any normal numbers, making one of the comparisons
+//    always return "false", indicating overflow.
+// 3) Subnormal numbers - have no special behavior with respect to comparisons.
+// 4) Minus zero - compares equal to "+0", which is what we want as it can be safely cast to an integer "0".
+//
+// Binary normal floating point numbers are represented in the following format:
+//
+//     number = sign * (1 + mantissa) * 2^exponent
+//
+// Where "exponent" is a biased binary integer.
+// And "mantissa" is a fixed-point binary fraction of the following form:
+//
+//     mantissa = bits[1] * 2^-1 + bits[2] * 2^-2 + ... + bits[N] * 2^-N
+//
+// Where "N" is the number of digits that depends on the width of floating point type
+// in question. It is equal to "23" for "float"s and to "52" for "double"s.
+//
+// If we did our calculations with real numbers, the condition to check would simply be:
+//
+//     return !((INT_MIN - 1) < fromValue && fromValue < (INT_MAX + 1));
+//
+// This is because casting uses the "round to zero" semantic: "checked((int)((double)int.MaxValue + 0.9))"
+// yields "int.MaxValue" - not an error. Likewise, "checked((int)((double)int.MinValue - 0.9))"
+// results in "int.MinValue". However, "checked((int)((double)int.MaxValue + 1))" will not compile.
+//
+// The problem, of course, is that we are not dealing with real numbers, but rather floating point approximations.
+// At the same time, some real numbers can be represented in the floating point world exactly.
+// It so happens that both "INT_MIN - 1" and "INT_MAX + 1" can satisfy that requirement for most cases.
+// For unsigned integers, where M is the width of the type in bits:
+//
+//     INT_MIN - 1 = 0 - 1 = -2^0 - exactly representable.
+//     INT_MAX + 1 = (2^M - 1) + 1 = 2^M - exactly representable.
+//
+// For signed integers:
+//
+//     INT_MIN - 1 = -(2^(M - 1)) - 1 - not always exactly representable.
+//     INT_MAX + 1 = (2^(M - 1) - 1) + 1 = 2^(M - 1) - exactly representable.
+//
+// So, we have simple values for MIN and MAX in all but the signed MIN case.
+// To find out what value should be used then, the following equation needs to be solved:
+//
+//     -(2^(M - 1)) - 1 = -(2^(M - 1)) * (1 + m)
+//     1 + 1 / 2^(M - 1) = 1 + m
+//     m = 2^(1 - M)
+//
+// In this case "m" is the "mantissa". The result obtained means that we can find the exact
+// value in cases when "|1 - M| <= N" <=> "M <= N + 1" - i. e. the precision is high enough for there to be a position
+// in the fixed point mantissa that could represent the "-1". It is the case for the following combinations of types:
+//
+//     float -> int8 / int16
+//     double -> int8 / int16 / int32
+//
+// For the remaining cases, we could use a value that is the first representable one for the respective type
+// and is less than the infinitely precise MIN: -(1 + 2^-N) * 2^(M - 1).
+// However, a simpler approach is to just use a different comparison.
+// Instead of "MIN < fromValue", we'll do "MIN <= fromValue", where
+// MIN is just "-(2^(M - 1))" - the smallest representable value that can be cast safely.
+// The following table shows the final values and operations for MIN:
+//
+//     | Cast            | MIN                     | Comparison |
+//     |-----------------|-------------------------|------------|
+//     | float -> int8   | -129.0f                 | <          |
+//     | float -> int16  | -32769.0f               | <          |
+//     | float -> int32  | -2147483648.0f          | <=         |
+//     | float -> int64  | -9223372036854775808.0f | <=         |
+//     | double -> int8  | -129.0                  | <          |
+//     | double -> int16 | -32769.0                | <          |
+//     | double -> int32 | -2147483649.0           | <          |
+//     | double -> int64 | -9223372036854775808.0  | <=         |
+//
+// Note: casts from floating point to floating point never overflow.
+
+bool CastFromFloatOverflows(float fromValue, var_types toType)
+{
+    switch (toType)
+    {
+        case TYP_BYTE:
+            return !(-129.0f < fromValue && fromValue < 128.0f);
+        case TYP_BOOL:
+        case TYP_UBYTE:
+            return !(-1.0f < fromValue && fromValue < 256.0f);
+        case TYP_SHORT:
+            return !(-32769.0f < fromValue && fromValue < 32768.0f);
+        case TYP_USHORT:
+            return !(-1.0f < fromValue && fromValue < 65536.0f);
+        case TYP_INT:
+            return !(-2147483648.0f <= fromValue && fromValue < 2147483648.0f);
+        case TYP_UINT:
+            return !(-1.0 < fromValue && fromValue < 4294967296.0f);
+        case TYP_LONG:
+            return !(-9223372036854775808.0 <= fromValue && fromValue < 9223372036854775808.0f);
+        case TYP_ULONG:
+            return !(-1.0f < fromValue && fromValue < 18446744073709551616.0f);
+        case TYP_FLOAT:
+        case TYP_DOUBLE:
+            return false;
+        default:
+            unreached();
+    }
+}
+
+bool CastFromDoubleOverflows(double fromValue, var_types toType)
+{
+    switch (toType)
+    {
+        case TYP_BYTE:
+            return !(-129.0 < fromValue && fromValue < 128.0);
+        case TYP_BOOL:
+        case TYP_UBYTE:
+            return !(-1.0 < fromValue && fromValue < 256.0);
+        case TYP_SHORT:
+            return !(-32769.0 < fromValue && fromValue < 32768.0);
+        case TYP_USHORT:
+            return !(-1.0 < fromValue && fromValue < 65536.0);
+        case TYP_INT:
+            return !(-2147483649.0 < fromValue && fromValue < 2147483648.0);
+        case TYP_UINT:
+            return !(-1.0 < fromValue && fromValue < 4294967296.0);
+        case TYP_LONG:
+            return !(-9223372036854775808.0 <= fromValue && fromValue < 9223372036854775808.0);
+        case TYP_ULONG:
+            return !(-1.0 < fromValue && fromValue < 18446744073709551616.0);
+        case TYP_FLOAT:
+        case TYP_DOUBLE:
+            return false;
+        default:
+            unreached();
+    }
+}
 }

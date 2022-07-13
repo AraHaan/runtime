@@ -1,21 +1,21 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics;
+using System.IO;
+using System.Globalization;
+using System.Collections;
+using System.Xml.XPath;
+using System.Xml.Xsl.Runtime;
+using MS.Internal.Xml.XPath;
+using System.Reflection;
+using System.Security;
+using System.Runtime.Versioning;
+using System.Diagnostics.CodeAnalysis;
+
 namespace System.Xml.Xsl.XsltOld
 {
-    using System.Diagnostics;
-    using System.IO;
-    using System.Globalization;
-    using System.Collections;
-    using System.Xml.XPath;
-    using System.Xml.Xsl.Runtime;
-    using MS.Internal.Xml.XPath;
-    using System.Reflection;
-    using System.Security;
-    using System.Runtime.Versioning;
-    using System.Diagnostics.CodeAnalysis;
-
-    internal class XsltCompileContext : XsltContext
+    internal sealed class XsltCompileContext : XsltContext
     {
         private InputScopeManager? _manager;
         private Processor? _processor;
@@ -108,7 +108,7 @@ namespace System.Xml.Xsl.XsltOld
             return _processor!.Stylesheet.PreserveWhiteSpace(_processor, node);
         }
 
-        private MethodInfo? FindBestMethod(MethodInfo[] methods, bool ignoreCase, bool publicOnly, string name, XPathResultType[]? argTypes)
+        private static MethodInfo? FindBestMethod(MethodInfo[] methods, bool ignoreCase, bool publicOnly, string name, XPathResultType[]? argTypes)
         {
             int length = methods.Length;
             int free = 0;
@@ -178,11 +178,12 @@ namespace System.Xml.Xsl.XsltOld
                     methods[free++] = methods[i];
                 }
             }
-            length = free;
             return methods[0];
         }
 
         private const BindingFlags bindingFlags = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static;
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2075:RequiresUnreferencedCode",
+            Justification = XsltArgumentList.ExtensionObjectSuppresion)]
         private IXsltContextFunction? GetExtentionMethod(string ns, string name, XPathResultType[]? argTypes, out object? extension)
         {
             FuncExtension? result = null;
@@ -213,7 +214,7 @@ namespace System.Xml.Xsl.XsltOld
 
         public override IXsltContextFunction ResolveFunction(string prefix, string name, XPathResultType[] argTypes)
         {
-            IXsltContextFunction? func = null;
+            IXsltContextFunction? func;
             if (prefix.Length == 0)
             {
                 func = s_FunctionTable[name] as IXsltContextFunction;
@@ -447,44 +448,46 @@ namespace System.Xml.Xsl.XsltOld
             }
             else if (ns.Length == 0)
             {
-                return (
-                    // It'll be better to get this information from XPath
-                    name == "last" ||
-                    name == "position" ||
-                    name == "name" ||
-                    name == "namespace-uri" ||
-                    name == "local-name" ||
-                    name == "count" ||
-                    name == "id" ||
-                    name == "string" ||
-                    name == "concat" ||
-                    name == "starts-with" ||
-                    name == "contains" ||
-                    name == "substring-before" ||
-                    name == "substring-after" ||
-                    name == "substring" ||
-                    name == "string-length" ||
-                    name == "normalize-space" ||
-                    name == "translate" ||
-                    name == "boolean" ||
-                    name == "not" ||
-                    name == "true" ||
-                    name == "false" ||
-                    name == "lang" ||
-                    name == "number" ||
-                    name == "sum" ||
-                    name == "floor" ||
-                    name == "ceiling" ||
-                    name == "round" ||
+                switch (name)
+                {
+                    case "last":
+                    case "position":
+                    case "name":
+                    case "namespace-uri":
+                    case "local-name":
+                    case "count":
+                    case "id":
+                    case "string":
+                    case "concat":
+                    case "starts-with":
+                    case "contains":
+                    case "substring-before":
+                    case "substring-after":
+                    case "substring":
+                    case "string-length":
+                    case "normalize-space":
+                    case "translate":
+                    case "boolean":
+                    case "not":
+                    case "true":
+                    case "false":
+                    case "lang":
+                    case "number":
+                    case "sum":
+                    case "floor":
+                    case "ceiling":
+                    case "round":
+                        return true;
+
                     // XSLT functions:
-                    (s_FunctionTable[name] != null && name != "unparsed-entity-uri")
-                );
+                    default:
+                        return s_FunctionTable[name] != null && name != "unparsed-entity-uri";
+                }
             }
             else
             {
                 // Is this script or extention function?
-                object? extension;
-                return GetExtentionMethod(ns, name, /*argTypes*/null, out extension) != null;
+                return GetExtentionMethod(ns, name, /*argTypes*/null, out _) != null;
             }
         }
 
@@ -736,7 +739,7 @@ namespace System.Xml.Xsl.XsltOld
             }
         }
 
-        private class FuncCurrent : XsltFunctionImpl
+        private sealed class FuncCurrent : XsltFunctionImpl
         {
             public FuncCurrent() : base(0, 0, XPathResultType.NodeSet, Array.Empty<XPathResultType>()) { }
             public override object Invoke(XsltContext xsltContext, object[] args, XPathNavigator docContext)
@@ -745,7 +748,7 @@ namespace System.Xml.Xsl.XsltOld
             }
         }
 
-        private class FuncUnEntityUri : XsltFunctionImpl
+        private sealed class FuncUnEntityUri : XsltFunctionImpl
         {
             public FuncUnEntityUri() : base(1, 1, XPathResultType.String, new XPathResultType[] { XPathResultType.String }) { }
             public override object Invoke(XsltContext xsltContext, object[] args, XPathNavigator docContext)
@@ -754,7 +757,7 @@ namespace System.Xml.Xsl.XsltOld
             }
         }
 
-        private class FuncGenerateId : XsltFunctionImpl
+        private sealed class FuncGenerateId : XsltFunctionImpl
         {
             public FuncGenerateId() : base(0, 1, XPathResultType.String, new XPathResultType[] { XPathResultType.NodeSet }) { }
             public override object Invoke(XsltContext xsltContext, object[] args, XPathNavigator docContext)
@@ -779,7 +782,7 @@ namespace System.Xml.Xsl.XsltOld
             }
         }
 
-        private class FuncSystemProp : XsltFunctionImpl
+        private sealed class FuncSystemProp : XsltFunctionImpl
         {
             public FuncSystemProp() : base(1, 1, XPathResultType.String, new XPathResultType[] { XPathResultType.String }) { }
             public override object Invoke(XsltContext xsltContext, object[] args, XPathNavigator docContext)
@@ -789,7 +792,7 @@ namespace System.Xml.Xsl.XsltOld
         }
 
         // see http://www.w3.org/TR/xslt#function-element-available
-        private class FuncElementAvailable : XsltFunctionImpl
+        private sealed class FuncElementAvailable : XsltFunctionImpl
         {
             public FuncElementAvailable() : base(1, 1, XPathResultType.Boolean, new XPathResultType[] { XPathResultType.String }) { }
             public override object Invoke(XsltContext xsltContext, object[] args, XPathNavigator docContext)
@@ -799,7 +802,7 @@ namespace System.Xml.Xsl.XsltOld
         }
 
         // see: http://www.w3.org/TR/xslt#function-function-available
-        private class FuncFunctionAvailable : XsltFunctionImpl
+        private sealed class FuncFunctionAvailable : XsltFunctionImpl
         {
             public FuncFunctionAvailable() : base(1, 1, XPathResultType.Boolean, new XPathResultType[] { XPathResultType.String }) { }
             public override object Invoke(XsltContext xsltContext, object[] args, XPathNavigator docContext)
@@ -808,7 +811,7 @@ namespace System.Xml.Xsl.XsltOld
             }
         }
 
-        private class FuncDocument : XsltFunctionImpl
+        private sealed class FuncDocument : XsltFunctionImpl
         {
             public FuncDocument() : base(1, 2, XPathResultType.NodeSet, new XPathResultType[] { XPathResultType.Any, XPathResultType.NodeSet }) { }
 
@@ -847,7 +850,7 @@ namespace System.Xml.Xsl.XsltOld
             }
         }
 
-        private class FuncKey : XsltFunctionImpl
+        private sealed class FuncKey : XsltFunctionImpl
         {
             public FuncKey() : base(2, 2, XPathResultType.NodeSet, new XPathResultType[] { XPathResultType.String, XPathResultType.Any }) { }
             public override object Invoke(XsltContext xsltContext, object[] args, XPathNavigator docContext)
@@ -929,7 +932,7 @@ namespace System.Xml.Xsl.XsltOld
             }
         }
 
-        private class FuncFormatNumber : XsltFunctionImpl
+        private sealed class FuncFormatNumber : XsltFunctionImpl
         {
             public FuncFormatNumber() : base(2, 3, XPathResultType.String, new XPathResultType[] { XPathResultType.Number, XPathResultType.String, XPathResultType.String }) { }
             public override object Invoke(XsltContext xsltContext, object[] args, XPathNavigator docContext)
@@ -939,7 +942,7 @@ namespace System.Xml.Xsl.XsltOld
             }
         }
 
-        private class FuncNodeSet : XsltFunctionImpl
+        private sealed class FuncNodeSet : XsltFunctionImpl
         {
             public FuncNodeSet() : base(1, 1, XPathResultType.NodeSet, new XPathResultType[] { XPathResultType.Navigator }) { }
             public override object Invoke(XsltContext xsltContext, object[] args, XPathNavigator docContext)
@@ -948,7 +951,7 @@ namespace System.Xml.Xsl.XsltOld
             }
         }
 
-        private class FuncExtension : XsltFunctionImpl
+        private sealed class FuncExtension : XsltFunctionImpl
         {
             private readonly object _extension;
             private readonly MethodInfo _method;

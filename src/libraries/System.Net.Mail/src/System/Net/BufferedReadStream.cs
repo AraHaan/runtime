@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace System.Net
 {
-    internal class BufferedReadStream : DelegatedStream
+    internal sealed class BufferedReadStream : DelegatedStream
     {
         private byte[]? _storedBuffer;
         private int _storedLength;
@@ -74,7 +74,7 @@ namespace System.Net
 
         public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
-            int read = 0;
+            int read;
             if (_storedOffset >= _storedLength)
             {
                 return base.ReadAsync(buffer, offset, count, cancellationToken);
@@ -157,7 +157,7 @@ namespace System.Net
             Buffer.BlockCopy(buffer, offset, _storedBuffer!, _storedOffset, count);
         }
 
-        private class ReadAsyncResult : LazyAsyncResult
+        private sealed class ReadAsyncResult : LazyAsyncResult
         {
             private readonly BufferedReadStream _parent;
             private int _read;

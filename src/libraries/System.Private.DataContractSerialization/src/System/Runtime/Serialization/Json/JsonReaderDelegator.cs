@@ -8,7 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace System.Runtime.Serialization.Json
 {
-    internal class JsonReaderDelegator : XmlReaderDelegator
+    internal sealed class JsonReaderDelegator : XmlReaderDelegator
     {
         private readonly DateTimeFormat? _dateTimeFormat;
         private DateTimeArrayJsonHelperWithString? _dateTimeArrayHelper;
@@ -24,32 +24,10 @@ namespace System.Runtime.Serialization.Json
             _dateTimeFormat = dateTimeFormat;
         }
 
-        internal XmlDictionaryReaderQuotas? ReaderQuotas
-        {
-            get
-            {
-                if (this.dictionaryReader == null)
-                {
-                    return null;
-                }
-                else
-                {
-                    return dictionaryReader.Quotas;
-                }
-            }
-        }
+        internal XmlDictionaryReaderQuotas? ReaderQuotas => dictionaryReader?.Quotas;
 
-        private DateTimeArrayJsonHelperWithString DateTimeArrayHelper
-        {
-            get
-            {
-                if (_dateTimeArrayHelper == null)
-                {
-                    _dateTimeArrayHelper = new DateTimeArrayJsonHelperWithString(_dateTimeFormat);
-                }
-                return _dateTimeArrayHelper;
-            }
-        }
+        private DateTimeArrayJsonHelperWithString DateTimeArrayHelper =>
+            _dateTimeArrayHelper ??= new DateTimeArrayJsonHelperWithString(_dateTimeFormat);
 
         internal static XmlQualifiedName ParseQualifiedName(string qname)
         {
@@ -259,7 +237,7 @@ namespace System.Runtime.Serialization.Json
             return true;
         }
 
-        private class DateTimeArrayJsonHelperWithString : ArrayHelper<string, DateTime>
+        private sealed class DateTimeArrayJsonHelperWithString : ArrayHelper<string, DateTime>
         {
             private readonly DateTimeFormat? _dateTimeFormat;
 

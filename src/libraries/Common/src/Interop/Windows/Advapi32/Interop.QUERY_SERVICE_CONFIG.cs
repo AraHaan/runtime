@@ -3,12 +3,12 @@
 
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Advapi32
+    internal static partial class Advapi32
     {
         [StructLayout(LayoutKind.Sequential)]
-        internal unsafe class QUERY_SERVICE_CONFIG
+        internal sealed unsafe class QUERY_SERVICE_CONFIG
         {
             internal int dwServiceType;
             internal int dwStartType;

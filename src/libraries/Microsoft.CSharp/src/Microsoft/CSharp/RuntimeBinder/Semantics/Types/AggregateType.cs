@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.CSharp.RuntimeBinder.Syntax;
 
 namespace Microsoft.CSharp.RuntimeBinder.Semantics
@@ -75,6 +76,7 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
 
         public AggregateType BaseClass
         {
+            [RequiresUnreferencedCode(Binder.TrimmerWarning)]
             get
             {
                 if (_baseType == null)
@@ -110,6 +112,7 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
 
         public IEnumerable<AggregateType> TypeHierarchy
         {
+            [RequiresUnreferencedCode(Binder.TrimmerWarning)]
             get
             {
                 if (IsInterfaceType)
@@ -120,11 +123,11 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
                         yield return iface;
                     }
 
-                    yield return PredefinedTypes.GetPredefinedAggregate(PredefinedType.PT_OBJECT).getThisType();
+                    yield return GetPredefinedAggregateGetThisTypeWithSuppressedMessage();
                 }
                 else
                 {
-                    for (AggregateType agg = this; agg != null; agg = agg.BaseClass)
+                    for (AggregateType agg = this; agg != null; agg = agg.BaseClassWithSuppressedMessage)
                     {
                         yield return agg;
                     }
@@ -132,14 +135,29 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
             }
         }
 
+        private AggregateType BaseClassWithSuppressedMessage
+        {
+            [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode",
+                Justification = "Workarounds https://github.com/mono/linker/issues/1906. All usages are marked as unsafe.")]
+            get => BaseClass;
+        }
+
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode",
+                Justification = "Workarounds https://github.com/mono/linker/issues/1906. All usages are marked as unsafe.")]
+        private static AggregateType GetPredefinedAggregateGetThisTypeWithSuppressedMessage()
+        {
+            return PredefinedTypes.GetPredefinedAggregate(PredefinedType.PT_OBJECT).getThisType();
+        }
+
         public TypeArray TypeArgsThis { get; }
 
         public TypeArray TypeArgsAll { get; }
 
-        public TypeArray IfacesAll => _ifacesAll ?? (_ifacesAll = TypeManager.SubstTypeArray(OwningAggregate.GetIfacesAll(), TypeArgsAll));
+        public TypeArray IfacesAll => _ifacesAll ??= TypeManager.SubstTypeArray(OwningAggregate.GetIfacesAll(), TypeArgsAll);
 
         private bool IsCollectionType
         {
+            [RequiresUnreferencedCode(Binder.TrimmerWarning)]
             get
             {
                 Type sysType = AssociatedSystemType;
@@ -165,6 +183,7 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
 
         public TypeArray WinRTCollectionIfacesAll
         {
+            [RequiresUnreferencedCode(Binder.TrimmerWarning)]
             get
             {
                 if (_winrtifacesAll == null)
@@ -281,8 +300,13 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
             }
         }
 
-        public override Type AssociatedSystemType => _associatedSystemType ?? (_associatedSystemType = CalculateAssociatedSystemType());
+        public override Type AssociatedSystemType
+        {
+            [RequiresUnreferencedCode(Binder.TrimmerWarning)]
+            get => _associatedSystemType ??= CalculateAssociatedSystemType();
+        }
 
+        [RequiresUnreferencedCode(Binder.TrimmerWarning)]
         private Type CalculateAssociatedSystemType()
         {
             Type uninstantiatedType = OwningAggregate.AssociatedSystemType;
@@ -385,6 +409,7 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
             }
         }
 
+        [RequiresUnreferencedCode(Binder.TrimmerWarning)]
         public override AggregateType GetAts() => this;
     }
 }

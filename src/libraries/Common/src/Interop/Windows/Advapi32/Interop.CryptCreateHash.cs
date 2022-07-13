@@ -5,9 +5,9 @@ using System;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Advapi32
+    internal static partial class Advapi32
     {
         [Flags]
         internal enum CryptCreateHashFlags : int
@@ -15,11 +15,12 @@ internal partial class Interop
             None = 0,
         }
 
-        [DllImport(Libraries.Advapi32, CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern bool CryptCreateHash(
+        [LibraryImport(Libraries.Advapi32, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool CryptCreateHash(
             SafeProvHandle hProv,
             int Algid,
-            SafeKeyHandle hKey,
+            SafeCapiKeyHandle hKey,
             CryptCreateHashFlags dwFlags,
             out SafeHashHandle phHash);
     }

@@ -163,10 +163,9 @@ flowList* Compiler::BlockPredsWithEH(BasicBlock* blk)
         // Find the first block of the try.
         EHblkDsc*   ehblk    = ehGetDsc(tryIndex);
         BasicBlock* tryStart = ehblk->ebdTryBeg;
-        for (flowList* tryStartPreds = tryStart->bbPreds; tryStartPreds != nullptr;
-             tryStartPreds           = tryStartPreds->flNext)
+        for (BasicBlock* const tryStartPredBlock : tryStart->PredBlocks())
         {
-            res = new (this, CMK_FlowList) flowList(tryStartPreds->getBlock(), res);
+            res = new (this, CMK_FlowList) flowList(tryStartPredBlock, res);
 
 #if MEASURE_BLOCK_SIZE
             genFlowNodeCnt += 1;
@@ -182,7 +181,7 @@ flowList* Compiler::BlockPredsWithEH(BasicBlock* blk)
         //     (plus adding in any filter blocks outside the try whose exceptions are handled here).
         // That doesn't work, however: funclets have caused us to sometimes split the body of a try into
         // more than one sequence of contiguous blocks.  We need to find a better way to do this.
-        for (BasicBlock* bb = fgFirstBB; bb != nullptr; bb = bb->bbNext)
+        for (BasicBlock* const bb : Blocks())
         {
             if (bbInExnFlowRegions(tryIndex, bb) && !bb->isBBCallAlwaysPairTail())
             {
@@ -217,9 +216,9 @@ flowList* Compiler::BlockPredsWithEH(BasicBlock* blk)
 bool BasicBlock::checkPredListOrder()
 {
     unsigned lastBBNum = 0;
-    for (flowList* pred = bbPreds; pred != nullptr; pred = pred->flNext)
+    for (BasicBlock* const predBlock : PredBlocks())
     {
-        const unsigned bbNum = pred->getBlock()->bbNum;
+        const unsigned bbNum = predBlock->bbNum;
         if (bbNum <= lastBBNum)
         {
             assert(bbNum != lastBBNum);
@@ -261,7 +260,7 @@ void BasicBlock::reorderPredList(Compiler* compiler)
     // Count number or entries.
     //
     int count = 0;
-    for (flowList* pred = bbPreds; pred != nullptr; pred = pred->flNext)
+    for (flowList* const pred : PredEdges())
     {
         count++;
     }
@@ -286,7 +285,7 @@ void BasicBlock::reorderPredList(Compiler* compiler)
 
     // Fill in the vector from the list.
     //
-    for (flowList* pred = bbPreds; pred != nullptr; pred = pred->flNext)
+    for (flowList* const pred : PredEdges())
     {
         sortVector->push_back(pred);
     }
@@ -419,10 +418,6 @@ void BasicBlock::dspFlags()
     {
         printf("label ");
     }
-    if (bbFlags & BBF_JMP_TARGET)
-    {
-        printf("target ");
-    }
     if (bbFlags & BBF_HAS_JMP)
     {
         printf("jmp ");
@@ -443,9 +438,9 @@ void BasicBlock::dspFlags()
     {
         printf("idxlen ");
     }
-    if (bbFlags & BBF_HAS_NEWARRAY)
+    if (bbFlags & BBF_HAS_MD_IDX_LEN)
     {
-        printf("new[] ");
+        printf("mdidxlen ");
     }
     if (bbFlags & BBF_HAS_NEWOBJ)
     {
@@ -469,9 +464,17 @@ void BasicBlock::dspFlags()
     {
         printf("bwd-target ");
     }
+    if (bbFlags & BBF_BACKWARD_JUMP_SOURCE)
+    {
+        printf("bwd-src ");
+    }
     if (bbFlags & BBF_PATCHPOINT)
     {
         printf("ppoint ");
+    }
+    if (bbFlags & BBF_PARTIAL_COMPILATION_PATCHPOINT)
+    {
+        printf("pc-ppoint ");
     }
     if (bbFlags & BBF_RETLESS_CALL)
     {
@@ -509,6 +512,10 @@ void BasicBlock::dspFlags()
     {
         printf("align ");
     }
+    if (bbFlags & BBF_HAS_MDARRAYREF)
+    {
+        printf("mdarr ");
+    }
 }
 
 /*****************************************************************************
@@ -520,7 +527,7 @@ void BasicBlock::dspFlags()
 unsigned BasicBlock::dspPreds()
 {
     unsigned count = 0;
-    for (flowList* pred = bbPreds; pred != nullptr; pred = pred->flNext)
+    for (flowList* const pred : PredEdges())
     {
         if (count != 0)
         {
@@ -576,23 +583,50 @@ unsigned BasicBlock::dspCheapPreds()
     return count;
 }
 
-/*****************************************************************************
- *
- *  Display the basic block successors.
- *  Returns the count of successors.
- */
-
-unsigned BasicBlock::dspSuccs(Compiler* compiler)
+//------------------------------------------------------------------------
+// dspSuccs: Display the basic block successors.
+//
+// Arguments:
+//    compiler - compiler instance; passed to NumSucc(Compiler*) -- see that function for implications.
+//
+void BasicBlock::dspSuccs(Compiler* compiler)
 {
-    unsigned numSuccs = NumSucc(compiler);
-    unsigned count    = 0;
-    for (unsigned i = 0; i < numSuccs; i++)
+    bool first = true;
+
+    // If this is a switch, we don't want to call `Succs(Compiler*)` because it will eventually call
+    // `GetSwitchDescMap()`, and that will have the side-effect of allocating the unique switch descriptor map
+    // and/or compute this switch block's unique succ set if it is not present. Debug output functions should
+    // never have an effect on codegen. We also don't want to assume the unique succ set is accurate, so we
+    // compute it ourselves here.
+    if (bbJumpKind == BBJ_SWITCH)
     {
-        printf("%s", (count == 0) ? "" : ",");
-        printf(FMT_BB, GetSucc(i, compiler)->bbNum);
-        count++;
+        // Create a set with all the successors. Don't use BlockSet, so we don't need to worry
+        // about the BlockSet epoch.
+        unsigned     bbNumMax = compiler->impInlineRoot()->fgBBNumMax;
+        BitVecTraits bitVecTraits(bbNumMax + 1, compiler);
+        BitVec       uniqueSuccBlocks(BitVecOps::MakeEmpty(&bitVecTraits));
+        for (BasicBlock* const bTarget : SwitchTargets())
+        {
+            BitVecOps::AddElemD(&bitVecTraits, uniqueSuccBlocks, bTarget->bbNum);
+        }
+        BitVecOps::Iter iter(&bitVecTraits, uniqueSuccBlocks);
+        unsigned        bbNum = 0;
+        while (iter.NextElem(&bbNum))
+        {
+            // Note that we will output switch successors in increasing numerical bbNum order, which is
+            // not related to their order in the bbJumpSwt->bbsDstTab table.
+            printf("%s" FMT_BB, first ? "" : ",", bbNum);
+            first = false;
+        }
     }
-    return count;
+    else
+    {
+        for (BasicBlock* const succ : Succs(compiler))
+        {
+            printf("%s" FMT_BB, first ? "" : ",", succ->bbNum);
+            first = false;
+        }
+    }
 }
 
 // Display a compact representation of the bbJumpKind, that is, where this block branches.
@@ -650,19 +684,32 @@ void BasicBlock::dspJumpKind()
             break;
 
         case BBJ_SWITCH:
+        {
             printf(" ->");
 
-            unsigned jumpCnt;
-            jumpCnt = bbJumpSwt->bbsCount;
-            BasicBlock** jumpTab;
-            jumpTab = bbJumpSwt->bbsDstTab;
-            do
+            const unsigned     jumpCnt = bbJumpSwt->bbsCount;
+            BasicBlock** const jumpTab = bbJumpSwt->bbsDstTab;
+
+            for (unsigned i = 0; i < jumpCnt; i++)
             {
-                printf("%c" FMT_BB, (jumpTab == bbJumpSwt->bbsDstTab) ? ' ' : ',', (*jumpTab)->bbNum);
-            } while (++jumpTab, --jumpCnt);
+                printf("%c" FMT_BB, (i == 0) ? ' ' : ',', jumpTab[i]->bbNum);
+
+                const bool isDefault = bbJumpSwt->bbsHasDefault && (i == jumpCnt - 1);
+                if (isDefault)
+                {
+                    printf("[def]");
+                }
+
+                const bool isDominant = bbJumpSwt->bbsHasDominantCase && (i == bbJumpSwt->bbsDominantCase);
+                if (isDominant)
+                {
+                    printf("[dom(" FMT_WT ")]", bbJumpSwt->bbsDominantFraction);
+                }
+            }
 
             printf(" (switch)");
-            break;
+        }
+        break;
 
         default:
             unreached();
@@ -706,14 +753,14 @@ void BasicBlock::dspBlockHeader(Compiler* compiler,
     printf("\n");
 }
 
-const char* BasicBlock::dspToString(int blockNumPadding /* = 2*/)
+const char* BasicBlock::dspToString(int blockNumPadding /* = 0 */)
 {
     static char buffers[3][64]; // static array of 3 to allow 3 concurrent calls in one printf()
     static int  nextBufferIndex = 0;
 
     auto& buffer    = buffers[nextBufferIndex];
-    nextBufferIndex = (nextBufferIndex + 1) % _countof(buffers);
-    _snprintf_s(buffer, _countof(buffer), _countof(buffer), FMT_BB "%*s [%04u]", bbNum, blockNumPadding, "", bbID);
+    nextBufferIndex = (nextBufferIndex + 1) % ArrLen(buffers);
+    _snprintf_s(buffer, ArrLen(buffer), ArrLen(buffer), FMT_BB "%*s [%04u]", bbNum, blockNumPadding, "", bbID);
     return buffer;
 }
 
@@ -764,9 +811,9 @@ bool BasicBlock::CloneBlockState(
     to->bbTgtStkDepth = from->bbTgtStkDepth;
 #endif // DEBUG
 
-    for (Statement* fromStmt : from->Statements())
+    for (Statement* const fromStmt : from->Statements())
     {
-        auto newExpr = compiler->gtCloneExpr(fromStmt->GetRootNode(), 0, varNum, varVal);
+        GenTree* newExpr = compiler->gtCloneExpr(fromStmt->GetRootNode(), GTF_EMPTY, varNum, varVal);
         if (!newExpr)
         {
             // gtCloneExpr doesn't handle all opcodes, so may fail to clone a statement.
@@ -774,7 +821,7 @@ bool BasicBlock::CloneBlockState(
             // return `false` to the caller to indicate that cloning was unsuccessful.
             return false;
         }
-        compiler->fgInsertStmtAtEnd(to, compiler->fgNewStmtFromTree(newExpr));
+        compiler->fgInsertStmtAtEnd(to, compiler->fgNewStmtFromTree(newExpr, fromStmt->GetDebugInfo()));
     }
     return true;
 }
@@ -791,7 +838,7 @@ void BasicBlock::MakeLIR(GenTree* firstNode, GenTree* lastNode)
     bbFlags |= BBF_IS_LIR;
 }
 
-bool BasicBlock::IsLIR()
+bool BasicBlock::IsLIR() const
 {
     assert(isValid());
     const bool isLIR = ((bbFlags & BBF_IS_LIR) != 0);
@@ -834,17 +881,9 @@ Statement* BasicBlock::lastStmt() const
 }
 
 //------------------------------------------------------------------------
-// BasicBlock::firstNode: Returns the first node in the block.
-//
-GenTree* BasicBlock::firstNode()
-{
-    return IsLIR() ? GetFirstLIRNode() : Compiler::fgGetFirstNode(firstStmt()->GetRootNode());
-}
-
-//------------------------------------------------------------------------
 // BasicBlock::lastNode: Returns the last node in the block.
 //
-GenTree* BasicBlock::lastNode()
+GenTree* BasicBlock::lastNode() const
 {
     return IsLIR() ? m_lastNode : lastStmt()->GetRootNode();
 }
@@ -864,7 +903,7 @@ GenTree* BasicBlock::lastNode()
 //    a backedge), we never want to consider it "unique" because the prolog is an
 //    implicit predecessor.
 
-BasicBlock* BasicBlock::GetUniquePred(Compiler* compiler)
+BasicBlock* BasicBlock::GetUniquePred(Compiler* compiler) const
 {
     if ((bbPreds == nullptr) || (bbPreds->flNext != nullptr) || (this == compiler->fgFirstBB))
     {
@@ -886,7 +925,7 @@ BasicBlock* BasicBlock::GetUniquePred(Compiler* compiler)
 // Return Value:
 //    The unique successor of a block, or nullptr if there is no unique successor.
 
-BasicBlock* BasicBlock::GetUniqueSucc()
+BasicBlock* BasicBlock::GetUniqueSucc() const
 {
     if (bbJumpKind == BBJ_ALWAYS)
     {
@@ -917,18 +956,33 @@ unsigned JitPtrKeyFuncs<BasicBlock>::GetHashCode(const BasicBlock* ptr)
     return ptr->bbNum;
 }
 
-bool BasicBlock::isEmpty()
+//------------------------------------------------------------------------
+// isEmpty: check if block is empty or contains only ignorable statements
+//
+// Return Value:
+//    True if block is empty, or contains only PHI assignments,
+//    or contains zero or more PHI assignments followed by NOPs.
+//
+bool BasicBlock::isEmpty() const
 {
     if (!IsLIR())
     {
-        return (this->FirstNonPhiDef() == nullptr);
-    }
-
-    for (GenTree* node : LIR::AsRange(this).NonPhiNodes())
-    {
-        if (node->OperGet() != GT_IL_OFFSET)
+        for (Statement* const stmt : NonPhiStatements())
         {
-            return false;
+            if (!stmt->GetRootNode()->OperIs(GT_NOP))
+            {
+                return false;
+            }
+        }
+    }
+    else
+    {
+        for (GenTree* node : LIR::AsRange(this))
+        {
+            if (node->OperGet() != GT_IL_OFFSET)
+            {
+                return false;
+            }
         }
     }
 
@@ -941,7 +995,7 @@ bool BasicBlock::isEmpty()
 // Return Value:
 //    True if it a valid basic block.
 //
-bool BasicBlock::isValid()
+bool BasicBlock::isValid() const
 {
     const bool isLIR = ((bbFlags & BBF_IS_LIR) != 0);
     if (isLIR)
@@ -956,7 +1010,7 @@ bool BasicBlock::isValid()
     }
 }
 
-Statement* BasicBlock::FirstNonPhiDef()
+Statement* BasicBlock::FirstNonPhiDef() const
 {
     Statement* stmt = firstStmt();
     if (stmt == nullptr)
@@ -977,7 +1031,7 @@ Statement* BasicBlock::FirstNonPhiDef()
     return stmt;
 }
 
-Statement* BasicBlock::FirstNonPhiDefOrCatchArgAsg()
+Statement* BasicBlock::FirstNonPhiDefOrCatchArgAsg() const
 {
     Statement* stmt = FirstNonPhiDef();
     if (stmt == nullptr)
@@ -995,29 +1049,13 @@ Statement* BasicBlock::FirstNonPhiDefOrCatchArgAsg()
 
 /*****************************************************************************
  *
- *  Mark a block as rarely run, we also don't want to have a loop in a
- *   rarely run block, and we set it's weight to zero.
- */
-
-void BasicBlock::bbSetRunRarely()
-{
-    setBBWeight(BB_ZERO_WEIGHT);
-    if (bbWeight == BB_ZERO_WEIGHT)
-    {
-        bbFlags |= BBF_RUN_RARELY; // This block is never/rarely run
-    }
-}
-
-/*****************************************************************************
- *
  *  Can a BasicBlock be inserted after this without altering the flowgraph
  */
 
-bool BasicBlock::bbFallsThrough()
+bool BasicBlock::bbFallsThrough() const
 {
     switch (bbJumpKind)
     {
-
         case BBJ_THROW:
         case BBJ_EHFINALLYRET:
         case BBJ_EHFILTERRET:
@@ -1050,7 +1088,7 @@ bool BasicBlock::bbFallsThrough()
 // Return Value:
 //    Count of block successors.
 //
-unsigned BasicBlock::NumSucc()
+unsigned BasicBlock::NumSucc() const
 {
     switch (bbJumpKind)
     {
@@ -1094,7 +1132,7 @@ unsigned BasicBlock::NumSucc()
 // Return Value:
 //    Requested successor block
 //
-BasicBlock* BasicBlock::GetSucc(unsigned i)
+BasicBlock* BasicBlock::GetSucc(unsigned i) const
 {
     assert(i < NumSucc()); // Index bounds check.
     switch (bbJumpKind)
@@ -1266,7 +1304,7 @@ void BasicBlock::InitVarSets(Compiler* comp)
 }
 
 // Returns true if the basic block ends with GT_JMP
-bool BasicBlock::endsWithJmpMethod(Compiler* comp)
+bool BasicBlock::endsWithJmpMethod(Compiler* comp) const
 {
     if (comp->compJmpOpUsed && (bbJumpKind == BBJ_RETURN) && (bbFlags & BBF_HAS_JMP))
     {
@@ -1286,7 +1324,7 @@ bool BasicBlock::endsWithJmpMethod(Compiler* comp)
 //    comp              - Compiler instance
 //    fastTailCallsOnly - Only consider fast tail calls excluding tail calls via helper.
 //
-bool BasicBlock::endsWithTailCallOrJmp(Compiler* comp, bool fastTailCallsOnly /*=false*/)
+bool BasicBlock::endsWithTailCallOrJmp(Compiler* comp, bool fastTailCallsOnly /*=false*/) const
 {
     GenTree* tailCall                       = nullptr;
     bool     tailCallsConvertibleToLoopOnly = false;
@@ -1313,7 +1351,7 @@ bool BasicBlock::endsWithTailCallOrJmp(Compiler* comp, bool fastTailCallsOnly /*
 bool BasicBlock::endsWithTailCall(Compiler* comp,
                                   bool      fastTailCallsOnly,
                                   bool      tailCallsConvertibleToLoopOnly,
-                                  GenTree** tailCall)
+                                  GenTree** tailCall) const
 {
     assert(!fastTailCallsOnly || !tailCallsConvertibleToLoopOnly);
     *tailCall   = nullptr;
@@ -1380,7 +1418,7 @@ bool BasicBlock::endsWithTailCall(Compiler* comp,
 // Return Value:
 //    true if the block ends with a tail call convertible to loop.
 //
-bool BasicBlock::endsWithTailCallConvertibleToLoop(Compiler* comp, GenTree** tailCall)
+bool BasicBlock::endsWithTailCallConvertibleToLoop(Compiler* comp, GenTree** tailCall) const
 {
     bool fastTailCallsOnly              = false;
     bool tailCallsConvertibleToLoopOnly = true;
@@ -1428,6 +1466,7 @@ BasicBlock* Compiler::bbNewBasicBlock(BBjumpKinds jumpKind)
     /* Give the block a number, set the ancestor count and weight */
 
     ++fgBBcount;
+    ++fgBBNumMax;
 
     if (compIsForInlining())
     {
@@ -1435,7 +1474,7 @@ BasicBlock* Compiler::bbNewBasicBlock(BBjumpKinds jumpKind)
     }
     else
     {
-        block->bbNum = ++fgBBNumMax;
+        block->bbNum = fgBBNumMax;
     }
 
     if (compRationalIRForm)
@@ -1500,7 +1539,7 @@ BasicBlock* Compiler::bbNewBasicBlock(BBjumpKinds jumpKind)
     }
 
     // Make sure we reserve a NOT_IN_LOOP value that isn't a legal table index.
-    static_assert_no_msg(MAX_LOOP_NUM < BasicBlock::NOT_IN_LOOP);
+    static_assert_no_msg(BasicBlock::MAX_LOOP_NUM < BasicBlock::NOT_IN_LOOP);
 
     block->bbNatLoopNum = BasicBlock::NOT_IN_LOOP;
 
@@ -1509,7 +1548,7 @@ BasicBlock* Compiler::bbNewBasicBlock(BBjumpKinds jumpKind)
 
 //------------------------------------------------------------------------
 // isBBCallAlwaysPair: Determine if this is the first block of a BBJ_CALLFINALLY/BBJ_ALWAYS pair
-
+//
 // Return Value:
 //    True iff "this" is the first block of a BBJ_CALLFINALLY/BBJ_ALWAYS pair
 //    -- a block corresponding to an exit from the try of a try/finally.
@@ -1527,7 +1566,7 @@ BasicBlock* Compiler::bbNewBasicBlock(BBjumpKinds jumpKind)
 //    "retless" BBJ_CALLFINALLY blocks due to a requirement to use the BBJ_ALWAYS for
 //    generating code.
 //
-bool BasicBlock::isBBCallAlwaysPair()
+bool BasicBlock::isBBCallAlwaysPair() const
 {
 #if defined(FEATURE_EH_FUNCLETS) && defined(TARGET_ARM)
     if (this->bbJumpKind == BBJ_CALLFINALLY)
@@ -1554,7 +1593,7 @@ bool BasicBlock::isBBCallAlwaysPair()
 }
 
 //------------------------------------------------------------------------
-// isBBCallAlwaysPairTail: Determine if this is the last block of a BBJ_CALLFINALLY/BBJ_ALWAYS pari
+// isBBCallAlwaysPairTail: Determine if this is the last block of a BBJ_CALLFINALLY/BBJ_ALWAYS pair
 //
 // Return Value:
 //    True iff "this" is the last block of a BBJ_CALLFINALLY/BBJ_ALWAYS pair
@@ -1563,7 +1602,7 @@ bool BasicBlock::isBBCallAlwaysPair()
 // Notes:
 //    See notes on isBBCallAlwaysPair(), above.
 //
-bool BasicBlock::isBBCallAlwaysPairTail()
+bool BasicBlock::isBBCallAlwaysPairTail() const
 {
     return (bbPrev != nullptr) && bbPrev->isBBCallAlwaysPair();
 }
@@ -1584,7 +1623,7 @@ bool BasicBlock::isBBCallAlwaysPairTail()
 //    this block might be entered via flow that is not represented by an edge
 //    in the flowgraph.
 //
-bool BasicBlock::hasEHBoundaryIn()
+bool BasicBlock::hasEHBoundaryIn() const
 {
     bool returnVal = (bbCatchTyp != BBCT_NONE);
     if (!returnVal)
@@ -1608,7 +1647,7 @@ bool BasicBlock::hasEHBoundaryIn()
 //    live in registers if any successor is a normal flow edge. That's because the
 //    EH write-thru semantics ensure that we always have an up-to-date value on the stack.
 //
-bool BasicBlock::hasEHBoundaryOut()
+bool BasicBlock::hasEHBoundaryOut() const
 {
     bool returnVal = false;
     if (bbJumpKind == BBJ_EHFILTERRET)
@@ -1629,4 +1668,47 @@ bool BasicBlock::hasEHBoundaryOut()
 #endif // FEATURE_EH_FUNCLETS
 
     return returnVal;
+}
+
+//------------------------------------------------------------------------
+// BBswtDesc copy ctor: copy a switch descriptor
+//
+// Arguments:
+//    comp - compiler instance
+//    other - existing switch descriptor to copy
+//
+BBswtDesc::BBswtDesc(Compiler* comp, const BBswtDesc* other)
+    : bbsDstTab(nullptr)
+    , bbsCount(other->bbsCount)
+    , bbsDominantCase(other->bbsDominantCase)
+    , bbsDominantFraction(other->bbsDominantFraction)
+    , bbsHasDefault(other->bbsHasDefault)
+    , bbsHasDominantCase(other->bbsHasDominantCase)
+{
+    // Allocate and fill in a new dst tab
+    //
+    bbsDstTab = new (comp, CMK_BasicBlock) BasicBlock*[bbsCount];
+    for (unsigned i = 0; i < bbsCount; i++)
+    {
+        bbsDstTab[i] = other->bbsDstTab[i];
+    }
+}
+
+//------------------------------------------------------------------------
+// unmarkLoopAlign: Unmarks the LOOP_ALIGN flag from the block and reduce the
+//                  loop alignment count.
+//
+// Arguments:
+//    compiler - Compiler instance
+//    reason - Reason to print in JITDUMP
+//
+void BasicBlock::unmarkLoopAlign(Compiler* compiler DEBUG_ARG(const char* reason))
+{
+    // Make sure we unmark and count just once.
+    if (isLoopAlign())
+    {
+        compiler->loopAlignCandidates--;
+        bbFlags &= ~BBF_LOOP_ALIGN;
+        JITDUMP("Unmarking LOOP_ALIGN from " FMT_BB ". Reason= %s.\n", bbNum, reason);
+    }
 }

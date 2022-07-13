@@ -47,6 +47,8 @@ namespace System.Collections.Generic
         public static TValue GetValueOrDefault<TKey, TValue>(this System.Collections.Generic.IReadOnlyDictionary<TKey, TValue> dictionary, TKey key, TValue defaultValue) { throw null; }
         public static bool Remove<TKey, TValue>(this System.Collections.Generic.IDictionary<TKey, TValue> dictionary, TKey key, [System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] out TValue value) { throw null; }
         public static bool TryAdd<TKey, TValue>(this System.Collections.Generic.IDictionary<TKey, TValue> dictionary, TKey key, TValue value) { throw null; }
+        public static System.Collections.ObjectModel.ReadOnlyCollection<T> AsReadOnly<T>(this IList<T> list) { throw null; }
+        public static System.Collections.ObjectModel.ReadOnlyDictionary<TKey, TValue> AsReadOnly<TKey, TValue>(this IDictionary<TKey, TValue> dictionary) where TKey : notnull { throw null; }
     }
     public abstract partial class Comparer<T> : System.Collections.Generic.IComparer<T>, System.Collections.IComparer
     {
@@ -324,6 +326,7 @@ namespace System.Collections.Generic
         public void CopyTo(int index, T[] array, int arrayIndex, int count) { }
         public void CopyTo(T[] array) { }
         public void CopyTo(T[] array, int arrayIndex) { }
+        public int EnsureCapacity(int capacity) { throw null; }
         public bool Exists(System.Predicate<T> match) { throw null; }
         public T? Find(System.Predicate<T> match) { throw null; }
         public System.Collections.Generic.List<T> FindAll(System.Predicate<T> match) { throw null; }
@@ -378,6 +381,51 @@ namespace System.Collections.Generic
             void System.Collections.IEnumerator.Reset() { }
         }
     }
+
+    public partial class PriorityQueue<TElement, TPriority>
+    {
+        public PriorityQueue() { }
+        public PriorityQueue(System.Collections.Generic.IComparer<TPriority>? comparer) { }
+        public PriorityQueue(System.Collections.Generic.IEnumerable<(TElement Element, TPriority Priority)> items) { }
+        public PriorityQueue(System.Collections.Generic.IEnumerable<(TElement Element, TPriority Priority)> items, System.Collections.Generic.IComparer<TPriority>? comparer) { }
+        public PriorityQueue(int initialCapacity) { }
+        public PriorityQueue(int initialCapacity, System.Collections.Generic.IComparer<TPriority>? comparer) { }
+        public System.Collections.Generic.IComparer<TPriority> Comparer { get { throw null; } }
+        public int Count { get { throw null; } }
+        public System.Collections.Generic.PriorityQueue<TElement, TPriority>.UnorderedItemsCollection UnorderedItems { get { throw null; } }
+        public void Clear() { }
+        public TElement Dequeue() { throw null; }
+        public void Enqueue(TElement element, TPriority priority) { }
+        public TElement EnqueueDequeue(TElement element, TPriority priority) { throw null; }
+        public void EnqueueRange(System.Collections.Generic.IEnumerable<(TElement Element, TPriority Priority)> items) { }
+        public void EnqueueRange(System.Collections.Generic.IEnumerable<TElement> elements, TPriority priority) { }
+        public int EnsureCapacity(int capacity) { throw null; }
+        public TElement Peek() { throw null; }
+        public void TrimExcess() { }
+        public bool TryDequeue([System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] out TElement element, [System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] out TPriority priority) { throw null; }
+        public bool TryPeek([System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] out TElement element, [System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] out TPriority priority) { throw null; }
+        public sealed partial class UnorderedItemsCollection : System.Collections.Generic.IEnumerable<(TElement Element, TPriority Priority)>, System.Collections.Generic.IReadOnlyCollection<(TElement Element, TPriority Priority)>, System.Collections.ICollection, System.Collections.IEnumerable
+        {
+            internal UnorderedItemsCollection(PriorityQueue<TElement, TPriority> queue) { }
+            public int Count { get { throw null; } }
+            bool System.Collections.ICollection.IsSynchronized { get { throw null; } }
+            object System.Collections.ICollection.SyncRoot { get { throw null; } }
+            void ICollection.CopyTo(System.Array array, int index) { }
+            public System.Collections.Generic.PriorityQueue<TElement, TPriority>.UnorderedItemsCollection.Enumerator GetEnumerator() { throw null; }
+            System.Collections.Generic.IEnumerator<(TElement Element, TPriority Priority)> System.Collections.Generic.IEnumerable<(TElement Element, TPriority Priority)>.GetEnumerator() { throw null; }
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() { throw null; }
+            public partial struct Enumerator : System.Collections.Generic.IEnumerator<(TElement Element, TPriority Priority)>, System.Collections.IEnumerator, System.IDisposable
+            {
+                (TElement Element, TPriority Priority) IEnumerator<(TElement Element, TPriority Priority)>.Current { get { throw null; } }
+                public void Dispose() { }
+                public bool MoveNext() { throw null; }
+                public (TElement Element, TPriority Priority) Current { get { throw null; } }
+                object System.Collections.IEnumerator.Current { get { throw null; } }
+                void System.Collections.IEnumerator.Reset() { }
+            }
+        }
+    }
+
     public partial class Queue<T> : System.Collections.Generic.IEnumerable<T>, System.Collections.Generic.IReadOnlyCollection<T>, System.Collections.ICollection, System.Collections.IEnumerable
     {
         public Queue() { }
@@ -398,6 +446,7 @@ namespace System.Collections.Generic
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() { throw null; }
         public T[] ToArray() { throw null; }
         public void TrimExcess() { }
+        public int EnsureCapacity(int capacity) { throw null; }
         public bool TryDequeue([System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] out T result) { throw null; }
         public bool TryPeek([System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] out T result) { throw null; }
         public partial struct Enumerator : System.Collections.Generic.IEnumerator<T>, System.Collections.IEnumerator, System.IDisposable
@@ -559,10 +608,13 @@ namespace System.Collections.Generic
         public bool ContainsKey(TKey key) { throw null; }
         public bool ContainsValue(TValue value) { throw null; }
         public System.Collections.Generic.IEnumerator<System.Collections.Generic.KeyValuePair<TKey, TValue>> GetEnumerator() { throw null; }
+        public TKey GetKeyAtIndex(int index) { throw null; }
+        public TValue GetValueAtIndex(int index) { throw null; }
         public int IndexOfKey(TKey key) { throw null; }
         public int IndexOfValue(TValue value) { throw null; }
         public bool Remove(TKey key) { throw null; }
         public void RemoveAt(int index) { }
+        public void SetValueAtIndex(int index, TValue value) { }
         void System.Collections.Generic.ICollection<System.Collections.Generic.KeyValuePair<TKey, TValue>>.Add(System.Collections.Generic.KeyValuePair<TKey, TValue> keyValuePair) { }
         bool System.Collections.Generic.ICollection<System.Collections.Generic.KeyValuePair<TKey, TValue>>.Contains(System.Collections.Generic.KeyValuePair<TKey, TValue> keyValuePair) { throw null; }
         void System.Collections.Generic.ICollection<System.Collections.Generic.KeyValuePair<TKey, TValue>>.CopyTo(System.Collections.Generic.KeyValuePair<TKey, TValue>[] array, int arrayIndex) { }
@@ -654,6 +706,7 @@ namespace System.Collections.Generic
         System.Collections.Generic.IEnumerator<T> System.Collections.Generic.IEnumerable<T>.GetEnumerator() { throw null; }
         void System.Collections.ICollection.CopyTo(System.Array array, int arrayIndex) { }
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() { throw null; }
+        public int EnsureCapacity(int capacity) { throw null; }
         public T[] ToArray() { throw null; }
         public void TrimExcess() { }
         public bool TryPeek([System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] out T result) { throw null; }

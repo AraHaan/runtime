@@ -4,11 +4,11 @@
 using System;
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Kernel32
+    internal static partial class Kernel32
     {
-        [DllImport(Libraries.Kernel32, EntryPoint = "GetModuleHandleW", CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern IntPtr GetModuleHandle(string? moduleName);
+        [LibraryImport(Libraries.Kernel32, EntryPoint = "GetModuleHandleW",  SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        internal static partial IntPtr GetModuleHandle(string? moduleName);
     }
 }

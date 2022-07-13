@@ -8,6 +8,7 @@ using System.DirectoryServices.Interop;
 using System.ComponentModel;
 
 using INTPTR_INTPTRCAST = System.IntPtr;
+using System.Diagnostics.CodeAnalysis;
 
 namespace System.DirectoryServices
 {
@@ -16,9 +17,9 @@ namespace System.DirectoryServices
     /// </devdoc>
     public class DirectorySearcher : Component
     {
-        private DirectoryEntry _searchRoot;
-        private string _filter = defaultFilter;
-        private StringCollection _propertiesToLoad;
+        private DirectoryEntry? _searchRoot;
+        private string? _filter = defaultFilter;
+        private StringCollection? _propertiesToLoad;
         private bool _disposed;
 
         private static readonly TimeSpan s_minusOneSecond = new TimeSpan(0, 0, -1);
@@ -36,17 +37,17 @@ namespace System.DirectoryServices
         private bool _cacheResults = true;
         private bool _cacheResultsSpecified;
         private bool _rootEntryAllocated;             // true: if a temporary entry inside Searcher has been created
-        private string _assertDefaultNamingContext;
+        private string? _assertDefaultNamingContext;
         private string _attributeScopeQuery = "";
         private bool _attributeScopeQuerySpecified;
         private DereferenceAlias _derefAlias = DereferenceAlias.Never;
         private SecurityMasks _securityMask = SecurityMasks.None;
         private ExtendedDN _extendedDN = ExtendedDN.None;
-        private DirectorySynchronization _sync;
+        private DirectorySynchronization? _sync;
         internal bool directorySynchronizationSpecified;
-        private DirectoryVirtualListView _vlv;
+        private DirectoryVirtualListView? _vlv;
         internal bool directoryVirtualListViewSpecified;
-        internal SearchResultCollection searchResult;
+        internal SearchResultCollection? searchResult;
 
         private const string defaultFilter = "(objectClass=*)";
 
@@ -64,7 +65,7 @@ namespace System.DirectoryServices
         /// <see cref='System.DirectoryServices.DirectorySearcher.Filter'/>, <see cref='System.DirectoryServices.DirectorySearcher.PropertiesToLoad'/>, and <see cref='System.DirectoryServices.DirectorySearcher.SearchScope'/> set to their default
         ///  values, and <see cref='System.DirectoryServices.DirectorySearcher.SearchRoot'/> set to the given value.
         /// </devdoc>
-        public DirectorySearcher(DirectoryEntry searchRoot) : this(searchRoot, defaultFilter, null, System.DirectoryServices.SearchScope.Subtree)
+        public DirectorySearcher(DirectoryEntry? searchRoot) : this(searchRoot, defaultFilter, null, System.DirectoryServices.SearchScope.Subtree)
         {
             _scopeSpecified = false;
         }
@@ -74,7 +75,7 @@ namespace System.DirectoryServices
         /// <see cref='System.DirectoryServices.DirectorySearcher.PropertiesToLoad'/> and <see cref='System.DirectoryServices.DirectorySearcher.SearchScope'/> set to their default
         /// values, and <see cref='System.DirectoryServices.DirectorySearcher.SearchRoot'/> and <see cref='System.DirectoryServices.DirectorySearcher.Filter'/> set to the respective given values.
         /// </devdoc>
-        public DirectorySearcher(DirectoryEntry searchRoot, string filter) : this(searchRoot, filter, null, System.DirectoryServices.SearchScope.Subtree)
+        public DirectorySearcher(DirectoryEntry? searchRoot, string? filter) : this(searchRoot, filter, null, System.DirectoryServices.SearchScope.Subtree)
         {
             _scopeSpecified = false;
         }
@@ -84,7 +85,7 @@ namespace System.DirectoryServices
         /// <see cref='System.DirectoryServices.DirectorySearcher.SearchScope'/> set to its default
         /// value, and <see cref='System.DirectoryServices.DirectorySearcher.SearchRoot'/>, <see cref='System.DirectoryServices.DirectorySearcher.Filter'/>, and <see cref='System.DirectoryServices.DirectorySearcher.PropertiesToLoad'/> set to the respective given values.
         /// </devdoc>
-        public DirectorySearcher(DirectoryEntry searchRoot, string filter, string[] propertiesToLoad) : this(searchRoot, filter, propertiesToLoad, System.DirectoryServices.SearchScope.Subtree)
+        public DirectorySearcher(DirectoryEntry? searchRoot, string? filter, string[]? propertiesToLoad) : this(searchRoot, filter, propertiesToLoad, System.DirectoryServices.SearchScope.Subtree)
         {
             _scopeSpecified = false;
         }
@@ -94,7 +95,7 @@ namespace System.DirectoryServices
         /// <see cref='System.DirectoryServices.DirectorySearcher.PropertiesToLoad'/>, and <see cref='System.DirectoryServices.DirectorySearcher.SearchScope'/> set to their default
         ///    values, and <see cref='System.DirectoryServices.DirectorySearcher.Filter'/> set to the given value.
         /// </devdoc>
-        public DirectorySearcher(string filter) : this(null, filter, null, System.DirectoryServices.SearchScope.Subtree)
+        public DirectorySearcher(string? filter) : this(null, filter, null, System.DirectoryServices.SearchScope.Subtree)
         {
             _scopeSpecified = false;
         }
@@ -104,7 +105,7 @@ namespace System.DirectoryServices
         /// and <see cref='System.DirectoryServices.DirectorySearcher.SearchScope'/> set to their default
         /// values, and <see cref='System.DirectoryServices.DirectorySearcher.Filter'/> and <see cref='System.DirectoryServices.DirectorySearcher.PropertiesToLoad'/> set to the respective given values.
         /// </devdoc>
-        public DirectorySearcher(string filter, string[] propertiesToLoad) : this(null, filter, propertiesToLoad, System.DirectoryServices.SearchScope.Subtree)
+        public DirectorySearcher(string? filter, string[]? propertiesToLoad) : this(null, filter, propertiesToLoad, System.DirectoryServices.SearchScope.Subtree)
         {
             _scopeSpecified = false;
         }
@@ -113,7 +114,7 @@ namespace System.DirectoryServices
         /// Initializes a new instance of the <see cref='System.DirectoryServices.DirectorySearcher'/> class with <see cref='System.DirectoryServices.DirectorySearcher.SearchRoot'/> set to its default
         /// value, and <see cref='System.DirectoryServices.DirectorySearcher.Filter'/>, <see cref='System.DirectoryServices.DirectorySearcher.PropertiesToLoad'/>, and <see cref='System.DirectoryServices.DirectorySearcher.SearchScope'/> set to the respective given values.
         /// </devdoc>
-        public DirectorySearcher(string filter, string[] propertiesToLoad, SearchScope scope) : this(null, filter, propertiesToLoad, scope)
+        public DirectorySearcher(string? filter, string[]? propertiesToLoad, SearchScope scope) : this(null, filter, propertiesToLoad, scope)
         {
         }
 
@@ -121,7 +122,7 @@ namespace System.DirectoryServices
         /// Initializes a new instance of the <see cref='System.DirectoryServices.DirectorySearcher'/> class with the <see cref='System.DirectoryServices.DirectorySearcher.SearchRoot'/>, <see cref='System.DirectoryServices.DirectorySearcher.Filter'/>, <see cref='System.DirectoryServices.DirectorySearcher.PropertiesToLoad'/>, and <see cref='System.DirectoryServices.DirectorySearcher.SearchScope'/> properties set to the given
         /// values.
         /// </devdoc>
-        public DirectorySearcher(DirectoryEntry searchRoot, string filter, string[] propertiesToLoad, SearchScope scope)
+        public DirectorySearcher(DirectoryEntry? searchRoot, string? filter, string[]? propertiesToLoad, SearchScope scope)
         {
             _searchRoot = searchRoot;
             _filter = filter;
@@ -137,7 +138,7 @@ namespace System.DirectoryServices
             if (!_disposed && disposing)
             {
                 if (_rootEntryAllocated)
-                    _searchRoot.Dispose();
+                    _searchRoot!.Dispose();
                 _rootEntryAllocated = false;
                 _disposed = true;
             }
@@ -155,7 +156,7 @@ namespace System.DirectoryServices
             set
             {
                 // user explicitly set CacheResults to true and also want VLV
-                if (directoryVirtualListViewSpecified == true && value == true)
+                if (directoryVirtualListViewSpecified && value)
                     throw new ArgumentException(SR.DSBadCacheResultsVLV);
 
                 _cacheResults = value;
@@ -195,7 +196,7 @@ namespace System.DirectoryServices
         /// Gets or sets the Lightweight Directory Access Protocol (LDAP) filter string format.
         /// </devdoc>
         [DefaultValue(defaultFilter)]
-        public string Filter
+        public string? Filter
         {
             get => _filter;
             set
@@ -219,7 +220,7 @@ namespace System.DirectoryServices
                     throw new ArgumentException(SR.DSBadPageSize);
 
                 // specify non-zero pagesize explicitly and also want dirsync
-                if (directorySynchronizationSpecified == true && value != 0)
+                if (directorySynchronizationSpecified && value != 0)
                     throw new ArgumentException(SR.DSBadPageSizeDirsync);
 
                 _pageSize = value;
@@ -232,17 +233,8 @@ namespace System.DirectoryServices
         /// </devdoc>
         [Editor("System.Windows.Forms.Design.StringCollectionEditor, System.Design, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a",
                 "System.Drawing.Design.UITypeEditor, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a")]
-        public StringCollection PropertiesToLoad
-        {
-            get
-            {
-                if (_propertiesToLoad == null)
-                {
-                    _propertiesToLoad = new StringCollection();
-                }
-                return _propertiesToLoad;
-            }
-        }
+        public StringCollection PropertiesToLoad =>
+            _propertiesToLoad ??= new StringCollection();
 
         /// <devdoc>
         /// Gets or sets how referrals are chased.
@@ -276,7 +268,7 @@ namespace System.DirectoryServices
                     throw new InvalidEnumArgumentException(nameof(value), (int)value, typeof(SearchScope));
 
                 // user explicitly set SearchScope to something other than Base and also want to do ASQ, it is not supported
-                if (_attributeScopeQuerySpecified == true && value != SearchScope.Base)
+                if (_attributeScopeQuerySpecified && value != SearchScope.Base)
                 {
                     throw new ArgumentException(SR.DSBadASQSearchScope);
                 }
@@ -346,7 +338,7 @@ namespace System.DirectoryServices
         /// at which the search will start.
         /// </devdoc>
         [DefaultValue(null)]
-        public DirectoryEntry SearchRoot
+        public DirectoryEntry? SearchRoot
         {
             get
             {
@@ -357,7 +349,7 @@ namespace System.DirectoryServices
 
                     //SECREVIEW: Searching the root of the DS will demand browse permissions
                     //                     on "*" or "LDAP://RootDSE".
-                    string defaultNamingContext = (string)rootDSE.Properties["defaultNamingContext"][0];
+                    string defaultNamingContext = (string)rootDSE.Properties["defaultNamingContext"][0]!;
                     rootDSE.Dispose();
 
                     _searchRoot = new DirectoryEntry("LDAP://" + defaultNamingContext, true, null, null, AuthenticationTypes.Secure);
@@ -369,7 +361,7 @@ namespace System.DirectoryServices
             set
             {
                 if (_rootEntryAllocated)
-                    _searchRoot.Dispose();
+                    _searchRoot!.Dispose();
                 _rootEntryAllocated = false;
 
                 _assertDefaultNamingContext = null;
@@ -406,18 +398,18 @@ namespace System.DirectoryServices
         /// performed.
         /// </devdoc>
         [DefaultValue("")]
+        [AllowNull]
         public string AttributeScopeQuery
         {
             get => _attributeScopeQuery;
             set
             {
-                if (value == null)
-                    value = "";
+                value ??= "";
 
                 // user explicitly set AttributeScopeQuery and value is not null or empty string
                 if (value.Length != 0)
                 {
-                    if (_scopeSpecified == true && SearchScope != SearchScope.Base)
+                    if (_scopeSpecified && SearchScope != SearchScope.Base)
                     {
                         throw new ArgumentException(SR.DSBadASQSearchScope);
                     }
@@ -494,14 +486,14 @@ namespace System.DirectoryServices
         /// state.
         /// </devdoc>
         [DefaultValue(null)]
-        public DirectorySynchronization DirectorySynchronization
+        public DirectorySynchronization? DirectorySynchronization
         {
             get
             {
                 // if user specifies dirsync search preference and search is executed
                 if (directorySynchronizationSpecified && searchResult != null)
                 {
-                    _sync.ResetDirectorySynchronizationCookie(searchResult.DirsyncCookie);
+                    _sync!.ResetDirectorySynchronizationCookie(searchResult.DirsyncCookie);
                 }
                 return _sync;
             }
@@ -531,7 +523,7 @@ namespace System.DirectoryServices
         /// control.
         /// </devdoc>
         [DefaultValue(null)]
-        public DirectoryVirtualListView VirtualListView
+        public DirectoryVirtualListView? VirtualListView
         {
             get
             {
@@ -539,7 +531,7 @@ namespace System.DirectoryServices
                 if (directoryVirtualListViewSpecified && searchResult != null)
                 {
                     DirectoryVirtualListView tempval = searchResult.VLVResponse;
-                    _vlv.Offset = tempval.Offset;
+                    _vlv!.Offset = tempval.Offset;
                     _vlv.ApproximateTotal = tempval.ApproximateTotal;
                     _vlv.DirectoryVirtualListViewContext = tempval.DirectoryVirtualListViewContext;
                     if (_vlv.ApproximateTotal != 0)
@@ -554,7 +546,7 @@ namespace System.DirectoryServices
                 // if user explicitly set CacheResults to true and also want to set VLV
                 if (value != null)
                 {
-                    if (_cacheResultsSpecified == true && CacheResults == true)
+                    if (_cacheResultsSpecified && CacheResults)
                         throw new ArgumentException(SR.DSBadCacheResultsVLV);
 
                     directoryVirtualListViewSpecified = true;
@@ -574,11 +566,11 @@ namespace System.DirectoryServices
         /// <devdoc>
         /// Executes the search and returns only the first entry that is found.
         /// </devdoc>
-        public SearchResult FindOne()
+        public SearchResult? FindOne()
         {
-            DirectorySynchronization tempsync = null;
-            DirectoryVirtualListView tempvlv = null;
-            SearchResult resultEntry = null;
+            DirectorySynchronization? tempsync = null;
+            DirectoryVirtualListView? tempvlv = null;
+            SearchResult? resultEntry = null;
 
             SearchResultCollection results = FindAll(false);
 
@@ -616,7 +608,7 @@ namespace System.DirectoryServices
 
         private SearchResultCollection FindAll(bool findMoreThanOne)
         {
-            DirectoryEntry clonedRoot = SearchRoot.CloneBrowsable();
+            DirectoryEntry clonedRoot = SearchRoot!.CloneBrowsable();
 
             UnsafeNativeMethods.IAds adsObject = clonedRoot.AdsObject;
             if (!(adsObject is UnsafeNativeMethods.IDirectorySearch))
@@ -636,7 +628,7 @@ namespace System.DirectoryServices
             UnsafeNativeMethods.IDirectorySearch adsSearch = (UnsafeNativeMethods.IDirectorySearch)adsObject;
             SetSearchPreferences(adsSearch, findMoreThanOne);
 
-            string[] properties = null;
+            string[]? properties = null;
             if (PropertiesToLoad.Count > 0)
             {
                 if (!PropertiesToLoad.Contains("ADsPath"))
@@ -731,7 +723,7 @@ namespace System.DirectoryServices
             prefList.Add(info);
 
             // asynchronous
-            if (Asynchronous == true)
+            if (Asynchronous)
             {
                 info = default;
                 info.dwSearchPref = (int)AdsSearchPreferences.ASYNCHRONOUS;
@@ -740,7 +732,7 @@ namespace System.DirectoryServices
             }
 
             // tombstone
-            if (Tombstone == true)
+            if (Tombstone)
             {
                 info = default;
                 info.dwSearchPref = (int)AdsSearchPreferences.TOMBSTONE;
@@ -789,7 +781,7 @@ namespace System.DirectoryServices
             {
                 info = default;
                 info.dwSearchPref = (int)AdsSearchPreferences.DIRSYNC;
-                info.vValue = new AdsValueHelper(DirectorySynchronization.GetDirectorySynchronizationCookie(), AdsType.ADSTYPE_PROV_SPECIFIC).GetStruct();
+                info.vValue = new AdsValueHelper(DirectorySynchronization!.GetDirectorySynchronizationCookie(), AdsType.ADSTYPE_PROV_SPECIFIC).GetStruct();
                 prefList.Add(info);
 
                 if (DirectorySynchronization.Option != DirectorySynchronizationOptions.None)
@@ -829,7 +821,7 @@ namespace System.DirectoryServices
                     info = default;
                     info.dwSearchPref = (int)AdsSearchPreferences.VLV;
                     AdsVLV vlvValue = new AdsVLV();
-                    vlvValue.beforeCount = _vlv.BeforeCount;
+                    vlvValue.beforeCount = _vlv!.BeforeCount;
                     vlvValue.afterCount = _vlv.AfterCount;
                     vlvValue.offset = _vlv.Offset;
                     //we need to treat the empty string as null here
@@ -880,7 +872,7 @@ namespace System.DirectoryServices
                 AdsSearchPreferenceInfo[] prefs = new AdsSearchPreferenceInfo[prefList.Count];
                 for (int i = 0; i < prefList.Count; i++)
                 {
-                    prefs[i] = (AdsSearchPreferenceInfo)prefList[i];
+                    prefs[i] = (AdsSearchPreferenceInfo)prefList[i]!;
                 }
 
                 DoSetSearchPrefs(adsSearch, prefs);

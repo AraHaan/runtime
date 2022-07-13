@@ -22,8 +22,9 @@ private:
     load_command* m_commands;
     std::vector<segment_command_64*> m_segments;
     symtab_command* m_symtabCommand;
+    dysymtab_command* m_dysymtabCommand;
     nlist_64* m_nlists;
-    char* m_strtab;
+    uint64_t m_strtabAddress;
 
 public:
     MachOModule(MachOReader& reader, mach_vm_address_t baseAddress, mach_header_64* header = nullptr, std::string* name = nullptr);
@@ -36,6 +37,7 @@ public:
 
     bool ReadHeader();
     bool TryLookupSymbol(const char* symbolName, uint64_t* symbolValue);
+    bool TryLookupSymbol(int start, int nsyms, const char* symbolName, uint64_t* symbolValue);
     bool EnumerateSegments();
 
 private:
@@ -43,7 +45,8 @@ private:
 
     bool ReadLoadCommands();
     bool ReadSymbolTable();
-    void* GetAddressFromFileOffset(uint32_t offset);
+    uint64_t GetAddressFromFileOffset(uint32_t offset);
+    std::string GetSymbolName(int index);
 };
 
 class MachOReader
@@ -60,4 +63,5 @@ private:
     virtual void VisitSection(MachOModule& module, const section_64& section) { };
     virtual bool ReadMemory(void* address, void* buffer, size_t size) = 0;
     virtual void Trace(const char* format, ...) { };
+    virtual void TraceVerbose(const char* format, ...) { };
 };

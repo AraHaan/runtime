@@ -5,12 +5,13 @@ using Microsoft.Win32.SafeHandles;
 using System;
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Advapi32
+    internal static partial class Advapi32
     {
-        [DllImport(Libraries.Advapi32, EntryPoint = "QueryServiceConfigW", CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern bool QueryServiceConfig(SafeServiceHandle serviceHandle, IntPtr queryServiceConfigPtr, int bufferSize, out int bytesNeeded);
+        [LibraryImport(Libraries.Advapi32, EntryPoint = "QueryServiceConfigW", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool QueryServiceConfig(SafeServiceHandle serviceHandle, IntPtr queryServiceConfigPtr, int bufferSize, out int bytesNeeded);
 
     }
 }

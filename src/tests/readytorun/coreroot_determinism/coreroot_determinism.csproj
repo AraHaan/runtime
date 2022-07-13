@@ -1,14 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk" ToolsVersion="Current">
   <PropertyGroup>
     <OutputType>exe</OutputType>
-    <CLRTestKind>BuildAndRun</CLRTestKind>
-    <CLRTestPriority>0</CLRTestPriority>
-    <!-- Crossgen2 currently targets only x64 -->
-    <CLRTestTargetUnsupported Condition="'$(TargetArchitecture)' != 'x64'">true</CLRTestTargetUnsupported>
-    <!-- Known not to work with GCStress for now: https://github.com/dotnet/runtime/issues/13394 -->
+    <!-- Disabled for GCStress due to test failure tracked by https://github.com/dotnet/runtime/issues/58699 -->
     <GCStressIncompatible>true</GCStressIncompatible>
-    <!-- It is currently failing with JitStress https://github.com/dotnet/runtime/issues/45326-->
-    <JitOptimizationSensitive>true</JitOptimizationSensitive>
+    <CLRTestTargetUnsupported Condition="'$(RuntimeFlavor)' != 'coreclr'">true</CLRTestTargetUnsupported>
     <!-- This is an explicit crossgen test -->
     <CrossGenTest>false</CrossGenTest>
     <OldToolsVersion>2.0</OldToolsVersion>

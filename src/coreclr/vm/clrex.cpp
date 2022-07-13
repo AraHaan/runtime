@@ -46,7 +46,6 @@ CLRException::~CLRException()
     }
     CONTRACTL_END;
 
-#ifndef CROSSGEN_COMPILE
     OBJECTHANDLE throwableHandle = GetThrowableHandle();
     if (throwableHandle != NULL)
     {
@@ -55,7 +54,6 @@ CLRException::~CLRException()
         SetThrowableHandle(NULL);
         DestroyHandle(throwableHandle);
     }
-#endif
 }
 
 OBJECTREF CLRException::GetThrowable()
@@ -69,16 +67,7 @@ OBJECTREF CLRException::GetThrowable()
     }
     CONTRACTL_END;
 
-#ifdef CROSSGEN_COMPILE
-    _ASSERTE(false);
-    return NULL;
-#else
     OBJECTREF throwable = NULL;
-
-    if (NingenEnabled())
-    {
-        return NULL;
-    }
 
     Thread *pThread = GetThread();
 
@@ -144,7 +133,7 @@ OBJECTREF CLRException::GetThrowable()
 
                 // We didn't recognize it, so use the preallocated System.Exception instance.
                 STRESS_LOG0(LF_EH, LL_INFO100, "CLRException::GetThrowable: Recursion! Translating to preallocated System.Exception.\n");
-                throwable = GetBestBaseException(); 
+                throwable = GetBestBaseException();
             }
         }
     }
@@ -256,7 +245,6 @@ OBJECTREF CLRException::GetThrowable()
     GCPROTECT_END();
 
     return throwable;
-#endif
 }
 
 HRESULT CLRException::GetHR()
@@ -346,7 +334,6 @@ IErrorInfo *CLRException::GetErrorInfo()
 
     IErrorInfo *pErrorInfo = NULL;
 
-#ifndef CROSSGEN_COMPILE
     // Attempt to get IErrorInfo only if COM is initialized.
     // Not all codepaths expect to have it initialized (e.g. hosting APIs).
     if (g_fComStarted)
@@ -375,7 +362,6 @@ IErrorInfo *CLRException::GetErrorInfo()
         // Write to the log incase COM isnt initialized.
         LOG((LF_EH, LL_INFO100, "CLRException::GetErrorInfo: exiting since COM is not initialized.\n"));
     }
-#endif //CROSSGEN_COMPILE
 
     // return the IErrorInfo we got...
     return pErrorInfo;
@@ -404,7 +390,6 @@ void CLRException::GetMessage(SString &result)
     }
     CONTRACTL_END;
 
-#ifndef CROSSGEN_COMPILE
     GCX_COOP();
 
     OBJECTREF e = GetThrowable();
@@ -423,10 +408,8 @@ void CLRException::GetMessage(SString &result)
 
         GCPROTECT_END ();
     }
-#endif
 }
 
-#ifndef CROSSGEN_COMPILE
 
 OBJECTREF CLRException::GetPreallocatedOutOfMemoryException()
 {
@@ -622,10 +605,8 @@ OBJECTREF CLRException::GetThrowableFromException(Exception *pException)
     }
     CONTRACTL_END;
 
-    Thread* pThread = GetThread();
-
     // Can't have a throwable without a Thread.
-    _ASSERTE(pThread != NULL);
+    Thread* pThread = GetThread();
 
     if (NULL == pException)
     {
@@ -814,7 +795,6 @@ void CLRException::HandlerState::CleanupTry()
 
     if (m_pThread != NULL)
     {
-        BEGIN_GETTHREAD_ALLOWED;
         // If there is no frame to unwind, UnwindFrameChain call is just an expensive NOP
         // due to setting up and tear down of EH records. So we avoid it if we can.
         if (m_pThread->GetFrame() < m_pFrame)
@@ -827,14 +807,13 @@ void CLRException::HandlerState::CleanupTry()
             else
                 m_pThread->EnablePreemptiveGC();
         }
-        END_GETTHREAD_ALLOWED;
     }
 
     // Make sure to call the base class's CleanupTry so it can do whatever it wants to do.
     Exception::HandlerState::CleanupTry();
 }
 
-void CLRException::HandlerState::SetupCatch(INDEBUG_COMMA(__in_z const char * szFile) int lineNum)
+void CLRException::HandlerState::SetupCatch(INDEBUG_COMMA(_In_z_ const char * szFile) int lineNum)
 {
     STATIC_CONTRACT_NOTHROW;
     STATIC_CONTRACT_GC_NOTRIGGER;
@@ -848,7 +827,7 @@ void CLRException::HandlerState::SetupCatch(INDEBUG_COMMA(__in_z const char * sz
 
     if (g_fEEStarted)
     {
-        pThread = GetThread();
+        pThread = GetThreadNULLOk();
         exceptionCode = GetCurrentExceptionCode();
     }
 
@@ -912,7 +891,6 @@ void CLRException::HandlerState::SucceedCatch()
 }
 #endif
 
-#endif // CROSSGEN_COMPILE
 
 // ---------------------------------------------------------------------------
 // EEException methods
@@ -1023,10 +1001,6 @@ void EEException::GetMessage(SString &result)
 
 OBJECTREF EEException::CreateThrowable()
 {
-#ifdef CROSSGEN_COMPILE
-    _ASSERTE(false);
-    return NULL;
-#else
     CONTRACTL
     {
         GC_TRIGGERS;
@@ -1072,7 +1046,6 @@ OBJECTREF EEException::CreateThrowable()
     GCPROTECT_END();
 
     return throwable;
-#endif
 }
 
 RuntimeExceptionKind EEException::GetKindFromHR(HRESULT hr)
@@ -1163,7 +1136,7 @@ void EEResourceException::GetMessage(SString &result)
     // since we don't want to call managed code here.
     //
 
-    result.Printf("%s (message resource %s)",
+    result.Printf("%s (message resource %S)",
                   CoreLibBinder::GetExceptionName(m_kind), m_resourceName.GetUnicode());
 }
 
@@ -1177,7 +1150,6 @@ BOOL EEResourceException::GetThrowableMessage(SString &result)
     }
     CONTRACTL_END;
 
-#ifndef CROSSGEN_COMPILE
     STRINGREF message = NULL;
     ResMgrGetString(m_resourceName, &message);
 
@@ -1186,7 +1158,6 @@ BOOL EEResourceException::GetThrowableMessage(SString &result)
         message->GetSString(result);
         return TRUE;
     }
-#endif // CROSSGEN_COMPILE
 
     return EEException::GetThrowableMessage(result);
 }
@@ -1346,10 +1317,6 @@ typedef struct {
 
 OBJECTREF EEArgumentException::CreateThrowable()
 {
-#ifdef CROSSGEN_COMPILE
-    _ASSERTE(false);
-    return NULL;
-#else
 
     CONTRACTL
     {
@@ -1359,7 +1326,7 @@ OBJECTREF EEArgumentException::CreateThrowable()
     }
     CONTRACTL_END;
 
-    _ASSERTE(GetThread() != NULL);
+    _ASSERTE(GetThreadNULLOk() != NULL);
 
     ProtectArgsStruct prot;
     memset(&prot, 0, sizeof(ProtectArgsStruct));
@@ -1406,7 +1373,6 @@ OBJECTREF EEArgumentException::CreateThrowable()
     GCPROTECT_END(); //Prot
 
     return prot.pThrowable;
-#endif
 }
 
 
@@ -1437,16 +1403,12 @@ EETypeLoadException::EETypeLoadException(LPCUTF8 pszNameSpace, LPCUTF8 pTypeName
         m_fullName.MakeFullNamespacePath(sNameSpace, sTypeName);
     }
     else if (pTypeName)
+    {
         m_fullName.SetUTF8(pTypeName);
-    else {
-        WCHAR wszTemplate[30];
-        if (FAILED(UtilLoadStringRC(IDS_EE_NAME_UNKNOWN,
-                                    wszTemplate,
-                                    sizeof(wszTemplate)/sizeof(wszTemplate[0]),
-                                    FALSE)))
-            wszTemplate[0] = W('\0');
-        MAKE_UTF8PTR_FROMWIDE(name, wszTemplate);
-        m_fullName.SetUTF8(name);
+    }
+    else
+    {
+        m_fullName.SetUTF8("<Unknown>");
     }
 }
 
@@ -1480,10 +1442,6 @@ void EETypeLoadException::GetMessage(SString &result)
 
 OBJECTREF EETypeLoadException::CreateThrowable()
 {
-#ifdef CROSSGEN_COMPILE
-    _ASSERTE(false);
-    return NULL;
-#else
 
     CONTRACTL
     {
@@ -1538,7 +1496,6 @@ OBJECTREF EETypeLoadException::CreateThrowable()
     GCPROTECT_END();
 
     return gc.pNewException;
-#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -1564,18 +1521,7 @@ EEFileLoadException::EEFileLoadException(const SString &name, HRESULT hr, Except
     m_innerException = pInnerException ? pInnerException->DomainBoundClone() : NULL;
 
     if (m_name.IsEmpty())
-    {
-        WCHAR wszTemplate[30];
-        if (FAILED(UtilLoadStringRC(IDS_EE_NAME_UNKNOWN,
-                                    wszTemplate,
-                                    sizeof(wszTemplate)/sizeof(wszTemplate[0]),
-                                    FALSE)))
-        {
-            wszTemplate[0] = W('\0');
-        }
-
-        m_name.Set(wszTemplate);
-    }
+        m_name.Set(W("<Unknown>"));
 }
 
 
@@ -1677,10 +1623,6 @@ RuntimeExceptionKind EEFileLoadException::GetFileLoadKind(HRESULT hr)
 
 OBJECTREF EEFileLoadException::CreateThrowable()
 {
-#ifdef CROSSGEN_COMPILE
-    _ASSERTE(false);
-    return NULL;
-#else
 
     CONTRACTL
     {
@@ -1722,7 +1664,6 @@ OBJECTREF EEFileLoadException::CreateThrowable()
     GCPROTECT_END();
 
     return gc.pNewException;
-#endif
 }
 
 
@@ -1770,12 +1711,12 @@ void DECLSPEC_NORETURN EEFileLoadException::Throw(AssemblySpec  *pSpec, HRESULT 
         COMPlusThrowOM();
 
     StackSString name;
-    pSpec->GetFileOrDisplayName(0, name);
+    pSpec->GetDisplayName(0, name);
     EX_THROW_WITH_INNER(EEFileLoadException, (name, hr), pInnerException);
 }
 
 /* static */
-void DECLSPEC_NORETURN EEFileLoadException::Throw(PEFile *pFile, HRESULT hr, Exception *pInnerException /* = NULL*/)
+void DECLSPEC_NORETURN EEFileLoadException::Throw(PEAssembly *pPEAssembly, HRESULT hr, Exception *pInnerException /* = NULL*/)
 {
     CONTRACTL
     {
@@ -1791,11 +1732,8 @@ void DECLSPEC_NORETURN EEFileLoadException::Throw(PEFile *pFile, HRESULT hr, Exc
         COMPlusThrowOM();
 
     StackSString name;
+    pPEAssembly->GetDisplayName(name);
 
-    if (pFile->IsAssembly())
-        ((PEAssembly*)pFile)->GetDisplayName(name);
-    else
-        name = StackSString(SString::Utf8, pFile->GetSimpleName());
     EX_THROW_WITH_INNER(EEFileLoadException, (name, hr), pInnerException);
 
 }
@@ -1847,7 +1785,7 @@ void DECLSPEC_NORETURN EEFileLoadException::Throw(PEAssembly *parent,
     EX_THROW_WITH_INNER(EEFileLoadException, (name, hr), pInnerException);
 }
 
-#ifndef CROSSGEN_COMPILE
+#ifdef FEATURE_COMINTEROP
 // ---------------------------------------------------------------------------
 // EEComException methods
 // ---------------------------------------------------------------------------
@@ -1936,11 +1874,9 @@ EECOMException::EECOMException(
 {
     WRAPPER_NO_CONTRACT;
 
-#ifdef FEATURE_COMINTEROP
     // Must use another path for managed IErrorInfos...
     //  note that this doesn't cover out-of-proc managed IErrorInfos.
     _ASSERTE(!bCheckInProcCCWTearOff || !IsInProcCCWTearOff(pErrInfo));
-#endif  // FEATURE_COMINTEROP
 
     m_ED.hr = hr;
     m_ED.bstrDescription = NULL;
@@ -2043,6 +1979,7 @@ OBJECTREF EECOMException::CreateThrowable()
 
     return throwable;
 }
+#endif // FEATURE_COMINTEROP
 
 // ---------------------------------------------------------------------------
 // ObjrefException methods
@@ -2237,7 +2174,7 @@ void GetLastThrownObjectExceptionFromThread(Exception **ppException)
     CONTRACTL_END;
 
     // If the Thread has been set up, then the LastThrownObject may make sense...
-    if (GetThread())
+    if (GetThreadNULLOk())
     {
         // give back an object that knows about Threads and their exceptions.
         *ppException = new CLRLastThrownObjectException();
@@ -2250,7 +2187,6 @@ void GetLastThrownObjectExceptionFromThread(Exception **ppException)
 
 } // void GetLastThrownObjectExceptionFromThread()
 
-#endif // CROSSGEN_COMPILE
 
 //@TODO: Make available generally?
 // Wrapper class to encapsulate both array pointer and element count.

@@ -1,14 +1,13 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 #if SYSTEM_PRIVATE_CORELIB
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
-using Internal.Runtime.CompilerServices;
 #endif
 
 namespace System
@@ -91,11 +90,8 @@ namespace System
         }
 
 #if SYSTEM_PRIVATE_CORELIB
-        private static void EncodeToUtf16_Ssse3(ReadOnlySpan<byte> bytes, Span<char> chars, Casing casing)
+        private static void EncodeToUtf16_Vector128(ReadOnlySpan<byte> bytes, Span<char> chars, Casing casing)
         {
-            Debug.Assert(bytes.Length >= 4);
-            nint pos = 0;
-
             Vector128<byte> shuffleMask = Vector128.Create(
                 0xFF, 0xFF, 0, 0xFF, 0xFF, 0xFF, 1, 0xFF,
                 0xFF, 0xFF, 2, 0xFF, 0xFF, 0xFF, 3, 0xFF);
@@ -110,40 +106,70 @@ namespace System
                                  (byte)'8', (byte)'9', (byte)'a', (byte)'b',
                                  (byte)'c', (byte)'d', (byte)'e', (byte)'f');
 
+            nuint pos = 0;
+            Debug.Assert(bytes.Length >= 4);
+
+            // it's used to ensure we can process the trailing elements in the same SIMD loop (with possible overlap)
+            // but we won't double compute for any evenly divisible by 4 length since we
+            // compare pos > lengthSubVector128 rather than pos >= lengthSubVector128
+            nuint lengthSubVector128 = (nuint)bytes.Length - (nuint)Vector128<int>.Count;
+            ref byte destRef = ref Unsafe.As<char, byte>(ref MemoryMarshal.GetReference(chars));
             do
             {
                 // Read 32bits from "bytes" span at "pos" offset
                 uint block = Unsafe.ReadUnaligned<uint>(
                     ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), pos));
 
+                // TODO: Remove once cross-platform Shuffle is landed
+                // https://github.com/dotnet/runtime/issues/63331
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                static Vector128<byte> Shuffle(Vector128<byte> value, Vector128<byte> mask)
+                {
+                    if (Ssse3.IsSupported)
+                    {
+                        return Ssse3.Shuffle(value, mask);
+                    }
+                    else if (!AdvSimd.Arm64.IsSupported)
+                    {
+                        ThrowHelper.ThrowNotSupportedException();
+                    }
+                    return AdvSimd.Arm64.VectorTableLookup(value, mask);
+                }
+
                 // Calculate nibbles
-                Vector128<byte> lowNibbles = Ssse3.Shuffle(
+                Vector128<byte> lowNibbles = Shuffle(
                     Vector128.CreateScalarUnsafe(block).AsByte(), shuffleMask);
-                Vector128<byte> highNibbles = Sse2.ShiftRightLogical(
-                    Sse2.ShiftRightLogical128BitLane(lowNibbles, 2).AsInt32(), 4).AsByte();
+
+                // ExtractVector128 is not entirely the same as ShiftRightLogical128BitLane, but it works here since
+                // first two bytes in lowNibbles are guaranteed to be zeros
+                Vector128<byte> shifted = Sse2.IsSupported ?
+                    Sse2.ShiftRightLogical128BitLane(lowNibbles, 2) :
+                    AdvSimd.ExtractVector128(lowNibbles, lowNibbles, 2);
+
+                Vector128<byte> highNibbles = Vector128.ShiftRightLogical(shifted.AsInt32(), 4).AsByte();
 
                 // Lookup the hex values at the positions of the indices
-                Vector128<byte> indices = Sse2.And(
-                    Sse2.Or(lowNibbles, highNibbles), Vector128.Create((byte)0xF));
-                Vector128<byte> hex = Ssse3.Shuffle(asciiTable, indices);
+                Vector128<byte> indices = (lowNibbles | highNibbles) & Vector128.Create((byte)0xF);
+                Vector128<byte> hex = Shuffle(asciiTable, indices);
 
                 // The high bytes (0x00) of the chars have also been converted
                 // to ascii hex '0', so clear them out.
-                hex = Sse2.And(hex, Vector128.Create((ushort)0xFF).AsByte());
+                hex &= Vector128.Create((ushort)0xFF).AsByte();
+                hex.StoreUnsafe(ref destRef, pos * 4); // we encode 4 bytes as a single char (0x0-0xF)
+                pos += (nuint)Vector128<int>.Count;
 
-                // Save to "chars" at pos*2 offset
-                Unsafe.WriteUnaligned(
-                    ref Unsafe.As<char, byte>(
-                        ref Unsafe.Add(ref MemoryMarshal.GetReference(chars), pos * 2)), hex);
+                if (pos == (nuint)bytes.Length)
+                {
+                    return;
+                }
 
-                pos += 4;
-            } while (pos < bytes.Length - 3);
+                // Overlap with the current chunk for trailing elements
+                if (pos > lengthSubVector128)
+                {
+                    pos = lengthSubVector128;
+                }
 
-            // Process trailing elements (bytes.Length % 4)
-            for (; pos < bytes.Length; pos++)
-            {
-                ToCharsBuffer(Unsafe.Add(ref MemoryMarshal.GetReference(bytes), pos), chars, (int)pos * 2, casing);
-            }
+            } while (true);
         }
 #endif
 
@@ -152,9 +178,9 @@ namespace System
             Debug.Assert(chars.Length >= bytes.Length * 2);
 
 #if SYSTEM_PRIVATE_CORELIB
-            if (Ssse3.IsSupported && bytes.Length >= 4)
+            if ((AdvSimd.Arm64.IsSupported || Ssse3.IsSupported) && bytes.Length >= 4)
             {
-                EncodeToUtf16_Ssse3(bytes, chars, casing);
+                EncodeToUtf16_Vector128(bytes, chars, casing);
                 return;
             }
 #endif
@@ -169,17 +195,10 @@ namespace System
 #endif
         public static unsafe string ToString(ReadOnlySpan<byte> bytes, Casing casing = Casing.Upper)
         {
-#if NETFRAMEWORK || NETSTANDARD1_0 || NETSTANDARD1_3 || NETSTANDARD2_0
-            Span<char> result = stackalloc char[0];
-            if (bytes.Length > 16)
-            {
-                var array = new char[bytes.Length * 2];
-                result = array.AsSpan();
-            }
-            else
-            {
-                result = stackalloc char[bytes.Length * 2];
-            }
+#if NETFRAMEWORK || NETSTANDARD2_0
+            Span<char> result = bytes.Length > 16 ?
+                new char[bytes.Length * 2].AsSpan() :
+                stackalloc char[bytes.Length * 2];
 
             int pos = 0;
             foreach (byte b in bytes)
@@ -290,6 +309,31 @@ namespace System
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsHexChar(int c)
         {
+            if (IntPtr.Size == 8)
+            {
+                // This code path, when used, has no branches and doesn't depend on cache hits,
+                // so it's faster and does not vary in speed depending on input data distribution.
+                // We only use this logic on 64-bit systems, as using 64 bit values would otherwise
+                // be much slower than just using the lookup table anyway (no hardware support).
+                // The magic constant 18428868213665201664 is a 64 bit value containing 1s at the
+                // indices corresponding to all the valid hex characters (ie. "0123456789ABCDEFabcdef")
+                // minus 48 (ie. '0'), and backwards (so from the most significant bit and downwards).
+                // The offset of 48 for each bit is necessary so that the entire range fits in 64 bits.
+                // First, we subtract '0' to the input digit (after casting to uint to account for any
+                // negative inputs). Note that even if this subtraction underflows, this happens before
+                // the result is zero-extended to ulong, meaning that `i` will always have upper 32 bits
+                // equal to 0. We then left shift the constant with this offset, and apply a bitmask that
+                // has the highest bit set (the sign bit) if and only if `c` is in the ['0', '0' + 64) range.
+                // Then we only need to check whether this final result is less than 0: this will only be
+                // the case if both `i` was in fact the index of a set bit in the magic constant, and also
+                // `c` was in the allowed range (this ensures that false positive bit shifts are ignored).
+                ulong i = (uint)c - '0';
+                ulong shift = 18428868213665201664UL << (int)i;
+                ulong mask = i - 64;
+
+                return (long)(shift & mask) < 0 ? true : false;
+            }
+
             return FromChar(c) != 0xFF;
         }
 

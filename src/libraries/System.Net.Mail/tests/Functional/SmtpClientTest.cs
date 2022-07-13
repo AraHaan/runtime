@@ -15,20 +15,23 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Systen.Net.Mail.Tests;
+using System.Net.Test.Common;
 using Xunit;
 
 namespace System.Net.Mail.Tests
 {
-    [PlatformSpecific(~TestPlatforms.Browser)]  // SmtpClient is not supported on Browser
+    [SkipOnPlatform(TestPlatforms.Browser, "SmtpClient is not supported on Browser")]
     public class SmtpClientTest : FileCleanupTestBase
     {
         private SmtpClient _smtp;
+
+        public static bool IsNtlmInstalled => Capability.IsNtlmInstalled();
 
         private SmtpClient Smtp
         {
             get
             {
-                return _smtp ?? (_smtp = new SmtpClient());
+                return _smtp ??= new SmtpClient();
             }
         }
 
@@ -312,7 +315,7 @@ namespace System.Net.Mail.Tests
         [Fact]
         // [ActiveIssue("https://github.com/dotnet/runtime/issues/31719")]
         [SkipOnTargetFramework(TargetFrameworkMonikers.NetFramework, ".NET Framework has a bug and may not time out for low values")]
-        [PlatformSpecific(~TestPlatforms.OSX)] // on OSX, not all synchronous operations (e.g. connect) can be aborted by closing the socket.
+        [SkipOnPlatform(TestPlatforms.OSX, "on OSX, not all synchronous operations (e.g. connect) can be aborted by closing the socket.")]
         public void TestZeroTimeout()
         {
             var testTask = Task.Run(() =>
@@ -341,7 +344,7 @@ namespace System.Net.Mail.Tests
         [InlineData("howdydoo")]
         [InlineData("")]
         [InlineData(null)]
-        [SkipOnCoreClr("System.Net.Tests are flaky and/or long running: https://github.com/dotnet/runtime/issues/131", RuntimeConfiguration.Checked)]
+        [SkipOnCoreClr("System.Net.Tests are flaky and/or long running: https://github.com/dotnet/runtime/issues/131", ~RuntimeConfiguration.Release)]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/131", TestRuntimes.Mono)] // System.Net.Tests are flaky and/or long running
         public async Task TestMailDeliveryAsync(string body)
         {
@@ -349,7 +352,7 @@ namespace System.Net.Mail.Tests
             using SmtpClient client = server.CreateClient();
             MailMessage msg = new MailMessage("foo@example.com", "bar@example.com", "hello", body);
 
-            await client.SendMailAsync(msg).TimeoutAfter((int)TimeSpan.FromSeconds(30).TotalMilliseconds);
+            await client.SendMailAsync(msg).WaitAsync(TimeSpan.FromSeconds(30));
 
             Assert.Equal("<foo@example.com>", server.MailFrom);
             Assert.Equal("<bar@example.com>", server.MailTo);
@@ -360,7 +363,7 @@ namespace System.Net.Mail.Tests
 
         [Fact]
         [PlatformSpecific(TestPlatforms.Windows)] // NTLM support required, see https://github.com/dotnet/runtime/issues/25827
-        [SkipOnCoreClr("System.Net.Tests are flaky and/or long running: https://github.com/dotnet/runtime/issues/131", RuntimeConfiguration.Checked)]
+        [SkipOnCoreClr("System.Net.Tests are flaky and/or long running: https://github.com/dotnet/runtime/issues/131", ~RuntimeConfiguration.Release)]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/131", TestRuntimes.Mono)] // System.Net.Tests are flaky and/or long running
         public async Task TestCredentialsCopyInAsyncContext()
         {
@@ -510,7 +513,7 @@ namespace System.Net.Mail.Tests
                 MailMessage msg = new MailMessage("foo@example.com", "bar@example.com", "hello", "howdydoo");
                 if (asyncSend)
                 {
-                    await client.SendMailAsync(msg).TimeoutAfter((int)TimeSpan.FromSeconds(30).TotalMilliseconds);
+                    await client.SendMailAsync(msg).WaitAsync(TimeSpan.FromSeconds(30));
                 }
                 else
                 {
@@ -522,6 +525,56 @@ namespace System.Net.Mail.Tests
             // There is a latency between send/receive.
             quitReceived.Wait(TimeSpan.FromSeconds(30));
             Assert.True(quitMessageReceived, "QUIT message not received");
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task TestMultipleMailDelivery(bool asyncSend)
+        {
+            using var server = new LoopbackSmtpServer();
+            using SmtpClient client = server.CreateClient();
+            client.Timeout = 10000;
+            client.Credentials = new NetworkCredential("foo", "bar");
+            MailMessage msg = new MailMessage("foo@example.com", "bar@example.com", "hello", "howdydoo");
+
+            for (var i = 0; i < 5; i++)
+            {
+                if (asyncSend)
+                {
+                    using var cts = new CancellationTokenSource(10000);
+                    await client.SendMailAsync(msg, cts.Token);
+                }
+                else
+                {
+                    client.Send(msg);
+                }
+
+                Assert.Equal("<foo@example.com>", server.MailFrom);
+                Assert.Equal("<bar@example.com>", server.MailTo);
+                Assert.Equal("hello", server.Message.Subject);
+                Assert.Equal("howdydoo", server.Message.Body);
+                Assert.Equal(GetClientDomain(), server.ClientDomain);
+                Assert.Equal("foo", server.Username);
+                Assert.Equal("bar", server.Password);
+                Assert.Equal("LOGIN", server.AuthMethodUsed, StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        [ConditionalFact(nameof(IsNtlmInstalled))]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/65678", TestPlatforms.OSX | TestPlatforms.iOS | TestPlatforms.MacCatalyst)]
+        public void TestGssapiAuthentication()
+        {
+            using var server = new LoopbackSmtpServer();
+            server.AdvertiseGssapiAuthSupport = true;
+            server.ExpectedGssapiCredential = new NetworkCredential("foo", "bar");
+            using SmtpClient client = server.CreateClient();
+            client.Credentials = server.ExpectedGssapiCredential;
+            MailMessage msg = new MailMessage("foo@example.com", "bar@example.com", "hello", "howdydoo");
+
+            client.Send(msg);
+
+            Assert.Equal("GSSAPI", server.AuthMethodUsed, StringComparer.OrdinalIgnoreCase);
         }
     }
 }

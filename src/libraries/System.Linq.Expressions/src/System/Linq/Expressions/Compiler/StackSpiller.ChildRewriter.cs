@@ -9,7 +9,7 @@ using System.Reflection;
 
 namespace System.Linq.Expressions.Compiler
 {
-    internal partial class StackSpiller
+    internal sealed partial class StackSpiller
     {
         /// <summary>
         /// Rewrites child expressions, spilling them into temps if needed. The
@@ -350,10 +350,7 @@ namespace System.Linq.Expressions.Compiler
             /// </param>
             private void MarkRef(int index)
             {
-                if (_byRefs == null)
-                {
-                    _byRefs = new bool[_expressions.Length];
-                }
+                _byRefs ??= new bool[_expressions.Length];
 
                 _byRefs[index] = true;
             }

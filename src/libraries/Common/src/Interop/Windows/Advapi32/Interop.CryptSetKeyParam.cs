@@ -4,14 +4,16 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Advapi32
+    internal static partial class Advapi32
     {
-        [DllImport(Libraries.Advapi32, SetLastError = true)]
-        public static extern bool CryptSetKeyParam(SafeKeyHandle hKey, int dwParam, byte[] pbData, int dwFlags);
+        [LibraryImport(Libraries.Advapi32, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool CryptSetKeyParam(SafeCapiKeyHandle hKey, int dwParam, byte[] pbData, int dwFlags);
 
-        [DllImport(Libraries.Advapi32, SetLastError = true)]
-        public static extern bool CryptSetKeyParam(SafeKeyHandle safeKeyHandle, int dwParam, ref int pdw, int dwFlags);
+        [LibraryImport(Libraries.Advapi32, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool CryptSetKeyParam(SafeCapiKeyHandle safeKeyHandle, int dwParam, ref int pdw, int dwFlags);
     }
 }

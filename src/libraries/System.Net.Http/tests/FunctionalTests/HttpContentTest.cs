@@ -298,7 +298,7 @@ namespace System.Net.Http.Functional.Tests
             Assert.Equal(before, after);
         }
 
-        [SkipOnMono("Browser doesn't support Synchronous reads", TestPlatforms.Browser)]
+        [SkipOnPlatform(TestPlatforms.Browser, "Browser doesn't support Synchronous reads")]
         [Theory]
         [InlineData(true)]
         [InlineData(false)]
@@ -366,7 +366,7 @@ namespace System.Net.Http.Functional.Tests
         [InlineData(false)]
         public async Task LoadIntoBufferAsync_CallOnMockContentWithLessLengthThanContentLengthHeader_BufferedStreamLengthMatchesActualLengthNotContentLengthHeaderValue(bool readStreamAsync)
         {
-            byte[] data = Encoding.UTF8.GetBytes("16 bytes of data");
+            byte[] data = "16 bytes of data"u8.ToArray();
             var content = new MockContent(data);
             content.Headers.ContentLength = 32; // Set the Content-Length header to a value > actual data length.
             Assert.Equal(32, content.Headers.ContentLength);
@@ -471,7 +471,7 @@ namespace System.Net.Http.Functional.Tests
         public async Task Dispose_GetReadStreamThenDispose_ReadStreamGetsDisposed(bool readStreamAsync)
         {
             var content = new MockContent();
-            MockMemoryStream s = (MockMemoryStream)await content.ReadAsStreamAsync(readStreamAsync);;
+            MockMemoryStream s = (MockMemoryStream)await content.ReadAsStreamAsync(readStreamAsync);
             Assert.Equal(1, content.CreateContentReadStreamCount);
 
             Assert.Equal(0, s.DisposeCount);
@@ -613,7 +613,6 @@ namespace System.Net.Http.Functional.Tests
 
 
         [Fact]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/39187", TestPlatforms.Browser)]
         public async Task ReadAsStringAsync_Buffered_IgnoresCancellationToken()
         {
             string content = Guid.NewGuid().ToString();
@@ -640,7 +639,6 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/39187", TestPlatforms.Browser)]
         public async Task ReadAsStringAsync_Unbuffered_CanBeCanceled_AlreadyCanceledCts()
         {
             await LoopbackServer.CreateClientAndServerAsync(
@@ -663,12 +661,14 @@ namespace System.Net.Http.Functional.Tests
                     {
                         await server.AcceptConnectionSendResponseAndCloseAsync();
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        _output.WriteLine($"Ignored exception:{Environment.NewLine}{ex}");
+                    }
                 });
         }
 
         [Fact]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/39187", TestPlatforms.Browser)]
         public async Task ReadAsStringAsync_Unbuffered_CanBeCanceled()
         {
             var cts = new CancellationTokenSource();
@@ -697,13 +697,15 @@ namespace System.Net.Http.Functional.Tests
                         {
                             await connection.SendResponseAsync(new string('a', 100));
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            _output.WriteLine($"Ignored exception:{Environment.NewLine}{ex}");
+                        }
                     });
                 });
         }
 
         [Fact]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/39187", TestPlatforms.Browser)]
         public async Task ReadAsByteArrayAsync_Buffered_IgnoresCancellationToken()
         {
             string content = Guid.NewGuid().ToString();
@@ -731,7 +733,6 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/39187", TestPlatforms.Browser)]
         public async Task ReadAsByteArrayAsync_Unbuffered_CanBeCanceled_AlreadyCanceledCts()
         {
             await LoopbackServer.CreateClientAndServerAsync(
@@ -754,12 +755,14 @@ namespace System.Net.Http.Functional.Tests
                     {
                         await server.AcceptConnectionSendResponseAndCloseAsync();
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        _output.WriteLine($"Ignored exception:{Environment.NewLine}{ex}");
+                    }
                 });
         }
 
         [Fact]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/39187", TestPlatforms.Browser)]
         public async Task ReadAsByteArrayAsync_Unbuffered_CanBeCanceled()
         {
             var cts = new CancellationTokenSource();
@@ -788,7 +791,10 @@ namespace System.Net.Http.Functional.Tests
                         {
                             await connection.SendResponseAsync(new string('a', 100));
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            _output.WriteLine($"Ignored exception:{Environment.NewLine}{ex}");
+                        }
                     });
                 });
         }
@@ -796,7 +802,6 @@ namespace System.Net.Http.Functional.Tests
         [Theory]
         [InlineData(true)]
         [InlineData(false)]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/39187", TestPlatforms.Browser)]
         public async Task ReadAsStreamAsync_Buffered_IgnoresCancellationToken(bool readStreamAsync)
         {
             string content = Guid.NewGuid().ToString();
@@ -828,9 +833,13 @@ namespace System.Net.Http.Functional.Tests
         [Theory]
         [InlineData(true)]
         [InlineData(false)]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/39187", TestPlatforms.Browser)]
         public async Task ReadAsStreamAsync_Unbuffered_IgnoresCancellationToken(bool readStreamAsync)
         {
+            if(PlatformDetection.IsBrowser && !readStreamAsync)
+            {
+                // syncronous operations are not supported on Browser
+                return;
+            }
             string content = Guid.NewGuid().ToString();
 
             await LoopbackServer.CreateClientAndServerAsync(
@@ -952,15 +961,7 @@ namespace System.Net.Http.Functional.Tests
             public MockContent(byte[] mockData, MockOptions options)
             {
                 _options = options;
-
-                if (mockData == null)
-                {
-                    _mockData = Encoding.UTF8.GetBytes("data");
-                }
-                else
-                {
-                    _mockData = mockData;
-                }
+                _mockData = mockData ?? "data"u8.ToArray();
             }
 
             public byte[] GetMockData()

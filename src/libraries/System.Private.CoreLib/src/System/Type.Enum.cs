@@ -19,8 +19,7 @@ namespace System
     {
         public virtual bool IsEnumDefined(object value)
         {
-            if (value == null)
-                throw new ArgumentNullException(nameof(value));
+            ArgumentNullException.ThrowIfNull(value);
 
             if (!IsEnum)
                 throw new ArgumentException(SR.Arg_MustBeEnum, nameof(value));
@@ -66,8 +65,7 @@ namespace System
 
         public virtual string? GetEnumName(object value)
         {
-            if (value == null)
-                throw new ArgumentNullException(nameof(value));
+            ArgumentNullException.ThrowIfNull(value);
 
             if (!IsEnum)
                 throw new ArgumentException(SR.Arg_MustBeEnum, nameof(value));
@@ -94,7 +92,7 @@ namespace System
             if (!IsEnum)
                 throw new ArgumentException(SR.Arg_MustBeEnum, "enumType");
 
-            GetEnumData(out string[] names, out Array values);
+            GetEnumData(out string[] names, out _);
             return names;
         }
 
@@ -124,7 +122,7 @@ namespace System
             // Insertion Sort these values in ascending order.
             // We use this O(n^2) algorithm, but it turns out that most of the time the elements are already in sorted order and
             // the common case performance will be faster than quick sorting this.
-            IComparer comparer = Comparer<object>.Default;
+            Comparer comparer = Comparer.Default;
             for (int i = 1; i < values.Length; i++)
             {
                 int j = i;
@@ -132,7 +130,7 @@ namespace System
                 object val = values[i];
                 bool exchanged = false;
 
-                // Since the elements are sorted we only need to do one comparision, we keep the check for j inside the loop.
+                // Since the elements are sorted we only need to do one comparison, we keep the check for j inside the loop.
                 while (comparer.Compare(values[j - 1], val) > 0)
                 {
                     names[j] = names[j - 1];

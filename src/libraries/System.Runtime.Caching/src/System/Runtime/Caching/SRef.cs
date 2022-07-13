@@ -11,18 +11,21 @@ using System.Runtime.InteropServices;
 namespace System.Runtime.Caching
 {
     // until then we provide a stub
-    internal class SRefMultiple
+    internal sealed class SRefMultiple
     {
         internal SRefMultiple(object[] targets)
         {
         }
+
+#pragma warning disable CA1822
         internal long ApproximateSize => 0;
         internal void Dispose()
         {
         }
+#pragma warning restore CA1822
     }
 
-    internal class GCHandleRef<T> : IDisposable
+    internal sealed class GCHandleRef<T> : IDisposable
     where T : class, IDisposable
     {
         private GCHandle _handle;

@@ -110,13 +110,11 @@ namespace System.Security.AccessControl
 
         internal void MarshalHeader(byte[] binaryForm, int offset)
         {
+            ArgumentNullException.ThrowIfNull(binaryForm);
+
             int Length = BinaryLength; // Invokes the most derived property
 
-            if (binaryForm == null)
-            {
-                throw new ArgumentNullException(nameof(binaryForm));
-            }
-            else if (offset < 0)
+            if (offset < 0)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(offset),
@@ -243,11 +241,9 @@ namespace System.Security.AccessControl
 
         internal static void VerifyHeader(byte[] binaryForm, int offset)
         {
-            if (binaryForm == null)
-            {
-                throw new ArgumentNullException(nameof(binaryForm));
-            }
-            else if (offset < 0)
+            ArgumentNullException.ThrowIfNull(binaryForm);
+
+            if (offset < 0)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(offset),
@@ -553,28 +549,19 @@ namespace System.Security.AccessControl
             }
 
             int thisLength = this.BinaryLength;
-            int aceLength = ace.BinaryLength;
 
-            if (thisLength != aceLength)
+            if (thisLength != ace.BinaryLength)
             {
                 return false;
             }
 
             byte[] array1 = new byte[thisLength];
-            byte[] array2 = new byte[aceLength];
-
             this.GetBinaryForm(array1, 0);
+
+            byte[] array2 = new byte[thisLength];
             ace.GetBinaryForm(array2, 0);
 
-            for (int i = 0; i < array1.Length; i++)
-            {
-                if (array1[i] != array2[i])
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return array1.AsSpan().SequenceEqual(array2);
         }
 
         public sealed override int GetHashCode()
@@ -663,10 +650,7 @@ namespace System.Security.AccessControl
         internal KnownAce(AceType type, AceFlags flags, int accessMask, SecurityIdentifier securityIdentifier)
             : base(type, flags)
         {
-            if (securityIdentifier == null)
-            {
-                throw new ArgumentNullException(nameof(securityIdentifier));
-            }
+            ArgumentNullException.ThrowIfNull(securityIdentifier);
 
             //
             // The values are set by invoking the properties.
@@ -1101,7 +1085,7 @@ namespace System.Security.AccessControl
 
         #region Private Methods
 
-        private AceQualifier QualifierFromType(AceType type, out bool isCallback)
+        private static AceQualifier QualifierFromType(AceType type, out bool isCallback)
         {
             //
             // Better performance might be achieved by using a hard-coded table

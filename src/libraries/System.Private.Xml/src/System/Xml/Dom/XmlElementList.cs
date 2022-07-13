@@ -6,7 +6,7 @@ using System.Diagnostics;
 
 namespace System.Xml
 {
-    internal class XmlElementList : XmlNodeList
+    internal sealed class XmlElementList : XmlNodeList
     {
         private readonly string _asterisk = null!;
         private int _changeCount; //recording the total number that the dom tree has been changed ( insertion and deletion )
@@ -22,7 +22,7 @@ namespace System.Xml
         private bool _atomized;     //whether the localname and namespaceuri are atomized
         private int _matchCount;   // cached list count. -1 means it needs reconstruction
 
-        private WeakReference? _listener;   // XmlElementListListener
+        private WeakReference<XmlElementListListener>? _listener;
 
         private XmlElementList(XmlNode parent)
         {
@@ -37,7 +37,7 @@ namespace System.Xml
             _atomized = true;
             _matchCount = -1;
             // This can be a regular reference, but it would cause some kind of loop inside the GC
-            _listener = new WeakReference(new XmlElementListListener(parent.Document, this));
+            _listener = new WeakReference<XmlElementListListener>(new XmlElementListListener(parent.Document, this));
         }
 
         ~XmlElementList()
@@ -133,8 +133,10 @@ namespace System.Xml
         private XmlNode? PrevElemInPreOrder(XmlNode curNode)
         {
             Debug.Assert(curNode != null);
+
             //For preorder walking, the previous node will be the right-most node in the tree of PreviousSibling of the curNode
             XmlNode? retNode = curNode.PreviousSibling;
+
             // so if the PreviousSibling is not null, going through the tree down to find the right-most node
             while (retNode != null)
             {
@@ -142,9 +144,10 @@ namespace System.Xml
                     break;
                 retNode = retNode.LastChild;
             }
+
             // if no PreviousSibling, the previous node will be the curNode's parentNode
-            if (retNode == null)
-                retNode = curNode.ParentNode;
+            retNode ??= curNode.ParentNode;
+
             // if the final retNode is rootNode, consider having walked through the tree and no more previous node
             if (retNode == _rootNode)
                 retNode = null;
@@ -206,9 +209,9 @@ namespace System.Xml
         //the function is for the enumerator to find out the next available matching element node
         public XmlNode? GetNextNode(XmlNode? n)
         {
-            if (_empty == true)
+            if (_empty)
                 return null;
-            XmlNode node = (n == null) ? _rootNode : n;
+            XmlNode node = n ?? _rootNode;
             return GetMatchingNode(node, true);
         }
 
@@ -217,7 +220,7 @@ namespace System.Xml
             if (_rootNode == null || index < 0)
                 return null;
 
-            if (_empty == true)
+            if (_empty)
                 return null;
             if (_curInd == index)
                 return _curElem;
@@ -241,7 +244,7 @@ namespace System.Xml
         {
             get
             {
-                if (_empty == true)
+                if (_empty)
                     return 0;
 
                 if (_matchCount < 0)
@@ -268,7 +271,7 @@ namespace System.Xml
 
         public override IEnumerator GetEnumerator()
         {
-            if (_empty == true)
+            if (_empty)
                 return new XmlEmptyElementListEnumerator(this);
 
             return new XmlElementListEnumerator(this);
@@ -280,12 +283,11 @@ namespace System.Xml
             Dispose(true);
         }
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             if (_listener != null)
             {
-                XmlElementListListener? listener = (XmlElementListListener?)_listener.Target;
-                if (listener != null)
+                if (_listener.TryGetTarget(out XmlElementListListener? listener))
                 {
                     listener.Unregister();
                 }
@@ -295,7 +297,7 @@ namespace System.Xml
         }
     }
 
-    internal class XmlElementListEnumerator : IEnumerator
+    internal sealed class XmlElementListEnumerator : IEnumerator
     {
         private readonly XmlElementList _list;
         private XmlNode? _curElem;
@@ -335,7 +337,7 @@ namespace System.Xml
         }
     }
 
-    internal class XmlEmptyElementListEnumerator : IEnumerator
+    internal sealed class XmlEmptyElementListEnumerator : IEnumerator
     {
         public XmlEmptyElementListEnumerator(XmlElementList list)
         {
@@ -356,16 +358,16 @@ namespace System.Xml
         }
     }
 
-    internal class XmlElementListListener
+    internal sealed class XmlElementListListener
     {
-        private WeakReference? _elemList;
+        private WeakReference<XmlElementList>? _elemList;
         private readonly XmlDocument _doc;
         private readonly XmlNodeChangedEventHandler _nodeChangeHandler;
 
         internal XmlElementListListener(XmlDocument doc, XmlElementList elemList)
         {
             _doc = doc;
-            _elemList = new WeakReference(elemList);
+            _elemList = new WeakReference<XmlElementList>(elemList);
             _nodeChangeHandler = new XmlNodeChangedEventHandler(this.OnListChanged);
             doc.NodeInserted += _nodeChangeHandler;
             doc.NodeRemoved += _nodeChangeHandler;
@@ -377,8 +379,7 @@ namespace System.Xml
             {
                 if (_elemList != null)
                 {
-                    XmlElementList? el = (XmlElementList?)_elemList.Target;
-                    if (null != el)
+                    if (_elemList.TryGetTarget(out XmlElementList? el))
                     {
                         el.ConcurrencyCheck(args);
                     }

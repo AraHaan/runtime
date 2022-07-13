@@ -8,7 +8,7 @@ using ComTypes = System.Runtime.InteropServices.ComTypes;
 namespace System.Runtime.InteropServices.CustomMarshalers
 {
     [SupportedOSPlatform("windows")]
-    internal class EnumeratorToEnumVariantMarshaler : ICustomMarshaler
+    internal sealed class EnumeratorToEnumVariantMarshaler : ICustomMarshaler
     {
         private static readonly EnumeratorToEnumVariantMarshaler s_enumeratorToEnumVariantMarshaler = new EnumeratorToEnumVariantMarshaler();
 
@@ -35,10 +35,7 @@ namespace System.Runtime.InteropServices.CustomMarshalers
 
         public IntPtr MarshalManagedToNative(object ManagedObj)
         {
-            if (ManagedObj == null)
-            {
-                throw new ArgumentNullException(nameof(ManagedObj));
-            }
+            ArgumentNullException.ThrowIfNull(ManagedObj);
 
             if (ManagedObj is EnumeratorViewOfEnumVariant view)
             {
@@ -52,10 +49,7 @@ namespace System.Runtime.InteropServices.CustomMarshalers
 
         public object MarshalNativeToManaged(IntPtr pNativeData)
         {
-            if (pNativeData == IntPtr.Zero)
-            {
-                throw new ArgumentNullException(nameof(pNativeData));
-            }
+            ArgumentNullException.ThrowIfNull(pNativeData);
 
             object comObject = Marshal.GetObjectForIUnknown(pNativeData);
 

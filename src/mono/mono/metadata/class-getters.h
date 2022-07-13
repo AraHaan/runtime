@@ -1,4 +1,4 @@
-/* 
+/*
  * \file Definitions of getters for the fields of struct _MonoClass
  *
  * Copyright 2018 Microsoft
@@ -8,7 +8,7 @@
 /* No include guards - this file is meant to be included multiple times.
  * Before including the file define the following macros:
  * MONO_CLASS_GETTER(funcname, rettype, optref, argtype, fieldname)
- * 
+ *
  * MONO_CLASS_OFFSET(funcname, argtype, fieldname)
  */
 
@@ -24,6 +24,7 @@ MONO_CLASS_GETTER(m_class_is_size_inited, gboolean, , MonoClass, size_inited)
 MONO_CLASS_GETTER(m_class_is_valuetype, gboolean, , MonoClass, valuetype)
 MONO_CLASS_GETTER(m_class_is_enumtype, gboolean, , MonoClass, enumtype)
 MONO_CLASS_GETTER(m_class_is_blittable, gboolean, , MonoClass, blittable)
+MONO_CLASS_GETTER(m_class_any_field_has_auto_layout, gboolean, , MonoClass, any_field_has_auto_layout)
 MONO_CLASS_GETTER(m_class_is_unicode, gboolean, , MonoClass, unicode)
 MONO_CLASS_GETTER(m_class_was_typebuilder, gboolean, , MonoClass, wastypebuilder)
 MONO_CLASS_GETTER(m_class_is_array_special_interface, gboolean, , MonoClass, is_array_special_interface)
@@ -32,10 +33,6 @@ MONO_CLASS_GETTER(m_class_get_min_align, guint8, , MonoClass, min_align)
 MONO_CLASS_GETTER(m_class_get_packing_size, guint, , MonoClass, packing_size)
 MONO_CLASS_GETTER(m_class_is_ghcimpl, gboolean, , MonoClass, ghcimpl)
 MONO_CLASS_GETTER(m_class_has_finalize, gboolean, , MonoClass, has_finalize)
-#ifndef DISABLE_REMOTING
-MONO_CLASS_GETTER(m_class_get_marshalbyref, guint, , MonoClass, marshalbyref)
-MONO_CLASS_GETTER(m_class_get_contextbound, guint, , MonoClass, contextbound)
-#endif
 MONO_CLASS_GETTER(m_class_is_delegate, gboolean, , MonoClass, delegate)
 MONO_CLASS_GETTER(m_class_is_gc_descr_inited, gboolean, , MonoClass, gc_descr_inited)
 MONO_CLASS_GETTER(m_class_has_cctor, gboolean,  , MonoClass, has_cctor)
@@ -73,7 +70,7 @@ MONO_CLASS_GETTER(m_class_get_methods, MonoMethod **, ,  MonoClass, methods)
 MONO_CLASS_GETTER(m_class_get_this_arg, MonoType*, &, MonoClass, this_arg)
 MONO_CLASS_GETTER(m_class_get_byval_arg, MonoType*, &, MonoClass, _byval_arg)
 MONO_CLASS_GETTER(m_class_get_gc_descr, MonoGCDescriptor, , MonoClass, gc_descr)
-MONO_CLASS_GETTER(m_class_get_runtime_info, MonoClassRuntimeInfo *, , MonoClass, runtime_info)
+MONO_CLASS_GETTER(m_class_get_runtime_vtable, MonoVTable*, , MonoClass, runtime_vtable)
 MONO_CLASS_GETTER(m_class_get_vtable, MonoMethod **, , MonoClass, vtable)
 MONO_CLASS_GETTER(m_class_get_infrequent_data, MonoPropertyBag*, &, MonoClass, infrequent_data)
 

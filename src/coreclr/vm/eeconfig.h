@@ -35,7 +35,7 @@ public:
     TypeNamesList();
     ~TypeNamesList();
 
-    HRESULT Init(__in_z LPCWSTR str);
+    HRESULT Init(_In_z_ LPCWSTR str);
     bool IsInList(LPCUTF8 typeName);
 };
 #endif
@@ -90,6 +90,10 @@ public:
     DWORD         TieredCompilation_DeleteCallCountingStubsAfter() const { LIMITED_METHOD_CONTRACT; return tieredCompilation_DeleteCallCountingStubsAfter; }
 #endif
 
+#if defined(FEATURE_PGO)
+    bool          TieredPGO(void) const { LIMITED_METHOD_CONTRACT;  return fTieredPGO; }
+#endif
+
 #if defined(FEATURE_ON_STACK_REPLACEMENT)
     // OSR Config
     DWORD         OSR_CounterBump() const { LIMITED_METHOD_CONTRACT; return dwOSR_CounterBump; }
@@ -101,9 +105,7 @@ public:
     DWORD         OSR_HighId() const { LIMITED_METHOD_CONTRACT; return dwOSR_HighId; }
 #endif
 
-#ifndef CROSSGEN_COMPILE
     bool          BackpatchEntryPointSlots() const { LIMITED_METHOD_CONTRACT; return backpatchEntryPointSlots; }
-#endif
 
 #if defined(FEATURE_GDBJIT) && defined(_DEBUG)
     inline bool ShouldDumpElfOnMethod(LPCUTF8 methodName) const
@@ -139,7 +141,6 @@ public:
     bool GenDebuggableCode(void)                    const {LIMITED_METHOD_CONTRACT;  return fDebuggable; }
 
     bool ShouldExposeExceptionsInCOMToConsole()     const {LIMITED_METHOD_CONTRACT;  return (iExposeExceptionsInCOM & 1) != 0; }
-    bool ShouldExposeExceptionsInCOMToMsgBox()      const {LIMITED_METHOD_CONTRACT;  return (iExposeExceptionsInCOM & 2) != 0; }
 
     static bool RegexOrExactMatch(LPCUTF8 regex, LPCUTF8 input);
 
@@ -246,7 +247,7 @@ public:
         } CONTRACTL_END
         return RegexOrExactMatch(pszBreakOnStructMarshalSetup, className);
     }
-    static HRESULT ParseTypeList(__in_z LPWSTR str, TypeNamesList** out);
+    static HRESULT ParseTypeList(_In_z_ LPWSTR str, TypeNamesList** out);
     static void DestroyTypeList(TypeNamesList* list);
 
     inline bool ShouldGcCoverageOnMethod(LPCUTF8 methodName) const
@@ -287,6 +288,8 @@ public:
         LIMITED_METHOD_CONTRACT;
         return fEnableRCWCleanupOnSTAShutdown;
     }
+
+    bool IsBuiltInCOMSupported() const { LIMITED_METHOD_CONTRACT;  return m_fBuiltInCOMInteropSupported; }
 #endif // FEATURE_COMINTEROP
 
 #ifdef _DEBUG
@@ -306,16 +309,6 @@ public:
         LIMITED_METHOD_CONTRACT;
         return fProbeForStackOverflow;
     }
-
-#ifdef _DEBUG
-    inline bool AppDomainLeaks() const
-    {
-        // Workaround for CoreCLR bug #12075, until this configuration option is removed
-        // (CoreCLR Bug #12094)
-        LIMITED_METHOD_DAC_CONTRACT;
-        return false;
-    }
-#endif
 
 #ifdef TEST_DATA_CONSISTENCY
     // get the value of fTestDataConsistency, which controls whether we test that we can correctly detect
@@ -417,43 +410,16 @@ public:
         LIMITED_METHOD_CONTRACT;
         return iInjectFatalError;
     }
-
-    inline BOOL SaveThreadInfo() const
-    {
-        return fSaveThreadInfo;
-    }
-
-    inline DWORD SaveThreadInfoMask() const
-    {
-        return dwSaveThreadInfoMask;
-    }
 #endif
 
 
 #ifdef _DEBUG
     // Interop config
-    IUnknown* GetTraceIUnknown()            const {LIMITED_METHOD_CONTRACT;  return m_pTraceIUnknown; }
     int     GetTraceWrapper()               const {LIMITED_METHOD_CONTRACT;  return m_TraceWrapper;      }
 #endif
 
     // Loader
-
-    enum RequireZapsType
-    {
-        REQUIRE_ZAPS_NONE,      // Dont care if native image is used or not
-        REQUIRE_ZAPS_ALL,       // All assemblies must have native images
-        REQUIRE_ZAPS_ALL_JIT_OK,// All assemblies must have native images, but its OK if the JIT-compiler also gets used (if some function was not ngenned)
-
-        REQUIRE_ZAPS_COUNT
-    };
-    RequireZapsType RequireZaps()           const {LIMITED_METHOD_CONTRACT;  return iRequireZaps; }
-    bool    RequireZap(LPCUTF8 assemblyName) const;
-#ifdef _DEBUG
-    bool    ForbidZap(LPCUTF8 assemblyName) const;
-#endif
     bool    ExcludeReadyToRun(LPCUTF8 assemblyName) const;
-
-    LPCWSTR ZapSet()                        const { LIMITED_METHOD_CONTRACT; return pZapSet; }
 
     bool    NgenBindOptimizeNonGac()        const { LIMITED_METHOD_CONTRACT; return fNgenBindOptimizeNonGac; }
 
@@ -463,40 +429,11 @@ public:
 
     bool    StressLog()                     const { LIMITED_METHOD_CONTRACT; return fStressLog; }
     bool    ForceEnc()                      const { LIMITED_METHOD_CONTRACT; return fForceEnc; }
+    bool    DebugAssembliesModifiable()     const { LIMITED_METHOD_CONTRACT; return fDebugAssembliesModifiable; }
 
     // Optimizations to improve working set
 
     HRESULT sync();    // check the registry again and update local state
-
-    // Helpers to read configuration
-
-    //
-    // NOTE: The following function is deprecated; use the CLRConfig class instead.
-    // To access a configuration value through CLRConfig, add an entry in file:../inc/CLRConfigValues.h.
-    //
-    static HRESULT GetConfigString_DontUse_(__in_z LPCWSTR name, __deref_out_z LPWSTR*out, BOOL fPrependCOMPLUS = TRUE); // Note that you own the returned string!
-
-    //
-    // NOTE: The following function is deprecated; use the CLRConfig class instead.
-    // To access a configuration value through CLRConfig, add an entry in file:../inc/CLRConfigValues.h.
-    //
-    static DWORD GetConfigDWORD_DontUse_(__in_z LPCWSTR name, DWORD defValue,
-                                DWORD level=(DWORD) REGUTIL::COR_CONFIG_ALL,
-                                BOOL fPrependCOMPLUS = TRUE);
-
-    //
-    // NOTE: The following function is deprecated; use the CLRConfig class instead.
-    // To access a configuration value through CLRConfig, add an entry in file:../inc/CLRConfigValues.h.
-    //
-    static ULONGLONG GetConfigULONGLONG_DontUse_(__in_z LPCWSTR name, ULONGLONG defValue,
-                                             DWORD level=(DWORD) REGUTIL::COR_CONFIG_ALL,
-                                             BOOL fPrependCOMPLUS = TRUE);
-
-    //
-    // NOTE: The following function is deprecated; use the CLRConfig class instead.
-    // To access a configuration value through CLRConfig, add an entry in file:../inc/CLRConfigValues.h.
-    //
-    static DWORD GetConfigFlag_DontUse_(__in_z LPCWSTR name, DWORD bitToSet, bool defValue = FALSE);
 
 #ifdef _DEBUG
     // GC alloc logging
@@ -557,7 +494,7 @@ private: //----------------------------------------------------------------
     bool   m_fInteropLogArguments; // Log all pinned arguments passed to an interop call
 
 #ifdef _DEBUG
-    static HRESULT ParseMethList(__in_z LPWSTR str, MethodNamesList* * out);
+    static HRESULT ParseMethList(_In_z_ LPWSTR str, MethodNamesList* * out);
     static void DestroyMethList(MethodNamesList* list);
     static bool IsInMethList(MethodNamesList* list, MethodDesc* pMD);
 
@@ -596,6 +533,7 @@ private: //----------------------------------------------------------------
     LPCUTF8 pszLogCCWRefCountChange;      // OutputDebugString when AddRef/Release is called on a CCW
                                           // for the specified type(s)
     bool fEnableRCWCleanupOnSTAShutdown;  // Register our IInitializeSpy even in classic processes
+    bool m_fBuiltInCOMInteropSupported;   // COM built-in support
 #endif // FEATURE_COMINTEROP
 
 #ifdef FEATURE_DOUBLE_ALIGNMENT_HINT
@@ -659,38 +597,17 @@ private: //----------------------------------------------------------------
 
     DWORD iInjectFatalError;
 
-    BOOL fSaveThreadInfo;
-    DWORD dwSaveThreadInfoMask;
-
     AssemblyNamesList *pSkipGCCoverageList;
 #endif
 
-    RequireZapsType iRequireZaps;
-    // Assemblies which need to have native images.
-    // This is only used if iRequireZaps!=REQUIRE_ZAPS_NONE
-    // This can be used to enforce that ngen images are used only selectively for some assemblies
-    AssemblyNamesList * pRequireZapsList;
-    // assemblies which need NOT have native images.
-    // This is only used if iRequireZaps!=REQUIRE_ZAPS_NONE
-    // This overrides pRequireZapsList.
-    AssemblyNamesList * pRequireZapsExcludeList;
-
     // Assemblies which cannot use Ready to Run images.
     AssemblyNamesList * pReadyToRunExcludeList;
-
-#ifdef _DEBUG
-    // Exact opposite of require zaps
-    BOOL iForbidZaps;
-    AssemblyNamesList * pForbidZapsList;
-    AssemblyNamesList * pForbidZapsExcludeList;
-#endif
-
-    LPCWSTR pZapSet;
 
     bool fNgenBindOptimizeNonGac;
 
     bool fStressLog;
     bool fForceEnc;
+    bool fDebugAssembliesModifiable;
     bool fProbeForStackOverflow;
 
     // Stackwalk optimization flag
@@ -701,12 +618,8 @@ private: //----------------------------------------------------------------
 
 #ifdef _DEBUG
     // interop logging
-    IUnknown* m_pTraceIUnknown;
     int       m_TraceWrapper;
 #endif
-
-    // Flag to keep track of memory
-    int     m_fFreepZapSet;
 
 #ifdef _DEBUG
     // GC Alloc perf flags
@@ -739,6 +652,10 @@ private: //----------------------------------------------------------------
     DWORD tieredCompilation_DeleteCallCountingStubsAfter;
 #endif
 
+#if defined(FEATURE_PGO)
+    bool fTieredPGO;
+#endif
+
 #if defined(FEATURE_ON_STACK_REPLACEMENT)
     DWORD dwOSR_HitLimit;
     DWORD dwOSR_CounterBump;
@@ -749,9 +666,7 @@ private: //----------------------------------------------------------------
     DWORD dwOSR_HighId;
 #endif
 
-#ifndef CROSSGEN_COMPILE
     bool backpatchEntryPointSlots;
-#endif
 
 #if defined(FEATURE_GDBJIT) && defined(_DEBUG)
     LPCUTF8 pszGDBJitElfDump;
@@ -761,10 +676,6 @@ private: //----------------------------------------------------------------
     bool fGDBJitEmitDebugFrame;
 #endif
 public:
-
-    DWORD GetConfigDWORDInternal_DontUse_ (__in_z LPCWSTR name, DWORD defValue,    //for getting data in the constructor of EEConfig
-                                    DWORD level=(DWORD) REGUTIL::COR_CONFIG_ALL,
-                                    BOOL fPrependCOMPLUS = TRUE);
 
     enum BitForMask {
         CallSite_1 = 0x0001,
@@ -860,18 +771,6 @@ public:
 #define FILE_FORMAT_CHECK_MSG(_condition, _message)
 #define FILE_FORMAT_CHECK(_condition)
 
-#endif
-
-// NGENImagesAllowed is the safe way to determine if NGEN Images are allowed to be loaded. (Defined as
-// a macro instead of an inlined function to avoid compilation errors due to dependent
-// definitions not being available to this header.)
-#ifdef PROFILING_SUPPORTED
-#define NGENImagesAllowed()                                                                                     \
-    (g_fAllowNativeImages &&                /* No one disabled use of native images */                          \
-    !(CORProfilerDisableAllNGenImages()))   /* Profiler didn't explicitly refuse NGEN images */
-#else
-#define NGENImagesAllowed()                                                                                     \
-    (g_fAllowNativeImages)
 #endif
 
 #endif // EECONFIG_H

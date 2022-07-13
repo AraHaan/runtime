@@ -118,20 +118,20 @@ void CLREventBase::CreateMonitorEvent(SIZE_T Cookie)
         GC_NOTRIGGER;
         // disallow creation of Crst before EE starts
         PRECONDITION((g_fEEStarted));
-        PRECONDITION((GetThread() != NULL));
+        PRECONDITION((GetThreadNULLOk() != NULL));
         PRECONDITION((!IsOSEvent()));
     }
     CONTRACTL_END;
 
     // thread-safe SetAutoEvent
-    FastInterlockOr(&m_dwFlags, CLREVENT_FLAGS_AUTO_EVENT);
+    InterlockedOr((LONG*)&m_dwFlags, CLREVENT_FLAGS_AUTO_EVENT);
 
     {
         HANDLE h = WszCreateEvent(NULL,FALSE,FALSE,NULL);
         if (h == NULL) {
             ThrowOutOfMemory();
         }
-        if (FastInterlockCompareExchangePointer(&m_handle,
+        if (InterlockedCompareExchangeT(&m_handle,
                                                 h,
                                                 INVALID_HANDLE_VALUE) != INVALID_HANDLE_VALUE)
         {
@@ -141,7 +141,7 @@ void CLREventBase::CreateMonitorEvent(SIZE_T Cookie)
     }
 
     // thread-safe SetInDeadlockDetection
-    FastInterlockOr(&m_dwFlags, CLREVENT_FLAGS_IN_DEADLOCK_DETECTION);
+    InterlockedOr((LONG*)&m_dwFlags, CLREVENT_FLAGS_IN_DEADLOCK_DETECTION);
 
     for (;;)
     {
@@ -154,7 +154,7 @@ void CLREventBase::CreateMonitorEvent(SIZE_T Cookie)
         }
 
         LONG newFlags = oldFlags | CLREVENT_FLAGS_MONITOREVENT_ALLOCATED;
-        if (FastInterlockCompareExchange((LONG*)&m_dwFlags, newFlags, oldFlags) != oldFlags)
+        if (InterlockedCompareExchange((LONG*)&m_dwFlags, newFlags, oldFlags) != oldFlags)
         {
             // We lost the race
             continue;
@@ -196,7 +196,7 @@ void CLREventBase::SetMonitorEvent()
         }
 
         LONG newFlags = oldFlags | CLREVENT_FLAGS_MONITOREVENT_SIGNALLED;
-        if (FastInterlockCompareExchange((LONG*)&m_dwFlags, newFlags, oldFlags) != oldFlags)
+        if (InterlockedCompareExchange((LONG*)&m_dwFlags, newFlags, oldFlags) != oldFlags)
         {
             // We lost the race
             continue;
@@ -426,7 +426,7 @@ DWORD CLREventBase::WaitEx(DWORD dwMilliseconds, WaitMode mode, PendingSync *syn
         {
             NOTHROW;
         }
-        if (GetThread())
+        if (GetThreadNULLOk())
         {
             if (alertable)
                 GC_TRIGGERS;
@@ -444,7 +444,7 @@ DWORD CLREventBase::WaitEx(DWORD dwMilliseconds, WaitMode mode, PendingSync *syn
 
     _ASSERTE(Thread::Debug_AllowCallout());
 
-    Thread * pThread = GetThread();
+    Thread * pThread = GetThreadNULLOk();
 
 #ifdef _DEBUG
     // If a CLREvent is OS event only, we can not wait for the event on a managed thread
@@ -518,7 +518,7 @@ DWORD CLRSemaphore::Wait(DWORD dwMilliseconds, BOOL alertable)
 {
     CONTRACTL
     {
-        if (GetThread() && alertable)
+        if (GetThreadNULLOk() && alertable)
         {
             THROWS;               // Thread::DoAppropriateWait can throw
         }
@@ -526,7 +526,8 @@ DWORD CLRSemaphore::Wait(DWORD dwMilliseconds, BOOL alertable)
         {
             NOTHROW;
         }
-        if (GetThread())
+
+        if (GetThreadNULLOk())
         {
             if (alertable)
                 GC_TRIGGERS;
@@ -537,12 +538,13 @@ DWORD CLRSemaphore::Wait(DWORD dwMilliseconds, BOOL alertable)
         {
             DISABLED(GC_TRIGGERS);
         }
+
         PRECONDITION(m_handle != INVALID_HANDLE_VALUE); // Invalid to have invalid handle
     }
     CONTRACTL_END;
 
 
-    Thread *pThread = GetThread();
+    Thread *pThread = GetThreadNULLOk();
     _ASSERTE (pThread || !g_fEEStarted || dbgOnly_IsSpecialEEThread());
 
     {

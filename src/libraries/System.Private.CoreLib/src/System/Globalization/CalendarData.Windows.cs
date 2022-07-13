@@ -3,11 +3,11 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
-using Internal.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 
 namespace System.Globalization
 {
-    internal partial class CalendarData
+    internal sealed partial class CalendarData
     {
         private const uint CAL_ICALINTVALUE = 0x00000001;
         private const uint CAL_RETURN_GENITIVE_NAMES = 0x10000000;
@@ -64,24 +64,22 @@ namespace System.Globalization
             return result;
         }
 
-        private void InsertOrSwapOverride(string? value, ref string[] destination)
+        private static void InsertOrSwapOverride(string? value, ref string[] destination)
         {
             if (value == null)
                 return;
 
-            for (int i = 0; i < destination.Length; i++)
+            int i = Array.IndexOf(destination, value);
+            if (i >= 0)
             {
-                if (destination[i] == value)
+                if (i > 0)
                 {
-                    if (i > 0)
-                    {
-                        string tmp = destination[0];
-                        destination[0] = value;
-                        destination[i] = tmp;
-                    }
-
-                    return;
+                    string tmp = destination[0];
+                    destination[0] = value;
+                    destination[i] = tmp;
                 }
+
+                return;
             }
 
             string[] newArray = new string[destination.Length + 1];

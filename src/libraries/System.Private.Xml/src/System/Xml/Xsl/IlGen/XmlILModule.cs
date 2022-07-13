@@ -8,11 +8,10 @@ using System.Reflection.Emit;
 using System.Security;
 using System.Xml.Xsl.Runtime;
 using System.Runtime.Versioning;
+using DebuggingModes = System.Diagnostics.DebuggableAttribute.DebuggingModes;
 
 namespace System.Xml.Xsl.IlGen
 {
-    using DebuggingModes = DebuggableAttribute.DebuggingModes;
-
     internal enum XmlILMethodAttributes
     {
         None = 0,
@@ -20,7 +19,7 @@ namespace System.Xml.Xsl.IlGen
         Raw = 2,        // Raw method which should not add an implicit first argument of type XmlQueryRuntime
     }
 
-    internal class XmlILModule
+    internal sealed class XmlILModule
     {
         private static long s_assemblyId;                                     // Unique identifier used to ensure that assembly names are unique within AppDomain
         private static readonly ModuleBuilder s_LREModule = CreateLREModule();         // Module used to emit dynamic lightweight-reflection-emit (LRE) methods
@@ -29,7 +28,7 @@ namespace System.Xml.Xsl.IlGen
         private Hashtable _methods;
         private readonly bool _useLRE, _emitSymbols;
 
-        private const string RuntimeName = "{" + XmlReservedNs.NsXslDebug + "}" + "runtime";
+        private const string RuntimeName = $"{{{XmlReservedNs.NsXslDebug}}}runtime";
 
         private static ModuleBuilder CreateLREModule()
         {
@@ -127,7 +126,7 @@ namespace System.Xml.Xsl.IlGen
             {
                 // Add unique id to end of name in order to make it unique within this module
                 uniqueId++;
-                name = nameOrig + " (" + uniqueId + ")";
+                name = $"{nameOrig} ({uniqueId})";
             }
 
             if (!isRaw)
@@ -275,7 +274,7 @@ namespace System.Xml.Xsl.IlGen
 
             System.Threading.Interlocked.Increment(ref s_assemblyId);
             name = new AssemblyName();
-            name.Name = "System.Xml.Xsl.CompiledQuery." + s_assemblyId;
+            name.Name = $"System.Xml.Xsl.CompiledQuery.{s_assemblyId}";
 
             return name;
         }

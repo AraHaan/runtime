@@ -18,12 +18,12 @@ namespace System.DirectoryServices.ActiveDirectory
 
         // variables corresponding to public properties
         private readonly string _configSetName;
-        private ReadOnlySiteCollection _cachedSites;
-        private AdamInstanceCollection _cachedADAMInstances;
-        private ApplicationPartitionCollection _cachedApplicationPartitions;
-        private ActiveDirectorySchema _cachedSchema;
-        private AdamInstance _cachedSchemaRoleOwner;
-        private AdamInstance _cachedNamingRoleOwner;
+        private ReadOnlySiteCollection? _cachedSites;
+        private AdamInstanceCollection? _cachedADAMInstances;
+        private ApplicationPartitionCollection? _cachedApplicationPartitions;
+        private ActiveDirectorySchema? _cachedSchema;
+        private AdamInstance? _cachedSchemaRoleOwner;
+        private AdamInstance? _cachedNamingRoleOwner;
         private ReplicationSecurityLevel _cachedSecurityLevel = (ReplicationSecurityLevel)(-1);
 
         // 4 minutes timeout for locating an ADAM instance in the configset
@@ -103,8 +103,8 @@ namespace System.DirectoryServices.ActiveDirectory
             // bind to rootdse of an adam instance (if target is already a server, verify that it is an adam instance)
             //
             DirectoryEntryManager directoryEntryMgr = new DirectoryEntryManager(context);
-            DirectoryEntry rootDSE = null;
-            string configSetName = null;
+            DirectoryEntry? rootDSE = null;
+            string configSetName;
 
             try
             {
@@ -114,7 +114,7 @@ namespace System.DirectoryServices.ActiveDirectory
                     throw new ActiveDirectoryObjectNotFoundException(SR.Format(SR.AINotFound, context.Name), typeof(ConfigurationSet), null);
                 }
 
-                configSetName = (string)PropertyManager.GetPropertyValue(context, rootDSE, PropertyManager.ConfigurationNamingContext);
+                configSetName = (string)PropertyManager.GetPropertyValue(context, rootDSE, PropertyManager.ConfigurationNamingContext)!;
             }
             catch (COMException e)
             {
@@ -169,7 +169,7 @@ namespace System.DirectoryServices.ActiveDirectory
             return FindOneAdamInstance(Name, _context, partitionName, null);
         }
 
-        public AdamInstance FindAdamInstance(string partitionName, string siteName)
+        public AdamInstance FindAdamInstance(string? partitionName, string siteName)
         {
             CheckIfDisposed();
 
@@ -204,7 +204,7 @@ namespace System.DirectoryServices.ActiveDirectory
             return FindAdamInstances(_context, partitionName, null);
         }
 
-        public AdamInstanceCollection FindAllAdamInstances(string partitionName, string siteName)
+        public AdamInstanceCollection FindAllAdamInstances(string? partitionName, string siteName)
         {
             CheckIfDisposed();
 
@@ -232,7 +232,7 @@ namespace System.DirectoryServices.ActiveDirectory
             if (_cachedSecurityLevel == (ReplicationSecurityLevel)(-1))
             {
                 DirectoryEntry configEntry = _directoryEntryMgr.GetCachedDirectoryEntry(WellKnownDN.ConfigurationNamingContext);
-                _cachedSecurityLevel = (ReplicationSecurityLevel)((int)PropertyManager.GetPropertyValue(_context, configEntry, PropertyManager.MsDSReplAuthenticationMode));
+                _cachedSecurityLevel = (ReplicationSecurityLevel)((int)PropertyManager.GetPropertyValue(_context, configEntry, PropertyManager.MsDSReplAuthenticationMode)!);
             }
             return _cachedSecurityLevel;
         }
@@ -280,11 +280,7 @@ namespace System.DirectoryServices.ActiveDirectory
             get
             {
                 CheckIfDisposed();
-                if (_cachedSites == null)
-                {
-                    _cachedSites = new ReadOnlySiteCollection(GetSites());
-                }
-                return _cachedSites;
+                return _cachedSites ??= new ReadOnlySiteCollection(GetSites());
             }
         }
 
@@ -293,11 +289,7 @@ namespace System.DirectoryServices.ActiveDirectory
             get
             {
                 CheckIfDisposed();
-                if (_cachedADAMInstances == null)
-                {
-                    _cachedADAMInstances = FindAllAdamInstances();
-                }
-                return _cachedADAMInstances;
+                return _cachedADAMInstances ??= FindAllAdamInstances();
             }
         }
 
@@ -306,11 +298,7 @@ namespace System.DirectoryServices.ActiveDirectory
             get
             {
                 CheckIfDisposed();
-                if (_cachedApplicationPartitions == null)
-                {
-                    _cachedApplicationPartitions = new ApplicationPartitionCollection(GetApplicationPartitions());
-                }
-                return _cachedApplicationPartitions;
+                return _cachedApplicationPartitions ??= new ApplicationPartitionCollection(GetApplicationPartitions());
             }
         }
 
@@ -339,11 +327,7 @@ namespace System.DirectoryServices.ActiveDirectory
             get
             {
                 CheckIfDisposed();
-                if (_cachedSchemaRoleOwner == null)
-                {
-                    _cachedSchemaRoleOwner = GetRoleOwner(AdamRole.SchemaRole);
-                }
-                return _cachedSchemaRoleOwner;
+                return _cachedSchemaRoleOwner ??= GetRoleOwner(AdamRole.SchemaRole);
             }
         }
 
@@ -352,11 +336,7 @@ namespace System.DirectoryServices.ActiveDirectory
             get
             {
                 CheckIfDisposed();
-                if (_cachedNamingRoleOwner == null)
-                {
-                    _cachedNamingRoleOwner = GetRoleOwner(AdamRole.NamingRole);
-                }
-                return _cachedNamingRoleOwner;
+                return _cachedNamingRoleOwner ??= GetRoleOwner(AdamRole.NamingRole);
             }
         }
 
@@ -381,7 +361,7 @@ namespace System.DirectoryServices.ActiveDirectory
                 //
                 isServer = true;
                 DirectoryEntry rootDSE = DirectoryEntryManager.GetDirectoryEntry(forestContext, WellKnownDN.RootDSE);
-                string isGCReady = (string)PropertyManager.GetPropertyValue(forestContext, rootDSE, PropertyManager.IsGlobalCatalogReady);
+                string? isGCReady = (string?)PropertyManager.GetPropertyValue(forestContext, rootDSE, PropertyManager.IsGlobalCatalogReady);
                 isGC = (Utils.Compare(isGCReady, "TRUE") == 0);
             }
 
@@ -422,7 +402,7 @@ namespace System.DirectoryServices.ActiveDirectory
                     throw new ArgumentException(SR.TargetShouldBeServerORConfigSet, nameof(context));
                 }
 
-                string dnsHostName = (string)PropertyManager.GetPropertyValue(context, rootDSE, PropertyManager.DnsHostName);
+                string dnsHostName = (string?)PropertyManager.GetPropertyValue(context, rootDSE, PropertyManager.DnsHostName)!;
 
                 return new AdamInstance(context, dnsHostName, directoryEntryMgr);
             }
@@ -449,7 +429,7 @@ namespace System.DirectoryServices.ActiveDirectory
                 str.Append("=1.2.840.113556.1.4.1851)(");
                 str.Append(PropertyManager.Keywords);
                 str.Append('=');
-                str.Append(Utils.GetEscapedFilterValue(context.Name)); // target = config set name
+                str.Append(Utils.GetEscapedFilterValue(context.Name!)); // target = config set name
                 str.Append("))");
 
                 string filter = str.ToString();
@@ -500,12 +480,12 @@ namespace System.DirectoryServices.ActiveDirectory
             return FindAliveAdamInstance(null, context, adamInstanceNames);
         }
 
-        internal static AdamInstance FindOneAdamInstance(DirectoryContext context, string partitionName, string siteName)
+        internal static AdamInstance FindOneAdamInstance(DirectoryContext context, string? partitionName, string? siteName)
         {
             return FindOneAdamInstance(null, context, partitionName, siteName);
         }
 
-        internal static AdamInstance FindOneAdamInstance(string configSetName, DirectoryContext context, string partitionName, string siteName)
+        internal static AdamInstance FindOneAdamInstance(string? configSetName, DirectoryContext context, string? partitionName, string? siteName)
         {
             // can expect valid context (non-null)
             if (partitionName != null && partitionName.Length == 0)
@@ -528,7 +508,7 @@ namespace System.DirectoryServices.ActiveDirectory
             return FindAliveAdamInstance(configSetName, context, ntdsaNames);
         }
 
-        internal static AdamInstanceCollection FindAdamInstances(DirectoryContext context, string partitionName, string siteName)
+        internal static AdamInstanceCollection FindAdamInstances(DirectoryContext context, string? partitionName, string? siteName)
         {
             // can expect valid context (non-null)
             if (partitionName != null && partitionName.Length == 0)
@@ -558,10 +538,10 @@ namespace System.DirectoryServices.ActiveDirectory
         // 1.  An ADAM instance responds to an ldap_bind - we return an ADAMInstance object for that adam instance
         // 2.  We exceed the timeout duration - we return an ActiveDirectoryObjectNotFoundException
         //
-        internal static AdamInstance FindAliveAdamInstance(string configSetName, DirectoryContext context, ArrayList adamInstanceNames)
+        internal static AdamInstance FindAliveAdamInstance(string? configSetName, DirectoryContext context, ArrayList adamInstanceNames)
         {
             bool foundAliveADAMInstance = false;
-            AdamInstance adamInstance = null;
+            AdamInstance? adamInstance = null;
 
             // record the start time so that we can determine if the timeout duration has been exceeded or not
             DateTime startTime = DateTime.UtcNow;
@@ -589,7 +569,7 @@ namespace System.DirectoryServices.ActiveDirectory
                     {
                         // if we are passed the timeout period, we should throw, else do nothing
                         if (DateTime.UtcNow.Subtract(startTime) > s_locationTimeout)
-                            throw new ActiveDirectoryObjectNotFoundException(SR.Format(SR.ADAMInstanceNotFoundInConfigSet, (configSetName != null) ? configSetName : context.Name), typeof(AdamInstance), null);
+                            throw new ActiveDirectoryObjectNotFoundException(SR.Format(SR.ADAMInstanceNotFoundInConfigSet, configSetName ?? context.Name), typeof(AdamInstance), null);
                     }
                     else
                         throw ExceptionHelper.GetExceptionFromCOMException(context, e);
@@ -597,20 +577,20 @@ namespace System.DirectoryServices.ActiveDirectory
 
                 if (foundAliveADAMInstance)
                 {
-                    return adamInstance;
+                    return adamInstance!;
                 }
             }
 
             // if we reach here, we haven't found an adam instance
-            throw new ActiveDirectoryObjectNotFoundException(SR.Format(SR.ADAMInstanceNotFoundInConfigSet, (configSetName != null) ? configSetName : context.Name), typeof(AdamInstance), null);
+            throw new ActiveDirectoryObjectNotFoundException(SR.Format(SR.ADAMInstanceNotFoundInConfigSet, configSetName ?? context.Name), typeof(AdamInstance), null);
         }
 
         /// <returns>Returns a DomainController object for the DC that holds the specified FSMO role</returns>
         private AdamInstance GetRoleOwner(AdamRole role)
         {
-            DirectoryEntry entry = null;
+            DirectoryEntry? entry = null;
 
-            string adamInstName = null;
+            string? adamInstName = null;
             try
             {
                 switch (role)
@@ -633,7 +613,7 @@ namespace System.DirectoryServices.ActiveDirectory
                         break;
                 }
                 entry.RefreshCache();
-                adamInstName = Utils.GetAdamDnsHostNameFromNTDSA(_context, (string)PropertyManager.GetPropertyValue(_context, entry, PropertyManager.FsmoRoleOwner));
+                adamInstName = Utils.GetAdamDnsHostNameFromNTDSA(_context, (string)PropertyManager.GetPropertyValue(_context, entry, PropertyManager.FsmoRoleOwner)!);
             }
             catch (COMException e)
             {
@@ -641,10 +621,7 @@ namespace System.DirectoryServices.ActiveDirectory
             }
             finally
             {
-                if (entry != null)
-                {
-                    entry.Dispose();
-                }
+                entry?.Dispose();
             }
 
             // create a new context object for the adam instance passing on  the
@@ -668,7 +645,7 @@ namespace System.DirectoryServices.ActiveDirectory
             propertiesToLoad[0] = PropertyManager.Cn;
 
             ADSearcher searcher = new ADSearcher(sitesEntry, filter, propertiesToLoad, SearchScope.OneLevel);
-            SearchResultCollection resCol = null;
+            SearchResultCollection? resCol = null;
 
             try
             {
@@ -677,7 +654,7 @@ namespace System.DirectoryServices.ActiveDirectory
                 foreach (SearchResult res in resCol)
                 {
                     // an existing site
-                    sites.Add(new ActiveDirectorySite(_context, (string)PropertyManager.GetSearchResultPropertyValue(res, PropertyManager.Cn), true));
+                    sites.Add(new ActiveDirectorySite(_context, (string)PropertyManager.GetSearchResultPropertyValue(res, PropertyManager.Cn)!, true));
                 }
             }
             catch (COMException e)
@@ -686,11 +663,8 @@ namespace System.DirectoryServices.ActiveDirectory
             }
             finally
             {
-                if (resCol != null)
-                {
-                    // call dispose on search result collection
-                    resCol.Dispose();
-                }
+                // call dispose on search result collection
+                resCol?.Dispose();
             }
             return sites;
         }
@@ -726,27 +700,27 @@ namespace System.DirectoryServices.ActiveDirectory
             propertiesToLoad[1] = PropertyManager.MsDSNCReplicaLocations;
 
             ADSearcher searcher = new ADSearcher(partitionsEntry, filter, propertiesToLoad, SearchScope.OneLevel);
-            SearchResultCollection resCol = null;
+            SearchResultCollection? resCol = null;
 
             try
             {
                 resCol = searcher.FindAll();
 
-                string schemaNamingContext = (string)PropertyManager.GetPropertyValue(_context, rootDSE, PropertyManager.SchemaNamingContext);
-                string configurationNamingContext = (string)PropertyManager.GetPropertyValue(_context, rootDSE, PropertyManager.ConfigurationNamingContext);
+                string? schemaNamingContext = (string?)PropertyManager.GetPropertyValue(_context, rootDSE, PropertyManager.SchemaNamingContext);
+                string? configurationNamingContext = (string?)PropertyManager.GetPropertyValue(_context, rootDSE, PropertyManager.ConfigurationNamingContext);
 
                 foreach (SearchResult res in resCol)
                 {
                     // add the name of the appNC only if it is not
                     // the Schema or Configuration partition
-                    string nCName = (string)PropertyManager.GetSearchResultPropertyValue(res, PropertyManager.NCName);
+                    string nCName = (string)PropertyManager.GetSearchResultPropertyValue(res, PropertyManager.NCName)!;
 
                     if ((!(nCName.Equals(schemaNamingContext))) && (!(nCName.Equals(configurationNamingContext))))
                     {
                         ResultPropertyValueCollection replicaLocations = res.Properties[PropertyManager.MsDSNCReplicaLocations];
                         if (replicaLocations.Count > 0)
                         {
-                            string replicaName = Utils.GetAdamDnsHostNameFromNTDSA(_context, (string)replicaLocations[Utils.GetRandomIndex(replicaLocations.Count)]);
+                            string replicaName = Utils.GetAdamDnsHostNameFromNTDSA(_context, (string)replicaLocations[Utils.GetRandomIndex(replicaLocations.Count)]!);
                             DirectoryContext appNCContext = Utils.GetNewDirectoryContext(replicaName, DirectoryContextType.DirectoryServer, _context);
                             appNCs.Add(new ApplicationPartition(appNCContext, nCName, null, ApplicationPartitionType.ADAMApplicationPartition, new DirectoryEntryManager(appNCContext)));
                         }
@@ -759,11 +733,8 @@ namespace System.DirectoryServices.ActiveDirectory
             }
             finally
             {
-                if (resCol != null)
-                {
-                    // call dispose on search result collection
-                    resCol.Dispose();
-                }
+                // call dispose on search result collection
+                resCol?.Dispose();
             }
             return appNCs;
         }

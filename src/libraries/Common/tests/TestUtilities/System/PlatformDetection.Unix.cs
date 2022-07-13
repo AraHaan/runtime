@@ -20,6 +20,7 @@ namespace System
         public static bool IsDebian => IsDistroAndVersion("debian");
         public static bool IsAlpine => IsDistroAndVersion("alpine");
         public static bool IsDebian8 => IsDistroAndVersion("debian", 8);
+        public static bool IsDebian9 => IsDistroAndVersion("debian", 9);
         public static bool IsDebian10 => IsDistroAndVersion("debian", 10);
         public static bool IsUbuntu1604 => IsDistroAndVersion("ubuntu", 16, 4);
         public static bool IsUbuntu1704 => IsDistroAndVersion("ubuntu", 17, 4);
@@ -27,18 +28,22 @@ namespace System
         public static bool IsUbuntu1710OrHigher => IsDistroAndVersionOrHigher("ubuntu", 17, 10);
         public static bool IsUbuntu1804 => IsDistroAndVersion("ubuntu", 18, 04);
         public static bool IsUbuntu1810OrHigher => IsDistroAndVersionOrHigher("ubuntu", 18, 10);
+        public static bool IsMariner => IsDistroAndVersion("mariner");
+        public static bool IsSLES => IsDistroAndVersion("sles");
         public static bool IsTizen => IsDistroAndVersion("tizen");
         public static bool IsFedora => IsDistroAndVersion("fedora");
+        public static bool IsLinuxBionic => IsBionic();
 
         // OSX family
-        public static bool IsOSXLike =>
-            RuntimeInformation.IsOSPlatform(OSPlatform.Create("IOS")) ||
-            RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ||
-            RuntimeInformation.IsOSPlatform(OSPlatform.Create("TVOS"));
+        public static bool IsOSXLike => IsOSX || IsiOS || IstvOS || IsMacCatalyst;
         public static bool IsOSX => RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
         public static bool IsNotOSX => !IsOSX;
         public static bool IsMacOsMojaveOrHigher => IsOSX && Environment.OSVersion.Version >= new Version(10, 14);
         public static bool IsMacOsCatalinaOrHigher => IsOSX && Environment.OSVersion.Version >= new Version(10, 15);
+        public static bool IsMacOsAppleSilicon => IsOSX && IsArm64Process;
+        public static bool IsNotMacOsAppleSilicon => !IsMacOsAppleSilicon;
+        public static bool IsAppSandbox => Environment.GetEnvironmentVariable("APP_SANDBOX_CONTAINER_ID") != null;
+        public static bool IsNotAppSandbox => !IsAppSandbox;
 
         // RedHat family covers RedHat and CentOS
         public static bool IsRedHatFamily => IsRedHatFamilyAndVersion();
@@ -47,14 +52,18 @@ namespace System
         public static bool IsNotFedoraOrRedHatFamily => !IsFedora && !IsRedHatFamily;
         public static bool IsNotDebian10 => !IsDebian10;
 
-        // Android
-        public static bool IsAndroid => RuntimeInformation.IsOSPlatform(OSPlatform.Create("Android"));
-
         public static bool IsSuperUser => IsBrowser || IsWindows ? false : libc.geteuid() == 0;
 
-        public static Version OpenSslVersion => !IsOSXLike && !IsWindows ?
+        public static bool IsUnixAndSuperUser => !IsWindows && IsSuperUser;
+
+        public static Version OpenSslVersion => !IsOSXLike && !IsWindows && !IsAndroid ?
             GetOpenSslVersion() :
             throw new PlatformNotSupportedException();
+
+        private static readonly Version s_openssl3Version = new Version(3, 0, 0);
+        public static bool IsOpenSsl3 => !IsOSXLike && !IsWindows && !IsAndroid && !IsBrowser ?
+            GetOpenSslVersion() >= s_openssl3Version :
+            false;
 
         /// <summary>
         /// If gnulibc is available, returns the release, such as "stable".
@@ -104,6 +113,19 @@ namespace System
             }
         }
 
+        public static bool OpenSslPresentOnSystem
+        {
+            get
+            {
+                if (IsAndroid || UsesMobileAppleCrypto || IsBrowser)
+                {
+                    return false;
+                }
+
+                return Interop.OpenSslNoInit.OpenSslIsAvailable;
+            }
+        }
+
         private static Version s_opensslVersion;
         private static Version GetOpenSslVersion()
         {
@@ -150,6 +172,21 @@ namespace System
             {
                 throw new FormatException($"Failed to parse version string: '{versionString}'", exc);
             }
+        }
+
+        /// <summary>
+        /// Assume that Android environment variables but Linux OS mean Android libc
+        /// </summary>
+        private static bool IsBionic()
+        {
+            if (IsLinux)
+            {
+                if (!String.IsNullOrEmpty(Environment.GetEnvironmentVariable("ANDROID_STORAGE")))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static DistroInfo GetDistroInfo()
@@ -305,16 +342,16 @@ namespace System
             public Version VersionId { get; set; }
         }
 
-        private static class libc
+        private static partial class @libc
         {
-            [DllImport("libc", SetLastError = true)]
-            public static extern unsafe uint geteuid();
+            [LibraryImport("libc", SetLastError = true)]
+            public static unsafe partial uint geteuid();
 
-            [DllImport("libc", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr gnu_get_libc_release();
+            [LibraryImport("libc")]
+            public static partial IntPtr gnu_get_libc_release();
 
-            [DllImport("libc", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr gnu_get_libc_version();
+            [LibraryImport("libc")]
+            public static partial IntPtr gnu_get_libc_version();
         }
     }
 }

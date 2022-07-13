@@ -25,7 +25,6 @@ namespace System.Net
         private bool _syncHint;
         private int _aborted;
 
-#pragma warning disable SYSLIB0014
         internal FileWebRequest(Uri uri)
         {
             if (uri.Scheme != (object)Uri.UriSchemeFile)
@@ -36,16 +35,17 @@ namespace System.Net
             _uri = uri;
         }
 
-        [Obsolete("Serialization is obsoleted for this type. https://go.microsoft.com/fwlink/?linkid=14202")]
+        [Obsolete("Serialization has been deprecated for FileWebRequest.")]
         protected FileWebRequest(SerializationInfo serializationInfo, StreamingContext streamingContext) : base(serializationInfo, streamingContext)
         {
             throw new PlatformNotSupportedException();
         }
-#pragma warning restore SYSLIB0014
 
+        [Obsolete("Serialization has been deprecated for FileWebRequest.")]
         void ISerializable.GetObjectData(SerializationInfo serializationInfo, StreamingContext streamingContext) =>
             GetObjectData(serializationInfo, streamingContext);
 
+        [Obsolete("Serialization has been deprecated for FileWebRequest.")]
         protected override void GetObjectData(SerializationInfo serializationInfo, StreamingContext streamingContext)
         {
             throw new PlatformNotSupportedException();
@@ -209,7 +209,7 @@ namespace System.Net
 
             try
             {
-                return _response ?? (_response = new FileWebResponse(this, _uri, _fileAccess, !_syncHint));
+                return _response ??= new FileWebResponse(this, _uri, _fileAccess, !_syncHint);
             }
             catch (Exception e)
             {

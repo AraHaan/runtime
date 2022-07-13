@@ -8,9 +8,9 @@
 
 namespace Microsoft.Extensions.Logging.Debug
 {
-    internal partial class DebugLogger
+    internal sealed partial class DebugLogger
     {
-        private void DebugWriteLine(string message, string name)
+        private static void DebugWriteLine(string message, string name)
         {
             System.Diagnostics.Debug.WriteLine(message, category: name);
         }

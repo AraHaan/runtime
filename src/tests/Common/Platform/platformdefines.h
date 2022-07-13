@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <cstdint>
+#include <minipal/utils.h>
 
 #ifndef _PLATFORMDEFINES__H
 #define _PLATFORMDEFINES__H
@@ -39,8 +40,6 @@
 #include <windows.h>
 #include <combaseapi.h>
 
-#define FS_SEPERATOR L"\\"
-#define PATH_DELIMITER L";"
 #define L(t) L##t
 #define W(str)  L##str
 
@@ -54,7 +53,14 @@ typedef HANDLE THREAD_ID;
 
 typedef char16_t WCHAR;
 typedef unsigned int DWORD;
+
+#ifdef OBJC_TESTS
+// The Objective-C headers define the BOOL type to be unsigned char or bool.
+// As a result, we can't redefine it here. So instead, define WINBOOL to be int-sized.
+typedef int WINBOOL;
+#else
 typedef int BOOL;
+#endif
 typedef WCHAR *LPWSTR, *PWSTR;
 typedef const WCHAR *LPCWSTR, *PCWSTR;
 
@@ -84,8 +90,6 @@ typedef unsigned int ULONG, *PULONG;
 
 #define UInt32x32To64(a, b) ((unsigned __int64)((ULONG)(a)) * (unsigned __int64)((ULONG)(b)))
 
-#define ARRAYSIZE(x) (sizeof(x)/sizeof(*x))
-
 #ifndef TRUE
 #define TRUE 1
 #endif
@@ -111,10 +115,12 @@ typedef unsigned int ULONG, *PULONG;
 #define __stdcall __attribute__((stdcall))
 #define _cdecl __attribute__((cdecl))
 #define __cdecl __attribute__((cdecl))
+#define __thiscall __attribute__((thiscall))
 #else
 #define __stdcall
 #define _cdecl
 #define __cdecl
+#define __thiscall
 #endif
 #endif
 
@@ -126,8 +132,6 @@ typedef unsigned int ULONG, *PULONG;
 
 LPWSTR HackyConvertToWSTR(const char* pszInput);
 
-#define FS_SEPERATOR L("/")
-#define PATH_DELIMITER L(":")
 #define L(t) HackyConvertToWSTR(t)
 #define W(str)  u##str
 #define MAX_PATH 260
@@ -149,7 +153,7 @@ typedef int error_t;
 typedef void* LPVOID;
 typedef unsigned char BYTE;
 typedef WCHAR OLECHAR;
-typedef double DATE;          
+typedef double DATE;
 typedef DWORD LCID;
 #endif
 
@@ -170,8 +174,6 @@ error_t TP_itow_s(int num, LPWSTR buffer, size_t sizeInCharacters, int radix);
 error_t TP_itoa_s(int num, LPSTR buffer, size_t sizeInCharacters, int radix);
 LPWSTR TP_sstr(LPWSTR str, LPWSTR searchStr);
 LPSTR  HackyConvertToSTR(LPWSTR pwszInput);
-DWORD TP_CreateThread(THREAD_ID* tThread, LPTHREAD_START_ROUTINE worker,  LPVOID lpParameter);
-void TP_JoinThread(THREAD_ID tThread);
 void TP_DebugBreak();
 DWORD TP_GetFullPathName(LPWSTR fileName, DWORD nBufferLength, LPWSTR lpBuffer);
 
@@ -261,6 +263,12 @@ inline void CoreClrFree(void *p)
 #define strcmp TP_scmp_s
 #define strncpy_s TP_strncpy_s
 #define strcpy_s TP_strcpy_s
+#endif
+
+#if defined(TARGET_XARCH) && !defined(_MSC_VER)
+#define ENABLE_AVX __attribute__ ((target("avx")))
+#else
+#define ENABLE_AVX
 #endif
 
 #endif

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Test.Common;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,7 +18,7 @@ namespace System.Net.WebSockets.Client.Tests
         public ConnectTest(ITestOutputHelper output) : base(output) { }
 
         [ActiveIssue("https://github.com/dotnet/runtime/issues/1895")]
-        [OuterLoop("Uses external servers")]
+        [OuterLoop("Uses external servers", typeof(PlatformDetection), nameof(PlatformDetection.LocalEchoServerIsNotAvailable))]
         [ConditionalTheory(nameof(WebSocketsSupported)), MemberData(nameof(UnavailableWebSocketServers))]
         public async Task ConnectAsync_NotWebSocketServer_ThrowsWebSocketExceptionWithMessage(Uri server, string exceptionMessage, WebSocketError errorCode)
         {
@@ -42,23 +43,23 @@ namespace System.Net.WebSockets.Client.Tests
             }
         }
 
-        [OuterLoop("Uses external servers")]
+        [OuterLoop("Uses external servers", typeof(PlatformDetection), nameof(PlatformDetection.LocalEchoServerIsNotAvailable))]
         [ConditionalTheory(nameof(WebSocketsSupported)), MemberData(nameof(EchoServers))]
         public async Task EchoBinaryMessage_Success(Uri server)
         {
             await WebSocketHelper.TestEcho(server, WebSocketMessageType.Binary, TimeOutMilliseconds, _output);
         }
 
-        [OuterLoop("Uses external servers")]
+        [OuterLoop("Uses external servers", typeof(PlatformDetection), nameof(PlatformDetection.LocalEchoServerIsNotAvailable))]
         [ConditionalTheory(nameof(WebSocketsSupported)), MemberData(nameof(EchoServers))]
         public async Task EchoTextMessage_Success(Uri server)
         {
             await WebSocketHelper.TestEcho(server, WebSocketMessageType.Text, TimeOutMilliseconds, _output);
         }
 
-        [OuterLoop("Uses external servers")]
+        [OuterLoop("Uses external servers", typeof(PlatformDetection), nameof(PlatformDetection.LocalEchoServerIsNotAvailable))]
         [ConditionalTheory(nameof(WebSocketsSupported)), MemberData(nameof(EchoHeadersServers))]
-        [PlatformSpecific(~TestPlatforms.Browser)] // CustomHeaders not supported on browser
+        [SkipOnPlatform(TestPlatforms.Browser, "SetRequestHeader not supported on browser")]
         public async Task ConnectAsync_AddCustomHeaders_Success(Uri server)
         {
             using (var cws = new ClientWebSocket())
@@ -96,7 +97,7 @@ namespace System.Net.WebSockets.Client.Tests
 
         [ConditionalFact(nameof(WebSocketsSupported))]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/34690", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/42852", TestPlatforms.Browser)]
+        [SkipOnPlatform(TestPlatforms.Browser, "SetRequestHeader not supported on browser")]
         public async Task ConnectAsync_AddHostHeader_Success()
         {
             string expectedHost = null;
@@ -118,9 +119,9 @@ namespace System.Net.WebSockets.Client.Tests
             }), new LoopbackServer.Options { WebSocketEndpoint = true });
         }
 
-        [OuterLoop("Uses external servers")]
+        [OuterLoop("Uses external servers", typeof(PlatformDetection), nameof(PlatformDetection.LocalEchoServerIsNotAvailable))]
         [ConditionalTheory(nameof(WebSocketsSupported)), MemberData(nameof(EchoHeadersServers))]
-        [PlatformSpecific(~TestPlatforms.Browser)] // Cookies not supported on browser
+        [SkipOnPlatform(TestPlatforms.Browser, "Cookies not supported on browser")]
         public async Task ConnectAsync_CookieHeaders_Success(Uri server)
         {
             using (var cws = new ClientWebSocket())
@@ -168,9 +169,8 @@ namespace System.Net.WebSockets.Client.Tests
             }
         }
 
-        [OuterLoop("Uses external servers")]
+        [OuterLoop("Uses external servers", typeof(PlatformDetection), nameof(PlatformDetection.LocalEchoServerIsNotAvailable))]
         [ConditionalTheory(nameof(WebSocketsSupported)), MemberData(nameof(EchoServers))]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/45583", TestPlatforms.Browser)]
         public async Task ConnectAsync_PassNoSubProtocol_ServerRequires_ThrowsWebSocketException(Uri server)
         {
             const string AcceptedProtocol = "CustomProtocol";
@@ -188,13 +188,13 @@ namespace System.Net.WebSockets.Client.Tests
                 if (PlatformDetection.IsNetCore) // bug fix in netcoreapp: https://github.com/dotnet/corefx/pull/35960
                 {
                     Assert.True(ex.WebSocketErrorCode == WebSocketError.Faulted ||
-                        ex.WebSocketErrorCode == WebSocketError.NotAWebSocket);
+                        ex.WebSocketErrorCode == WebSocketError.NotAWebSocket, $"Actual WebSocketErrorCode {ex.WebSocketErrorCode} {ex.InnerException?.Message} \n {ex}");
                 }
                 Assert.Equal(WebSocketState.Closed, cws.State);
             }
         }
 
-        [OuterLoop("Uses external servers")]
+        [OuterLoop("Uses external servers", typeof(PlatformDetection), nameof(PlatformDetection.LocalEchoServerIsNotAvailable))]
         [ConditionalTheory(nameof(WebSocketsSupported)), MemberData(nameof(EchoServers))]
         public async Task ConnectAsync_PassMultipleSubProtocols_ServerRequires_ConnectionUsesAgreedSubProtocol(Uri server)
         {
@@ -218,7 +218,7 @@ namespace System.Net.WebSockets.Client.Tests
 
         [ConditionalFact(nameof(WebSocketsSupported))]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/34690", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/42852", TestPlatforms.Browser)]
+        [SkipOnPlatform(TestPlatforms.Browser, "SetRequestHeader not supported on Browser")]
         public async Task ConnectAsync_NonStandardRequestHeaders_HeadersAddedWithoutValidation()
         {
             await LoopbackServer.CreateClientAndServerAsync(async uri =>
@@ -226,8 +226,7 @@ namespace System.Net.WebSockets.Client.Tests
                 using (var clientSocket = new ClientWebSocket())
                 using (var cts = new CancellationTokenSource(TimeOutMilliseconds))
                 {
-                    // [SuppressMessage("Microsoft.Security", "CS002:SecretInNextLine", Justification="Unit test dummy authorisation header.")]
-                    clientSocket.Options.SetRequestHeader("Authorization", "AWS4-HMAC-SHA256 Credential= AKIAXXXXXXXXXXXYSZA /20190301/us-east-2/neptune-db/aws4_request, SignedHeaders=host;x-amz-date, Signature=b8155de54d9faab00000000000000000000000000a07e0d7dda49902e4d9202");
+                    clientSocket.Options.SetRequestHeader("Authorization", "AWS4-HMAC-SHA256 Credential=PLACEHOLDER /20190301/us-east-2/neptune-db/aws4_request, SignedHeaders=host;x-amz-date, Signature=b8155de54d9faab00000000000000000000000000a07e0d7dda49902e4d9202");
                     await clientSocket.ConnectAsync(uri, cts.Token);
                 }
             }, server => server.AcceptConnectionAsync(async connection =>
@@ -236,9 +235,9 @@ namespace System.Net.WebSockets.Client.Tests
             }), new LoopbackServer.Options { WebSocketEndpoint = true });
         }
 
-        [OuterLoop("Uses external servers")]
+        [OuterLoop("Uses external servers", typeof(PlatformDetection), nameof(PlatformDetection.LocalEchoServerIsNotAvailable))]
         [ConditionalTheory(nameof(WebSocketsSupported)), MemberData(nameof(EchoServers))]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/42852", TestPlatforms.Browser)]
+        [SkipOnPlatform(TestPlatforms.Browser, "Proxy not supported on Browser")]
         public async Task ConnectAndCloseAsync_UseProxyServer_ExpectedClosedState(Uri server)
         {
             using (var cws = new ClientWebSocket())
@@ -283,7 +282,6 @@ namespace System.Net.WebSockets.Client.Tests
 
         [ConditionalFact(nameof(WebSocketsSupported))]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/34690", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/42852", TestPlatforms.Browser)]
         public async Task ConnectAsync_CancellationRequestedAfterConnect_ThrowsOperationCanceledException()
         {
             var releaseServer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -315,6 +313,72 @@ namespace System.Net.WebSockets.Client.Tests
                 // Ignore IO exception on server as there are race conditions when client is cancelling.
                 catch (IOException) { }
             }, new LoopbackServer.Options { WebSocketEndpoint = true });
+        }
+
+        [ConditionalFact(nameof(WebSocketsSupported))]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/34690", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
+        [SkipOnPlatform(TestPlatforms.Browser, "CollectHttpResponseDetails not supported on Browser")]
+        public async Task ConnectAsync_HttpResponseDetailsCollectedOnFailure()
+        {
+            await LoopbackServer.CreateClientAndServerAsync(async uri =>
+            {
+                using (var clientWebSocket = new ClientWebSocket())
+                using (var cts = new CancellationTokenSource(TimeOutMilliseconds))
+                {
+                    clientWebSocket.Options.CollectHttpResponseDetails = true;
+                    Task t = clientWebSocket.ConnectAsync(uri, cts.Token);
+                    await Assert.ThrowsAnyAsync<WebSocketException>(() => t);
+
+                    Assert.Equal(HttpStatusCode.Unauthorized, clientWebSocket.HttpStatusCode);
+                    Assert.NotEmpty(clientWebSocket.HttpResponseHeaders);
+                }
+            }, server => server.AcceptConnectionSendResponseAndCloseAsync(HttpStatusCode.Unauthorized), new LoopbackServer.Options { WebSocketEndpoint = true });
+        }
+
+        [ConditionalFact(nameof(WebSocketsSupported))]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/34690", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
+        [SkipOnPlatform(TestPlatforms.Browser, "CollectHttpResponseDetails not supported on Browser")]
+        public async Task ConnectAsync_HttpResponseDetailsCollectedOnFailure_CustomHeader()
+        {
+            await LoopbackServer.CreateClientAndServerAsync(async uri =>
+            {
+                using (var clientWebSocket = new ClientWebSocket())
+                using (var cts = new CancellationTokenSource(TimeOutMilliseconds))
+                {
+                    clientWebSocket.Options.CollectHttpResponseDetails = true;
+                    Task t = clientWebSocket.ConnectAsync(uri, cts.Token);
+                    await Assert.ThrowsAnyAsync<WebSocketException>(() => t);
+
+                    Assert.Equal(HttpStatusCode.Unauthorized, clientWebSocket.HttpStatusCode);
+                    Assert.NotEmpty(clientWebSocket.HttpResponseHeaders);
+                    Assert.Contains("X-CustomHeader1", clientWebSocket.HttpResponseHeaders);
+                    Assert.Contains("X-CustomHeader2", clientWebSocket.HttpResponseHeaders);
+                    Assert.NotNull(clientWebSocket.HttpResponseHeaders.Values);
+                }
+            }, server => server.AcceptConnectionSendResponseAndCloseAsync(HttpStatusCode.Unauthorized, "X-CustomHeader1: Value1\r\nX-CustomHeader2: Value2\r\n"), new LoopbackServer.Options { WebSocketEndpoint = true });
+        }
+
+        [ConditionalFact(nameof(WebSocketsSupported))]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/34690", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
+        [SkipOnPlatform(TestPlatforms.Browser, "CollectHttpResponseDetails not supported on Browser")]
+        public async Task ConnectAsync_HttpResponseDetailsCollectedOnSuccess_Extentions()
+        {
+            await LoopbackServer.CreateClientAndServerAsync(async uri =>
+            {
+                using (var clientWebSocket = new ClientWebSocket())
+                using (var cts = new CancellationTokenSource(TimeOutMilliseconds))
+                {
+                    clientWebSocket.Options.CollectHttpResponseDetails = true;
+                    await clientWebSocket.ConnectAsync(uri, cts.Token);
+
+                    Assert.Equal(HttpStatusCode.SwitchingProtocols, clientWebSocket.HttpStatusCode);
+                    Assert.NotEmpty(clientWebSocket.HttpResponseHeaders);
+                    Assert.Contains("Sec-WebSocket-Extensions", clientWebSocket.HttpResponseHeaders);
+                }
+            }, server => server.AcceptConnectionAsync(async connection =>
+            {
+                Dictionary<string, string> headers = await LoopbackHelper.WebSocketHandshakeAsync(connection, "X-CustomHeader1");
+            }), new LoopbackServer.Options { WebSocketEndpoint = true });
         }
     }
 }

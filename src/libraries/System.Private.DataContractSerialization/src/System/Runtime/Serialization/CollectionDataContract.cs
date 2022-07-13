@@ -1,29 +1,28 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Security;
+using System.Threading;
+using System.Xml;
+using DataContractDictionary = System.Collections.Generic.Dictionary<System.Xml.XmlQualifiedName, System.Runtime.Serialization.DataContract>;
 
 namespace System.Runtime.Serialization
 {
-    using System;
-    using System.Collections;
-    using System.Collections.Generic;
-    using System.Reflection;
-    using System.Runtime.CompilerServices;
-    using System.Threading;
-    using System.Xml;
-    using System.Linq;
-    using DataContractDictionary = System.Collections.Generic.Dictionary<System.Xml.XmlQualifiedName, DataContract>;
-    using System.Security;
-    using System.Diagnostics.CodeAnalysis;
-
     // The interface is a perf optimization.
     // Only KeyValuePairAdapter should implement the interface.
     internal interface IKeyValuePairAdapter { }
 
     //Special Adapter class to serialize KeyValuePair as Dictionary needs it when polymorphism is involved
     [DataContract(Namespace = "http://schemas.datacontract.org/2004/07/System.Collections.Generic")]
-    internal class KeyValuePairAdapter<K, T> : IKeyValuePairAdapter
+    internal sealed class KeyValuePairAdapter<K, T> : IKeyValuePairAdapter
     {
         private K _kvpKey;
         private T _kvpValue;
@@ -134,29 +133,34 @@ namespace System.Runtime.Serialization
 
         private CollectionDataContractCriticalHelper _helper;
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal CollectionDataContract(Type type) : base(new CollectionDataContractCriticalHelper(type))
         {
             InitCollectionDataContract(this);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private CollectionDataContract(Type type, CollectionKind kind, Type itemType, MethodInfo getEnumeratorMethod, string? deserializationExceptionMessage)
                     : base(new CollectionDataContractCriticalHelper(type, kind, itemType, getEnumeratorMethod, deserializationExceptionMessage))
         {
             InitCollectionDataContract(GetSharedTypeContract(type));
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private CollectionDataContract(Type type, CollectionKind kind, Type itemType, MethodInfo getEnumeratorMethod, MethodInfo? addMethod, ConstructorInfo? constructor)
                     : base(new CollectionDataContractCriticalHelper(type, kind, itemType, getEnumeratorMethod, addMethod, constructor))
         {
             InitCollectionDataContract(GetSharedTypeContract(type));
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private CollectionDataContract(Type type, CollectionKind kind, Type itemType, MethodInfo getEnumeratorMethod, MethodInfo? addMethod, ConstructorInfo? constructor, bool isConstructorCheckRequired)
                     : base(new CollectionDataContractCriticalHelper(type, kind, itemType, getEnumeratorMethod, addMethod, constructor, isConstructorCheckRequired))
         {
             InitCollectionDataContract(GetSharedTypeContract(type));
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private CollectionDataContract(Type type, string invalidCollectionInSharedContractMessage) : base(new CollectionDataContractCriticalHelper(type, invalidCollectionInSharedContractMessage))
         {
             InitCollectionDataContract(GetSharedTypeContract(type));
@@ -164,6 +168,7 @@ namespace System.Runtime.Serialization
 
         [MemberNotNull(nameof(_helper))]
         [MemberNotNull(nameof(_collectionItemName))]
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private void InitCollectionDataContract(DataContract? sharedTypeContract)
         {
             _helper = (base.Helper as CollectionDataContractCriticalHelper)!;
@@ -196,6 +201,7 @@ namespace System.Runtime.Serialization
 
         public DataContract ItemContract
         {
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             get
             {
                 return _itemContract ?? _helper.ItemContract;
@@ -254,6 +260,7 @@ namespace System.Runtime.Serialization
 
         public XmlDictionaryString? ChildElementNamespace
         {
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             get
             {
                 if (_childElementNamespace == null)
@@ -311,6 +318,7 @@ namespace System.Runtime.Serialization
 
         public override DataContractDictionary? KnownDataContracts
         {
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             get
             { return _helper.KnownDataContracts; }
 
@@ -334,6 +342,7 @@ namespace System.Runtime.Serialization
             get { return DeserializationExceptionMessage != null; }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private XmlFormatCollectionWriterDelegate CreateXmlFormatWriterDelegate()
         {
             return new XmlFormatWriterGenerator().GenerateCollectionWriter(this);
@@ -341,6 +350,7 @@ namespace System.Runtime.Serialization
 
         internal XmlFormatCollectionWriterDelegate XmlFormatWriterDelegate
         {
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             get
             {
                 if (_helper.XmlFormatWriterDelegate == null)
@@ -362,6 +372,7 @@ namespace System.Runtime.Serialization
             }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private XmlFormatCollectionReaderDelegate CreateXmlFormatReaderDelegate()
         {
             return new XmlFormatReaderGenerator().GenerateCollectionReader(this);
@@ -369,6 +380,7 @@ namespace System.Runtime.Serialization
 
         internal XmlFormatCollectionReaderDelegate XmlFormatReaderDelegate
         {
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             get
             {
                 if (_helper.XmlFormatReaderDelegate == null)
@@ -395,6 +407,7 @@ namespace System.Runtime.Serialization
             }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private XmlFormatGetOnlyCollectionReaderDelegate CreateXmlFormatGetOnlyCollectionReaderDelegate()
         {
             return new XmlFormatReaderGenerator().GenerateGetOnlyCollectionReader(this);
@@ -403,6 +416,7 @@ namespace System.Runtime.Serialization
 
         internal XmlFormatGetOnlyCollectionReaderDelegate XmlFormatGetOnlyCollectionReaderDelegate
         {
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             get
             {
                 if (_helper.XmlFormatGetOnlyCollectionReaderDelegate == null)
@@ -449,12 +463,13 @@ namespace System.Runtime.Serialization
             return _helper.GetEnumeratorForCollection(obj);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal Type GetCollectionElementType()
         {
             return _helper.GetCollectionElementType();
         }
 
-        private class CollectionDataContractCriticalHelper : DataContract.DataContractCriticalHelper
+        private sealed class CollectionDataContractCriticalHelper : DataContract.DataContractCriticalHelper
         {
             private static Type[]? s_knownInterfaces;
 
@@ -481,29 +496,21 @@ namespace System.Runtime.Serialization
             private XmlFormatCollectionWriterDelegate? _xmlFormatWriterDelegate;
             private bool _isConstructorCheckRequired;
 
-            internal static Type[] KnownInterfaces
-            {
-                get
+            internal static Type[] KnownInterfaces =>
+                // Listed in priority order
+                s_knownInterfaces ??= new Type[]
                 {
-                    if (s_knownInterfaces == null)
-                    {
-                        // Listed in priority order
-                        s_knownInterfaces = new Type[]
-                    {
-                        Globals.TypeOfIDictionaryGeneric,
-                        Globals.TypeOfIDictionary,
-                        Globals.TypeOfIListGeneric,
-                        Globals.TypeOfICollectionGeneric,
-                        Globals.TypeOfIList,
-                        Globals.TypeOfIEnumerableGeneric,
-                        Globals.TypeOfICollection,
-                        Globals.TypeOfIEnumerable
-                    };
-                    }
-                    return s_knownInterfaces;
-                }
-            }
+                    Globals.TypeOfIDictionaryGeneric,
+                    Globals.TypeOfIDictionary,
+                    Globals.TypeOfIListGeneric,
+                    Globals.TypeOfICollectionGeneric,
+                    Globals.TypeOfIList,
+                    Globals.TypeOfIEnumerableGeneric,
+                    Globals.TypeOfICollection,
+                    Globals.TypeOfIEnumerable
+                };
 
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             private void Init(CollectionKind kind, Type? itemType, CollectionDataContractAttribute? collectionContractAttribute)
             {
                 _kind = kind;
@@ -559,7 +566,10 @@ namespace System.Runtime.Serialization
             }
 
             // array
-            internal CollectionDataContractCriticalHelper(Type type) : base(type)
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
+            internal CollectionDataContractCriticalHelper(
+                [DynamicallyAccessedMembers(ClassDataContract.DataContractPreserveMemberTypes)]
+                Type type) : base(type)
             {
                 if (type == Globals.TypeOfArray)
                     type = Globals.TypeOfObjectArray;
@@ -570,7 +580,11 @@ namespace System.Runtime.Serialization
             }
 
             // read-only collection
-            internal CollectionDataContractCriticalHelper(Type type, CollectionKind kind, Type itemType, MethodInfo getEnumeratorMethod, string? deserializationExceptionMessage)
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
+            internal CollectionDataContractCriticalHelper(
+                [DynamicallyAccessedMembers(ClassDataContract.DataContractPreserveMemberTypes)]
+                Type type,
+                CollectionKind kind, Type itemType, MethodInfo getEnumeratorMethod, string? deserializationExceptionMessage)
                 : base(type)
             {
                 if (getEnumeratorMethod == null)
@@ -587,7 +601,11 @@ namespace System.Runtime.Serialization
             }
 
             // collection
-            internal CollectionDataContractCriticalHelper(Type type, CollectionKind kind, Type itemType, MethodInfo getEnumeratorMethod, MethodInfo? addMethod, ConstructorInfo? constructor) : base(type)
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
+            internal CollectionDataContractCriticalHelper(
+                [DynamicallyAccessedMembers(ClassDataContract.DataContractPreserveMemberTypes)]
+                Type type,
+                CollectionKind kind, Type itemType, MethodInfo getEnumeratorMethod, MethodInfo? addMethod, ConstructorInfo? constructor) : base(type)
             {
                 if (getEnumeratorMethod == null)
                     throw System.Runtime.Serialization.DiagnosticUtility.ExceptionUtility.ThrowHelperError(new InvalidDataContractException(SR.Format(SR.CollectionMustHaveGetEnumeratorMethod, DataContract.GetClrTypeFullName(type))));
@@ -606,13 +624,18 @@ namespace System.Runtime.Serialization
             }
 
             // collection
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             internal CollectionDataContractCriticalHelper(Type type, CollectionKind kind, Type itemType, MethodInfo getEnumeratorMethod, MethodInfo? addMethod, ConstructorInfo? constructor, bool isConstructorCheckRequired)
                 : this(type, kind, itemType, getEnumeratorMethod, addMethod, constructor)
             {
                 _isConstructorCheckRequired = isConstructorCheckRequired;
             }
 
-            internal CollectionDataContractCriticalHelper(Type type, string invalidCollectionInSharedContractMessage) : base(type)
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
+            internal CollectionDataContractCriticalHelper(
+                [DynamicallyAccessedMembers(ClassDataContract.DataContractPreserveMemberTypes)]
+                Type type,
+                string invalidCollectionInSharedContractMessage) : base(type)
             {
                 Init(CollectionKind.Collection, null /*itemType*/, null);
                 _invalidCollectionInSharedContractMessage = invalidCollectionInSharedContractMessage;
@@ -631,6 +654,7 @@ namespace System.Runtime.Serialization
 
             internal DataContract ItemContract
             {
+                [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
                 get
                 {
                     if (_itemContract == null)
@@ -651,11 +675,9 @@ namespace System.Runtime.Serialization
                         }
                         else
                         {
-                            _itemContract = DataContract.GetDataContractFromGeneratedAssembly(ItemType);
-                            if (_itemContract == null)
-                            {
-                                _itemContract = DataContract.GetDataContract(ItemType);
-                            }
+                            _itemContract =
+                                DataContract.GetDataContractFromGeneratedAssembly(ItemType) ??
+                                DataContract.GetDataContract(ItemType);
                         }
                     }
                     return _itemContract;
@@ -725,6 +747,7 @@ namespace System.Runtime.Serialization
 
             internal override DataContractDictionary? KnownDataContracts
             {
+                [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
                 get
                 {
                     if (!_isKnownTypeAttributeChecked && UnderlyingType != null)
@@ -793,13 +816,13 @@ namespace System.Runtime.Serialization
                         case CollectionKind.GenericCollection:
                         case CollectionKind.GenericList:
                             {
-                                var buildIncrementCollectionCountDelegate = BuildIncrementCollectionCountDelegateMethod.MakeGenericMethod(ItemType);
+                                var buildIncrementCollectionCountDelegate = GetBuildIncrementCollectionCountGenericDelegate(ItemType);
                                 _incrementCollectionCountDelegate = (IncrementCollectionCountDelegate)buildIncrementCollectionCountDelegate.Invoke(null, Array.Empty<object>())!;
                             }
                             break;
                         case CollectionKind.GenericDictionary:
                             {
-                                var buildIncrementCollectionCountDelegate = BuildIncrementCollectionCountDelegateMethod.MakeGenericMethod(Globals.TypeOfKeyValuePair.MakeGenericType(ItemType.GetGenericArguments()));
+                                var buildIncrementCollectionCountDelegate = GetBuildIncrementCollectionCountGenericDelegate(typeof(KeyValuePair<,>).MakeGenericType(ItemType.GetGenericArguments()));
                                 _incrementCollectionCountDelegate = (IncrementCollectionCountDelegate)buildIncrementCollectionCountDelegate.Invoke(null, Array.Empty<object>())!;
                             }
                             break;
@@ -811,29 +834,26 @@ namespace System.Runtime.Serialization
                 }
 
                 _incrementCollectionCountDelegate(xmlWriter, obj, context);
+
+                [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2060:MakeGenericMethod",
+                Justification = "The call to MakeGenericMethod is safe due to the fact that CollectionDataContractCriticalHelper.BuildIncrementCollectionCountDelegate<T> is not annotated.")]
+                static MethodInfo GetBuildIncrementCollectionCountGenericDelegate(Type type) => BuildIncrementCollectionCountDelegateMethod.MakeGenericMethod(type);
             }
+
+            [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2060:MakeGenericMethod",
+                Justification = "The call to MakeGenericMethod is safe due to the fact that CollectionDataContractCriticalHelper.BuildIncrementCollectionCountDelegate<T> is not annotated.")]
+            private static MethodInfo GetBuildIncrementCollectionCountGenericDelegate(Type type) => BuildIncrementCollectionCountDelegateMethod.MakeGenericMethod(type);
 
             private static MethodInfo? s_buildIncrementCollectionCountDelegateMethod;
 
-            private static MethodInfo BuildIncrementCollectionCountDelegateMethod
-            {
-                get
-                {
-                    if (s_buildIncrementCollectionCountDelegateMethod == null)
-                    {
-                        s_buildIncrementCollectionCountDelegateMethod = typeof(CollectionDataContractCriticalHelper).GetMethod(nameof(BuildIncrementCollectionCountDelegate), Globals.ScanAllMembers)!;
-                    }
-
-                    return s_buildIncrementCollectionCountDelegateMethod;
-                }
-            }
+            private static MethodInfo BuildIncrementCollectionCountDelegateMethod =>
+                s_buildIncrementCollectionCountDelegateMethod ??= typeof(CollectionDataContractCriticalHelper).GetMethod(nameof(BuildIncrementCollectionCountDelegate), Globals.ScanAllMembers)!;
 
             private static IncrementCollectionCountDelegate BuildIncrementCollectionCountDelegate<T>()
             {
                 return (xmlwriter, obj, context) =>
                 {
                     context.IncrementCollectionCountGeneric<T>(xmlwriter, (ICollection<T>)obj);
-
                 };
             }
 
@@ -849,7 +869,7 @@ namespace System.Runtime.Serialization
                     if (_createGenericDictionaryEnumeratorDelegate == null)
                     {
                         var keyValueTypes = ItemType.GetGenericArguments();
-                        MethodInfo buildCreateGenericDictionaryEnumerator = BuildCreateGenericDictionaryEnumerato.MakeGenericMethod(keyValueTypes[0], keyValueTypes[1]);
+                        MethodInfo buildCreateGenericDictionaryEnumerator = GetBuildCreateGenericDictionaryEnumeratorGenericMethod(keyValueTypes);
                         _createGenericDictionaryEnumeratorDelegate = (CreateGenericDictionaryEnumeratorDelegate)buildCreateGenericDictionaryEnumerator.Invoke(null, Array.Empty<object>())!;
                     }
 
@@ -861,14 +881,19 @@ namespace System.Runtime.Serialization
                 }
 
                 return enumerator;
+
+                [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2060:MakeGenericMethod",
+                Justification = "The call to MakeGenericMethod is safe due to the fact that CollectionDataContractCriticalHelper.BuildCreateGenericDictionaryEnumerator<K,V> is not annotated.")]
+                static MethodInfo GetBuildCreateGenericDictionaryEnumeratorGenericMethod(Type[] keyValueTypes) => GetBuildCreateGenericDictionaryEnumeratorMethodInfo.MakeGenericMethod(keyValueTypes[0], keyValueTypes[1]);
             }
 
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             internal Type GetCollectionElementType()
             {
                 Debug.Assert(Kind != CollectionKind.Array, "GetCollectionElementType should not be called on Arrays");
                 Debug.Assert(GetEnumeratorMethod != null, "GetEnumeratorMethod should be non-null for non-Arrays");
 
-                Type? enumeratorType = null;
+                Type? enumeratorType;
                 if (Kind == CollectionKind.GenericDictionary)
                 {
                     Type[] keyValueTypes = ItemType.GetGenericArguments();
@@ -918,18 +943,8 @@ namespace System.Runtime.Serialization
 
             private static MethodInfo? s_buildCreateGenericDictionaryEnumerator;
 
-            private static MethodInfo BuildCreateGenericDictionaryEnumerato
-            {
-                get
-                {
-                    if (s_buildCreateGenericDictionaryEnumerator == null)
-                    {
-                        s_buildCreateGenericDictionaryEnumerator = typeof(CollectionDataContractCriticalHelper).GetMethod(nameof(BuildCreateGenericDictionaryEnumerator), Globals.ScanAllMembers)!;
-                    }
-
-                    return s_buildCreateGenericDictionaryEnumerator;
-                }
-            }
+            private static MethodInfo GetBuildCreateGenericDictionaryEnumeratorMethodInfo =>
+                s_buildCreateGenericDictionaryEnumerator ??= typeof(CollectionDataContractCriticalHelper).GetMethod(nameof(BuildCreateGenericDictionaryEnumerator), Globals.ScanAllMembers)!;
 
             private static CreateGenericDictionaryEnumeratorDelegate BuildCreateGenericDictionaryEnumerator<K, V>()
             {
@@ -940,6 +955,7 @@ namespace System.Runtime.Serialization
             }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private DataContract? GetSharedTypeContract(Type type)
         {
             if (type.IsDefined(Globals.TypeOfCollectionDataContractAttribute, false))
@@ -960,23 +976,25 @@ namespace System.Runtime.Serialization
             return ((IList<Type>)KnownInterfaces).Contains(type);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal static bool IsCollection(Type type)
         {
-            Type? itemType;
-            return IsCollection(type, out itemType);
+            return IsCollection(type, out _);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal static bool IsCollection(Type type, [NotNullWhen(true)] out Type? itemType)
         {
             return IsCollectionHelper(type, out itemType, true /*constructorRequired*/);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal static bool IsCollection(Type type, bool constructorRequired)
         {
-            Type? itemType;
-            return IsCollectionHelper(type, out itemType, constructorRequired);
+            return IsCollectionHelper(type, out _, constructorRequired);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private static bool IsCollectionHelper(Type type, [NotNullWhen(true)] out Type? itemType, bool constructorRequired)
         {
             if (type.IsArray && DataContract.GetBuiltInDataContract(type) == null)
@@ -984,19 +1002,18 @@ namespace System.Runtime.Serialization
                 itemType = type.GetElementType()!;
                 return true;
             }
-            DataContract? dataContract;
-            return IsCollectionOrTryCreate(type, false /*tryCreate*/, out dataContract, out itemType, constructorRequired);
+            return IsCollectionOrTryCreate(type, tryCreate: false, out _, out itemType, constructorRequired);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal static bool TryCreate(Type type, [NotNullWhen(true)] out DataContract? dataContract)
         {
-            Type itemType;
-            return IsCollectionOrTryCreate(type, true /*tryCreate*/, out dataContract!, out itemType, true /*constructorRequired*/);
+            return IsCollectionOrTryCreate(type, tryCreate: true, out dataContract!, out _, constructorRequired: true);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal static bool CreateGetOnlyCollectionDataContract(Type type, [NotNullWhen(true)] out DataContract? dataContract)
         {
-            Type itemType;
             if (type.IsArray)
             {
                 dataContract = new CollectionDataContract(type);
@@ -1004,16 +1021,16 @@ namespace System.Runtime.Serialization
             }
             else
             {
-                return IsCollectionOrTryCreate(type, true /*tryCreate*/, out dataContract!, out itemType, false /*constructorRequired*/);
+                return IsCollectionOrTryCreate(type, tryCreate: true, out dataContract!, out _, constructorRequired: false);
             }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal static bool TryCreateGetOnlyCollectionDataContract(Type type, [NotNullWhen(true)] out DataContract? dataContract)
         {
             dataContract = DataContract.GetDataContractFromGeneratedAssembly(type);
             if (dataContract == null)
             {
-                Type itemType;
                 if (type.IsArray)
                 {
                     dataContract = new CollectionDataContract(type);
@@ -1021,7 +1038,7 @@ namespace System.Runtime.Serialization
                 }
                 else
                 {
-                    return IsCollectionOrTryCreate(type, true /*tryCreate*/, out dataContract!, out itemType, false /*constructorRequired*/);
+                    return IsCollectionOrTryCreate(type, tryCreate: true, out dataContract!, out _, constructorRequired: false);
                 }
             }
             else
@@ -1038,7 +1055,14 @@ namespace System.Runtime.Serialization
             }
         }
 
-        internal static MethodInfo? GetTargetMethodWithName(string name, Type type, Type interfaceType)
+        // Once https://github.com/mono/linker/issues/1731 is fixed we can remove the suppression from here as it won't be needed any longer.
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2075:GetMethod",
+            Justification = "The DynamicallyAccessedMembers declarations will ensure the interface methods will be preserved.")]
+        internal static MethodInfo? GetTargetMethodWithName(string name,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+            Type type,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
+            Type interfaceType)
         {
             Type? t = type.GetInterfaces().Where(it => it.Equals(interfaceType)).FirstOrDefault();
             return t?.GetMethod(name);
@@ -1049,6 +1073,7 @@ namespace System.Runtime.Serialization
             return t.IsGenericType && (t.GetGenericTypeDefinition() == typeof(ArraySegment<>));
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private static bool IsCollectionOrTryCreate(Type type, bool tryCreate, out DataContract? dataContract, out Type itemType, bool constructorRequired)
         {
             dataContract = null;
@@ -1286,6 +1311,7 @@ namespace System.Runtime.Serialization
             return type.IsDefined(Globals.TypeOfCollectionDataContractAttribute, false);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private static bool HandleIfInvalidCollection(Type type, bool tryCreate, bool hasCollectionDataContract, bool createContractWithException, string message, string? param, ref DataContract? dataContract)
         {
             if (hasCollectionDataContract)
@@ -1315,7 +1341,15 @@ namespace System.Runtime.Serialization
             return (param == null) ? SR.Format(message, nestedMessage) : SR.Format(message, nestedMessage, param);
         }
 
-        private static void FindCollectionMethodsOnInterface(Type type, Type interfaceType, ref MethodInfo? addMethod, ref MethodInfo? getEnumeratorMethod)
+        // Once https://github.com/mono/linker/issues/1731 is fixed we can remove the suppression from here as it won't be needed any longer.
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2075:GetMethod",
+            Justification = "The DynamicallyAccessedMembers declarations will ensure the interface methods will be preserved.")]
+        private static void FindCollectionMethodsOnInterface(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+            Type type,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
+            Type interfaceType,
+            ref MethodInfo? addMethod, ref MethodInfo? getEnumeratorMethod)
         {
             Type? t = type.GetInterfaces().Where(it => it.Equals(interfaceType)).FirstOrDefault();
             if (t != null)
@@ -1325,7 +1359,13 @@ namespace System.Runtime.Serialization
             }
         }
 
-        private static void GetCollectionMethods(Type type, Type interfaceType, Type[] addMethodTypeArray, bool addMethodOnInterface, out MethodInfo? getEnumeratorMethod, out MethodInfo? addMethod)
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
+        private static void GetCollectionMethods(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+            Type type,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
+            Type interfaceType,
+            Type[] addMethodTypeArray, bool addMethodOnInterface, out MethodInfo? getEnumeratorMethod, out MethodInfo? addMethod)
         {
             addMethod = getEnumeratorMethod = null;
 
@@ -1367,13 +1407,20 @@ namespace System.Runtime.Serialization
                 getEnumeratorMethod = type.GetMethod(Globals.GetEnumeratorMethodName, BindingFlags.Instance | BindingFlags.Public, Type.EmptyTypes);
                 if (getEnumeratorMethod == null || !Globals.TypeOfIEnumerator.IsAssignableFrom(getEnumeratorMethod.ReturnType))
                 {
-                    Type? ienumerableInterface = interfaceType.GetInterfaces().Where(t => t.FullName!.StartsWith("System.Collections.Generic.IEnumerable")).FirstOrDefault();
-                    if (ienumerableInterface == null)
-                        ienumerableInterface = Globals.TypeOfIEnumerable;
-                    getEnumeratorMethod = GetTargetMethodWithName(Globals.GetEnumeratorMethodName, type, ienumerableInterface);
+                    Type? ienumerableInterface =
+                        interfaceType.GetInterfaces().Where(t => t.FullName!.StartsWith("System.Collections.Generic.IEnumerable")).FirstOrDefault() ??
+                        Globals.TypeOfIEnumerable;
+                    getEnumeratorMethod = GetIEnumerableGetEnumeratorMethod(type, ienumerableInterface);
                 }
             }
         }
+
+        private static MethodInfo? GetIEnumerableGetEnumeratorMethod(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+            Type type,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
+            Type ienumerableInterface)
+                => GetTargetMethodWithName(Globals.GetEnumeratorMethodName, type, ienumerableInterface);
 
         private static bool IsKnownInterface(Type type)
         {
@@ -1517,6 +1564,7 @@ namespace System.Runtime.Serialization
             return false;
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override void WriteXmlValue(XmlWriterDelegator xmlWriter, object obj, XmlObjectSerializerWriteContext? context)
         {
             Debug.Assert(context != null);
@@ -1526,6 +1574,7 @@ namespace System.Runtime.Serialization
             XmlFormatWriterDelegate(xmlWriter, obj, context, this);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override object? ReadXmlValue(XmlReaderDelegator xmlReader, XmlObjectSerializerReadContext? context)
         {
             Debug.Assert(context != null);
@@ -1546,7 +1595,7 @@ namespace System.Runtime.Serialization
             return o;
         }
 
-        internal class DictionaryEnumerator : IEnumerator<KeyValue<object, object?>>
+        internal sealed class DictionaryEnumerator : IEnumerator<KeyValue<object, object?>>
         {
             private readonly IDictionaryEnumerator _enumerator;
 
@@ -1581,7 +1630,7 @@ namespace System.Runtime.Serialization
             }
         }
 
-        internal class GenericDictionaryEnumerator<K, V> : IEnumerator<KeyValue<K, V>>
+        internal sealed class GenericDictionaryEnumerator<K, V> : IEnumerator<KeyValue<K, V>>
         {
             private readonly IEnumerator<KeyValuePair<K, V>> _enumerator;
 

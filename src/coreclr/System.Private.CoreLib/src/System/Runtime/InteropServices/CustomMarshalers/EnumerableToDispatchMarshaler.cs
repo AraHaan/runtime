@@ -7,7 +7,7 @@ using System.Runtime.Versioning;
 namespace System.Runtime.InteropServices.CustomMarshalers
 {
     [SupportedOSPlatform("windows")]
-    internal class EnumerableToDispatchMarshaler : ICustomMarshaler
+    internal sealed class EnumerableToDispatchMarshaler : ICustomMarshaler
     {
         private static readonly EnumerableToDispatchMarshaler s_enumerableToDispatchMarshaler = new EnumerableToDispatchMarshaler();
 
@@ -34,20 +34,14 @@ namespace System.Runtime.InteropServices.CustomMarshalers
 
         public IntPtr MarshalManagedToNative(object ManagedObj)
         {
-            if (ManagedObj == null)
-            {
-                throw new ArgumentNullException(nameof(ManagedObj));
-            }
+            ArgumentNullException.ThrowIfNull(ManagedObj);
 
             return Marshal.GetComInterfaceForObject<object, IEnumerable>(ManagedObj);
         }
 
         public object MarshalNativeToManaged(IntPtr pNativeData)
         {
-            if (pNativeData == IntPtr.Zero)
-            {
-                throw new ArgumentNullException(nameof(pNativeData));
-            }
+            ArgumentNullException.ThrowIfNull(pNativeData);
 
             object comObject = Marshal.GetObjectForIUnknown(pNativeData);
 

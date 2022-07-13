@@ -12,7 +12,7 @@ namespace System.ComponentModel.Composition.Hosting
         ///     Used to wrap the start and stop of enforcing export changes don't
         ///     break required imports. This context is stored in a AtomicComposition.
         /// </summary>
-        private class EngineContext
+        private sealed class EngineContext
         {
             private readonly ImportEngine _importEngine;
             private readonly List<PartManager> _addedPartManagers = new List<PartManager>();
@@ -27,10 +27,7 @@ namespace System.ComponentModel.Composition.Hosting
 
             public void AddPartManager(PartManager part)
             {
-                if (part == null)
-                {
-                    throw new ArgumentNullException(nameof(part));
-                }
+                ArgumentNullException.ThrowIfNull(part);
 
                 if (!_removedPartManagers.Remove(part))
                 {
@@ -40,10 +37,7 @@ namespace System.ComponentModel.Composition.Hosting
 
             public void RemovePartManager(PartManager part)
             {
-                if (part == null)
-                {
-                    throw new ArgumentNullException(nameof(part));
-                }
+                ArgumentNullException.ThrowIfNull(part);
 
                 if (!_addedPartManagers.Remove(part))
                 {

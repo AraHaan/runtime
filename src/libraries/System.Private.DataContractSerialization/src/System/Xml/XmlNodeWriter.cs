@@ -16,15 +16,7 @@ namespace System.Xml
     {
         private static XmlNodeWriter? s_nullNodeWriter;
 
-        public static XmlNodeWriter Null
-        {
-            get
-            {
-                if (s_nullNodeWriter == null)
-                    s_nullNodeWriter = new XmlNullNodeWriter();
-                return s_nullNodeWriter;
-            }
-        }
+        public static XmlNodeWriter Null => s_nullNodeWriter ??= new XmlNullNodeWriter();
 
         public abstract void Flush();
         public virtual Task FlushAsync()
@@ -106,7 +98,7 @@ namespace System.Xml
         }
         public abstract void WriteQualifiedName(string prefix, XmlDictionaryString localName);
 
-        private class XmlNullNodeWriter : XmlNodeWriter
+        private sealed class XmlNullNodeWriter : XmlNodeWriter
         {
             public override void Flush() { }
             public override void Close() { }

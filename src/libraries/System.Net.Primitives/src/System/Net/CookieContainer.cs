@@ -218,10 +218,7 @@ namespace System.Net
         // This method will construct a faked URI: the Domain property is required for param.
         public void Add(Cookie cookie)
         {
-            if (cookie == null)
-            {
-                throw new ArgumentNullException(nameof(cookie));
-            }
+            ArgumentNullException.ThrowIfNull(cookie);
 
             if (cookie.Domain.Length == 0)
             {
@@ -376,11 +373,11 @@ namespace System.Net
             DateTime tempUsed;
 
             CookieCollection? lruCc = null;
-            string? lruDomain = null;
+            string? lruDomain;
             string tempDomain;
 
             PathList pathList;
-            int domain_count = 0;
+            int domain_count;
             int itemp = 0;
             float remainingFraction = 1.0F;
 
@@ -434,16 +431,16 @@ namespace System.Net
                     if (domain_count > min_count)
                     {
                         // This case requires sorting all domain collections by timestamp.
-                        Array cookies;
-                        Array stamps;
+                        CookieCollection[] cookies;
+                        DateTime[] stamps;
                         lock (pathList.SyncRoot)
                         {
-                            cookies = Array.CreateInstance(typeof(CookieCollection), pathList.Count);
-                            stamps = Array.CreateInstance(typeof(DateTime), pathList.Count);
+                            cookies = new CookieCollection[pathList.Count];
+                            stamps = new DateTime[pathList.Count];
                             foreach (CookieCollection? cc in pathList.Values)
                             {
-                                stamps.SetValue(cc!.TimeStamp(CookieCollection.Stamp.Check), itemp);
-                                cookies.SetValue(cc, itemp);
+                                stamps[itemp] = cc!.TimeStamp(CookieCollection.Stamp.Check);
+                                cookies[itemp] = cc;
                                 ++itemp;
                             }
                         }
@@ -452,7 +449,7 @@ namespace System.Net
                         itemp = 0;
                         for (int i = 0; i < cookies.Length; ++i)
                         {
-                            CookieCollection cc = (CookieCollection)cookies.GetValue(i)!;
+                            CookieCollection cc = cookies[i];
 
                             lock (cc)
                             {
@@ -559,7 +556,7 @@ namespace System.Net
         }
 
         // Return number of cookies removed from the collection.
-        private int ExpireCollection(CookieCollection cc)
+        private static int ExpireCollection(CookieCollection cc)
         {
             lock (cc)
             {
@@ -582,10 +579,8 @@ namespace System.Net
 
         public void Add(CookieCollection cookies)
         {
-            if (cookies == null)
-            {
-                throw new ArgumentNullException(nameof(cookies));
-            }
+            ArgumentNullException.ThrowIfNull(cookies);
+
             foreach (Cookie c in (ICollection<Cookie>)cookies)
             {
                 Add(c);
@@ -629,21 +624,21 @@ namespace System.Net
                     switch (part.Length)
                     {
                         case 3:
-                            if (part[2] < '0' || part[2] > '9')
+                            if (!char.IsAsciiDigit(part[2]))
                             {
                                 break;
                             }
                             goto case 2;
 
                         case 2:
-                            if (part[1] < '0' || part[1] > '9')
+                            if (!char.IsAsciiDigit(part[1]))
                             {
                                 break;
                             }
                             goto case 1;
 
                         case 1:
-                            if (part[0] < '0' || part[0] > '9')
+                            if (!char.IsAsciiDigit(part[0]))
                             {
                                 break;
                             }
@@ -662,14 +657,9 @@ namespace System.Net
 
         public void Add(Uri uri, Cookie cookie)
         {
-            if (uri == null)
-            {
-                throw new ArgumentNullException(nameof(uri));
-            }
-            if (cookie == null)
-            {
-                throw new ArgumentNullException(nameof(cookie));
-            }
+            ArgumentNullException.ThrowIfNull(uri);
+            ArgumentNullException.ThrowIfNull(cookie);
+
             Cookie new_cookie = cookie.Clone();
             new_cookie.VerifySetDefaults(new_cookie.Variant, uri, IsLocalDomain(uri.Host), m_fqdnMyDomain, true, true);
 
@@ -678,14 +668,8 @@ namespace System.Net
 
         public void Add(Uri uri, CookieCollection cookies)
         {
-            if (uri == null)
-            {
-                throw new ArgumentNullException(nameof(uri));
-            }
-            if (cookies == null)
-            {
-                throw new ArgumentNullException(nameof(cookies));
-            }
+            ArgumentNullException.ThrowIfNull(uri);
+            ArgumentNullException.ThrowIfNull(cookies);
 
             bool isLocalDomain = IsLocalDomain(uri.Host);
             foreach (Cookie c in cookies)
@@ -780,11 +764,35 @@ namespace System.Net
 
         public CookieCollection GetCookies(Uri uri)
         {
-            if (uri == null)
-            {
-                throw new ArgumentNullException(nameof(uri));
-            }
+            ArgumentNullException.ThrowIfNull(uri);
+
             return InternalGetCookies(uri) ?? new CookieCollection();
+        }
+
+        /// <summary>Gets a <see cref="CookieCollection"/> that contains all of the <see cref="Cookie"/> instances in the container.</summary>
+        /// <returns>A <see cref="CookieCollection"/> that contains all of the <see cref="Cookie"/> instances in the container.</returns>
+        public CookieCollection GetAllCookies()
+        {
+            var result = new CookieCollection();
+
+            lock (m_domainTable.SyncRoot)
+            {
+                IDictionaryEnumerator lists = m_domainTable.GetEnumerator();
+                while (lists.MoveNext())
+                {
+                    PathList list = (PathList)lists.Value!;
+                    lock (list.SyncRoot)
+                    {
+                        IDictionaryEnumerator collections = list.List.GetEnumerator();
+                        while (collections.MoveNext())
+                        {
+                            result.Add((CookieCollection)collections.Value!);
+                        }
+                    }
+                }
+            }
+
+            return result;
         }
 
         internal CookieCollection? InternalGetCookies(Uri uri)
@@ -841,12 +849,8 @@ namespace System.Net
                     {
                         while ((dot < last) && (dot = fqdnRemote.IndexOf('.', dot + 1)) != -1)
                         {
-                            if (domainAttributeMatchOnlyCookieVariantPlain == null)
-                            {
-                                domainAttributeMatchOnlyCookieVariantPlain = new System.Collections.Generic.List<string>();
-                            }
-
                             // These candidates can only match CookieVariant.Plain cookies.
+                            domainAttributeMatchOnlyCookieVariantPlain ??= new System.Collections.Generic.List<string>();
                             domainAttributeMatchOnlyCookieVariantPlain.Add(fqdnRemote.Substring(dot));
                         }
                     }
@@ -919,7 +923,7 @@ namespace System.Net
             if (!requestPath.StartsWith(cookiePath, StringComparison.Ordinal))
                 return false;
             return requestPath.Length == cookiePath.Length ||
-                   cookiePath.Length > 0 && cookiePath[^1] == '/' ||
+                   cookiePath.EndsWith('/') ||
                    requestPath[cookiePath.Length] == '/';
         }
 
@@ -977,10 +981,7 @@ namespace System.Net
                             // In 'source' are already ordered.
                             // If two same cookies come from different 'source' then they
                             // will follow (not replace) each other.
-                            if (destination == null)
-                            {
-                                destination = new CookieCollection();
-                            }
+                            destination ??= new CookieCollection();
                             destination.InternalAdd(cookie, false);
                         }
                     }
@@ -990,13 +991,9 @@ namespace System.Net
 
         public string GetCookieHeader(Uri uri)
         {
-            if (uri == null)
-            {
-                throw new ArgumentNullException(nameof(uri));
-            }
+            ArgumentNullException.ThrowIfNull(uri);
 
-            string dummy;
-            return GetCookieHeader(uri, out dummy);
+            return GetCookieHeader(uri, out _);
         }
 
         internal string GetCookieHeader(Uri uri, out string optCookie2)
@@ -1030,14 +1027,9 @@ namespace System.Net
 
         public void SetCookies(Uri uri, string cookieHeader)
         {
-            if (uri == null)
-            {
-                throw new ArgumentNullException(nameof(uri));
-            }
-            if (cookieHeader == null)
-            {
-                throw new ArgumentNullException(nameof(cookieHeader));
-            }
+            ArgumentNullException.ThrowIfNull(uri);
+            ArgumentNullException.ThrowIfNull(cookieHeader);
+
             CookieCutter(uri, null, cookieHeader, true); // Will throw on error
         }
     }

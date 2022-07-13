@@ -10,11 +10,14 @@ using Microsoft.Win32.SafeHandles;
 using Internal.Win32.SafeHandles;
 #endif
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Advapi32
+    internal static partial class Advapi32
     {
-        [DllImport(Libraries.Advapi32, CharSet = CharSet.Unicode, BestFitMapping = false, EntryPoint = "RegConnectRegistryW")]
-        internal static extern int RegConnectRegistry(string machineName, SafeRegistryHandle key, out SafeRegistryHandle result);
+        [LibraryImport(Libraries.Advapi32, EntryPoint = "RegConnectRegistryW", StringMarshalling = StringMarshalling.Utf16)]
+        internal static partial int RegConnectRegistry(
+            string machineName,
+            SafeRegistryHandle key,
+            out SafeRegistryHandle result);
     }
 }

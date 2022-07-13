@@ -96,10 +96,7 @@ namespace MS.Internal.Xml.XPath
             XsltContext? xsltContext = nsResolver as XsltContext;
             if (xsltContext == null)
             {
-                if (nsResolver == null)
-                {
-                    nsResolver = new XmlNamespaceManager(new NameTable());
-                }
+                nsResolver ??= new XmlNamespaceManager(new NameTable());
                 xsltContext = new UndefinedXsltContext(nsResolver);
             }
             _query.SetXsltContext(xsltContext);
@@ -109,7 +106,7 @@ namespace MS.Internal.Xml.XPath
 
         public override XPathResultType ReturnType { get { return _query.StaticType; } }
 
-        private class UndefinedXsltContext : XsltContext
+        private sealed class UndefinedXsltContext : XsltContext
         {
             private readonly IXmlNamespaceResolver _nsResolver;
 

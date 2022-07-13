@@ -212,7 +212,7 @@ namespace System.Collections.Concurrent
         /// <summary>
         /// Converts an enumerable over key-value pairs to an enumerable over values.
         /// </summary>
-        private class EnumerableDropIndices : IEnumerable<TSource>, IDisposable
+        private sealed class EnumerableDropIndices : IEnumerable<TSource>, IDisposable
         {
             private readonly IEnumerable<KeyValuePair<long, TSource>> _source;
             public EnumerableDropIndices(IEnumerable<KeyValuePair<long, TSource>> source)
@@ -229,15 +229,11 @@ namespace System.Collections.Concurrent
             }
             public void Dispose()
             {
-                IDisposable? d = _source as IDisposable;
-                if (d != null)
-                {
-                    d.Dispose();
-                }
+                (_source as IDisposable)?.Dispose();
             }
         }
 
-        private class EnumeratorDropIndices : IEnumerator<TSource>
+        private sealed class EnumeratorDropIndices : IEnumerator<TSource>
         {
             private readonly IEnumerator<KeyValuePair<long, TSource>> _source;
             public EnumeratorDropIndices(IEnumerator<KeyValuePair<long, TSource>> source)

@@ -1,11 +1,10 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Globalization;
 using System.Diagnostics;
-using System.Text;
-using System.Runtime.CompilerServices;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Runtime.CompilerServices;
 
 namespace System
 {
@@ -16,7 +15,7 @@ namespace System
     // specified component.
 
     [Serializable]
-    [System.Runtime.CompilerServices.TypeForwardedFrom("mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089")]
+    [TypeForwardedFrom("mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089")]
     public sealed class Version : ICloneable, IComparable, IComparable<Version?>, IEquatable<Version?>, ISpanFormattable
     {
         // AssemblyName depends on the order staying the same
@@ -181,110 +180,91 @@ namespace System
         public override string ToString() =>
             ToString(DefaultFormatFieldCount);
 
-        public string ToString(int fieldCount) =>
-            fieldCount == 0 ? string.Empty :
-            fieldCount == 1 ? _Major.ToString() :
-            StringBuilderCache.GetStringAndRelease(ToCachedStringBuilder(fieldCount));
+        public string ToString(int fieldCount)
+        {
+            Span<char> dest = stackalloc char[(4 * Number.Int32NumberBufferLength) + 3]; // at most 4 Int32s and 3 periods
+            bool success = TryFormat(dest, fieldCount, out int charsWritten);
+            Debug.Assert(success);
+            return dest.Slice(0, charsWritten).ToString();
+        }
+
+        string IFormattable.ToString(string? format, IFormatProvider? formatProvider) =>
+            ToString();
 
         public bool TryFormat(Span<char> destination, out int charsWritten) =>
             TryFormat(destination, DefaultFormatFieldCount, out charsWritten);
 
         public bool TryFormat(Span<char> destination, int fieldCount, out int charsWritten)
         {
-            if (fieldCount == 0)
+            switch ((uint)fieldCount)
             {
-                charsWritten = 0;
-                return true;
-            }
-            else if (fieldCount == 1)
-            {
-                return _Major.TryFormat(destination, out charsWritten);
+                case > 4:
+                    ThrowArgumentException("4");
+                    break;
+
+                case >= 3 when _Build == -1:
+                    ThrowArgumentException("2");
+                    break;
+
+                case 4 when _Revision == -1:
+                    ThrowArgumentException("3");
+                    break;
+
+                static void ThrowArgumentException(string failureUpperBound) =>
+                    throw new ArgumentException(SR.Format(SR.ArgumentOutOfRange_Bounds_Lower_Upper, "0", failureUpperBound), nameof(fieldCount));
             }
 
-            StringBuilder sb = ToCachedStringBuilder(fieldCount);
-            if (sb.Length <= destination.Length)
+            int totalCharsWritten = 0;
+
+            for (int i = 0; i < fieldCount; i++)
             {
-                sb.CopyTo(0, destination, sb.Length);
-                StringBuilderCache.Release(sb);
-                charsWritten = sb.Length;
-                return true;
+                if (i != 0)
+                {
+                    if (destination.IsEmpty)
+                    {
+                        charsWritten = 0;
+                        return false;
+                    }
+
+                    destination[0] = '.';
+                    destination = destination.Slice(1);
+                    totalCharsWritten++;
+                }
+
+                int value = i switch
+                {
+                    0 => _Major,
+                    1 => _Minor,
+                    2 => _Build,
+                    _ => _Revision
+                };
+
+                if (!((uint)value).TryFormat(destination, out int valueCharsWritten))
+                {
+                    charsWritten = 0;
+                    return false;
+                }
+
+                totalCharsWritten += valueCharsWritten;
+                destination = destination.Slice(valueCharsWritten);
             }
 
-            StringBuilderCache.Release(sb);
-            charsWritten = 0;
-            return false;
+            charsWritten = totalCharsWritten;
+            return true;
         }
 
-        bool ISpanFormattable.TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
-        {
+        bool ISpanFormattable.TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider) =>
             // format and provider are ignored.
-            return TryFormat(destination, out charsWritten);
-        }
+            TryFormat(destination, DefaultFormatFieldCount, out charsWritten);
 
         private int DefaultFormatFieldCount =>
             _Build == -1 ? 2 :
             _Revision == -1 ? 3 :
             4;
 
-        private StringBuilder ToCachedStringBuilder(int fieldCount)
-        {
-            // Note: As we always have positive numbers then it is safe to convert the number to string
-            // regardless of the current culture as we'll not have any punctuation marks in the number.
-
-            if (fieldCount == 2)
-            {
-                StringBuilder sb = StringBuilderCache.Acquire();
-                sb.Append(_Major);
-                sb.Append('.');
-                sb.Append(_Minor);
-                return sb;
-            }
-            else
-            {
-                if (_Build == -1)
-                {
-                    throw new ArgumentException(SR.Format(SR.ArgumentOutOfRange_Bounds_Lower_Upper, "0", "2"), nameof(fieldCount));
-                }
-
-                if (fieldCount == 3)
-                {
-                    StringBuilder sb = StringBuilderCache.Acquire();
-                    sb.Append(_Major);
-                    sb.Append('.');
-                    sb.Append(_Minor);
-                    sb.Append('.');
-                    sb.Append(_Build);
-                    return sb;
-                }
-
-                if (_Revision == -1)
-                {
-                    throw new ArgumentException(SR.Format(SR.ArgumentOutOfRange_Bounds_Lower_Upper, "0", "3"), nameof(fieldCount));
-                }
-
-                if (fieldCount == 4)
-                {
-                    StringBuilder sb = StringBuilderCache.Acquire();
-                    sb.Append(_Major);
-                    sb.Append('.');
-                    sb.Append(_Minor);
-                    sb.Append('.');
-                    sb.Append(_Build);
-                    sb.Append('.');
-                    sb.Append(_Revision);
-                    return sb;
-                }
-
-                throw new ArgumentException(SR.Format(SR.ArgumentOutOfRange_Bounds_Lower_Upper, "0", "4"), nameof(fieldCount));
-            }
-        }
-
         public static Version Parse(string input)
         {
-            if (input == null)
-            {
-                throw new ArgumentNullException(nameof(input));
-            }
+            ArgumentNullException.ThrowIfNull(input);
 
             return ParseVersion(input.AsSpan(), throwOnFailure: true)!;
         }
@@ -320,11 +300,11 @@ namespace System
             // We musn't have any separators after build.
             int buildEnd = -1;
             int minorEnd = input.Slice(majorEnd + 1).IndexOf('.');
-            if (minorEnd != -1)
+            if (minorEnd >= 0)
             {
                 minorEnd += (majorEnd + 1);
                 buildEnd = input.Slice(minorEnd + 1).IndexOf('.');
-                if (buildEnd != -1)
+                if (buildEnd >= 0)
                 {
                     buildEnd += (minorEnd + 1);
                     if (input.Slice(buildEnd + 1).Contains('.'))
@@ -391,7 +371,6 @@ namespace System
             return int.TryParse(component, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedComponent) && parsedComponent >= 0;
         }
 
-        // Force inline as the true/false ternary takes it above ALWAYS_INLINE size even though the asm ends up smaller
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool operator ==(Version? v1, Version? v2)
         {
@@ -399,8 +378,7 @@ namespace System
             // so it can become a simple test
             if (v2 is null)
             {
-                // return true/false not the test result https://github.com/dotnet/runtime/issues/4207
-                return (v1 is null) ? true : false;
+                return v1 is null;
             }
 
             // Quick reference equality test prior to calling the virtual Equality

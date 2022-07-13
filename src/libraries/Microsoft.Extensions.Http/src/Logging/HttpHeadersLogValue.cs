@@ -9,15 +9,15 @@ using System.Text;
 
 namespace Microsoft.Extensions.Http.Logging
 {
-    internal class HttpHeadersLogValue : IReadOnlyList<KeyValuePair<string, object>>
+    internal sealed class HttpHeadersLogValue : IReadOnlyList<KeyValuePair<string, object>>
     {
         private readonly Kind _kind;
         private readonly Func<string, bool> _shouldRedactHeaderValue;
 
-        private string _formatted;
-        private List<KeyValuePair<string, object>> _values;
+        private string? _formatted;
+        private List<KeyValuePair<string, object>>? _values;
 
-        public HttpHeadersLogValue(Kind kind, HttpHeaders headers, HttpHeaders contentHeaders, Func<string, bool> shouldRedactHeaderValue)
+        public HttpHeadersLogValue(Kind kind, HttpHeaders headers, HttpHeaders? contentHeaders, Func<string, bool> shouldRedactHeaderValue)
         {
             _kind = kind;
             _shouldRedactHeaderValue = shouldRedactHeaderValue;
@@ -28,7 +28,7 @@ namespace Microsoft.Extensions.Http.Logging
 
         public HttpHeaders Headers { get; }
 
-        public HttpHeaders ContentHeaders { get; }
+        public HttpHeaders? ContentHeaders { get; }
 
         private List<KeyValuePair<string, object>> Values
         {

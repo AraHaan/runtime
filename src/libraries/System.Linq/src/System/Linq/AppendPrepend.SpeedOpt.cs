@@ -17,13 +17,13 @@ namespace System.Linq
             public abstract int GetCount(bool onlyIfCheap);
         }
 
-        private partial class AppendPrepend1Iterator<TSource>
+        private sealed partial class AppendPrepend1Iterator<TSource>
         {
             private TSource[] LazyToArray()
             {
                 Debug.Assert(GetCount(onlyIfCheap: true) == -1);
 
-                var builder = new LargeArrayBuilder<TSource>(initialize: true);
+                LargeArrayBuilder<TSource> builder = new();
 
                 if (!_appending)
                 {
@@ -100,13 +100,13 @@ namespace System.Linq
             }
         }
 
-        private partial class AppendPrependN<TSource>
+        private sealed partial class AppendPrependN<TSource>
         {
             private TSource[] LazyToArray()
             {
                 Debug.Assert(GetCount(onlyIfCheap: true) == -1);
 
-                var builder = new SparseArrayBuilder<TSource>(initialize: true);
+                SparseArrayBuilder<TSource> builder = new();
 
                 if (_prepended != null)
                 {

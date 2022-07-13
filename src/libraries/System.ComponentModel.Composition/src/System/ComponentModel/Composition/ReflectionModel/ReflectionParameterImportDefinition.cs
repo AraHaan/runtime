@@ -24,10 +24,7 @@ namespace System.ComponentModel.Composition.ReflectionModel
             ICompositionElement? origin)
             : base(contractName, requiredTypeIdentity, requiredMetadata, cardinality, false, true, requiredCreationPolicy, metadata, origin)
         {
-            if (importingLazyParameter == null)
-            {
-                throw new ArgumentNullException(nameof(importingLazyParameter));
-            }
+            ArgumentNullException.ThrowIfNull(importingLazyParameter);
 
             _importingLazyParameter = importingLazyParameter;
         }
@@ -45,12 +42,7 @@ namespace System.ComponentModel.Composition.ReflectionModel
         protected override string GetDisplayName()
         {
             ParameterInfo parameter = ImportingLazyParameter.GetNotNullValue("parameter");
-            return string.Format(
-                CultureInfo.CurrentCulture,
-                "{0} (Parameter=\"{1}\", ContractName=\"{2}\")",  // NOLOC
-                parameter.Member.GetDisplayName(),
-                parameter.Name,
-                ContractName);
+            return $"{parameter.Member.GetDisplayName()} (Parameter=\"{parameter.Name}\", ContractName=\"{ContractName}\")";  // NOLOC
         }
     }
 }

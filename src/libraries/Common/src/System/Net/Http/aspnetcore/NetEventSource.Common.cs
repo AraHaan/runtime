@@ -10,13 +10,11 @@
 #nullable enable
 using System.Collections;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Tracing;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-#if NET46
-using System.Security;
-#endif
 
 #pragma warning disable CA1823 // not all IDs are used by all partial providers
 
@@ -40,16 +38,13 @@ namespace System.Net
     //   method that takes an object and optionally provides a string representation of it, in case a particular library wants to customize further.
 
     /// <summary>Provides logging facilities for System.Net libraries.</summary>
-#if NET46
-    [SecuritySafeCritical]
-#endif
     internal sealed partial class NetEventSource : EventSource
     {
         /// <summary>The single event source instance to use for all logging.</summary>
         public static readonly NetEventSource Log = new NetEventSource();
 
         #region Metadata
-        public class Keywords
+        public static class Keywords
         {
             public const EventKeywords Default = (EventKeywords)0x0001;
             public const EventKeywords Debug = (EventKeywords)0x0002;
@@ -446,6 +441,7 @@ namespace System.Net
         #region Custom WriteEvent overloads
 
         [NonEvent]
+        [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Parameters passed to WriteEvent are all primative values.")]
         private unsafe void WriteEvent(int eventId, string? arg1, string? arg2, string? arg3, string? arg4)
         {
             if (IsEnabled())
@@ -490,6 +486,7 @@ namespace System.Net
         }
 
         [NonEvent]
+        [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Parameters passed to WriteEvent are all primative values.")]
         private unsafe void WriteEvent(int eventId, string? arg1, string? arg2, byte[]? arg3)
         {
             if (IsEnabled())
@@ -533,6 +530,7 @@ namespace System.Net
         }
 
         [NonEvent]
+        [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Can safely serialize primitive arguments.")]
         private unsafe void WriteEvent(int eventId, string? arg1, int arg2, int arg3, int arg4)
         {
             if (IsEnabled())
@@ -571,6 +569,7 @@ namespace System.Net
         }
 
         [NonEvent]
+        [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Can safely serialize primitive arguments.")]
         private unsafe void WriteEvent(int eventId, string? arg1, int arg2, string? arg3)
         {
             if (IsEnabled())
@@ -606,6 +605,7 @@ namespace System.Net
         }
 
         [NonEvent]
+        [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Can safely serialize primitive arguments.")]
         private unsafe void WriteEvent(int eventId, string? arg1, string? arg2, int arg3)
         {
             if (IsEnabled())
@@ -641,6 +641,7 @@ namespace System.Net
         }
 
         [NonEvent]
+        [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Can safely serialize primitive arguments.")]
         private unsafe void WriteEvent(int eventId, string? arg1, string? arg2, string? arg3, int arg4)
         {
             if (IsEnabled())

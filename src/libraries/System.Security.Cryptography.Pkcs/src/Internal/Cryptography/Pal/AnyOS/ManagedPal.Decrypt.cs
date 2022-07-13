@@ -112,23 +112,7 @@ namespace Internal.Cryptography.Pal.AnyOS
                     return null;
                 }
 
-                // Compat: Previous versions of the managed PAL encryptor would wrap the contents in an octet stream
-                // which is not correct and is incompatible with other CMS readers. To maintain compatibility with
-                // existing CMS that have the incorrect wrapping, we attempt to remove it.
-                if (contentType == Oids.Pkcs7Data)
-                {
-                    if (decrypted?.Length > 0 && decrypted[0] == 0x04)
-                    {
-                        try
-                        {
-                            decrypted = AsnDecoder.ReadOctetString(decrypted, AsnEncodingRules.BER, out _);
-                        }
-                        catch (AsnContentException)
-                        {
-                        }
-                    }
-                }
-                else
+                if (contentType != Oids.Pkcs7Data)
                 {
                     decrypted = GetAsnSequenceWithContentNoValidation(decrypted);
                 }
@@ -162,24 +146,70 @@ namespace Internal.Cryptography.Pal.AnyOS
                 out Exception? exception)
             {
                 exception = null;
+
+                // Windows compat: If the encrypted content is completely empty, even where it does not make sense for the
+                // mode and padding (e.g. CBC + PKCS7), produce an empty plaintext.
+                if (encryptedContent.IsEmpty)
+                {
+                    return Array.Empty<byte>();
+                }
+
+#if NET
+                try
+                {
+                    using (SymmetricAlgorithm alg = OpenAlgorithm(contentEncryptionAlgorithm))
+                    {
+                        try
+                        {
+                            alg.Key = cek;
+                        }
+                        catch (CryptographicException ce)
+                        {
+                            throw new CryptographicException(SR.Cryptography_Cms_InvalidSymmetricKey, ce);
+                        }
+
+                        return alg.DecryptCbc(encryptedContent.Span, alg.IV);
+                    }
+                }
+                catch (CryptographicException ce)
+                {
+                    exception = ce;
+                    return null;
+                }
+#else
                 int encryptedContentLength = encryptedContent.Length;
-                byte[]? encryptedContentArray = CryptoPool.Rent(encryptedContentLength);
+                byte[] encryptedContentArray = CryptoPool.Rent(encryptedContentLength);
 
                 try
                 {
                     encryptedContent.CopyTo(encryptedContentArray);
 
                     using (SymmetricAlgorithm alg = OpenAlgorithm(contentEncryptionAlgorithm))
-                    using (ICryptoTransform decryptor = alg.CreateDecryptor(cek, alg.IV))
                     {
-                        // If we extend this library to accept additional algorithm providers
-                        // then a different array pool needs to be used.
-                        Debug.Assert(alg.GetType().Assembly == typeof(Aes).Assembly);
+                        ICryptoTransform decryptor;
 
-                        return decryptor.OneShot(
-                            encryptedContentArray,
-                            0,
-                            encryptedContentLength);
+                        try
+                        {
+                            decryptor = alg.CreateDecryptor(cek, alg.IV);
+                        }
+                        catch (ArgumentException ae)
+                        {
+                            // Decrypting or deriving the symmetric key with the wrong key may still succeed
+                            // but produce a symmetric key that is not the correct length.
+                            throw new CryptographicException(SR.Cryptography_Cms_InvalidSymmetricKey, ae);
+                        }
+
+                        using (decryptor)
+                        {
+                            // If we extend this library to accept additional algorithm providers
+                            // then a different array pool needs to be used.
+                            Debug.Assert(alg.GetType().Assembly == typeof(Aes).Assembly);
+
+                            return decryptor.OneShot(
+                                encryptedContentArray,
+                                0,
+                                encryptedContentLength);
+                        }
                     }
                 }
                 catch (CryptographicException e)
@@ -190,8 +220,8 @@ namespace Internal.Cryptography.Pal.AnyOS
                 finally
                 {
                     CryptoPool.Return(encryptedContentArray, encryptedContentLength);
-                    encryptedContentArray = null;
                 }
+#endif
             }
 
             public override void Dispose()

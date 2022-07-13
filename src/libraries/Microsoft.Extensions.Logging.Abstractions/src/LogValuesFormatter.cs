@@ -12,7 +12,7 @@ namespace Microsoft.Extensions.Logging
     /// <summary>
     /// Formatter to convert the named format items like {NamedformatItem} to <see cref="string.Format(IFormatProvider, string, object)"/> format.
     /// </summary>
-    internal class LogValuesFormatter
+    internal sealed class LogValuesFormatter
     {
         private const string NullValue = "(null)";
         private static readonly char[] FormatDelimiters = {',', ':'};
@@ -25,10 +25,7 @@ namespace Microsoft.Extensions.Logging
 
         public LogValuesFormatter(string format)
         {
-            if (format == null)
-            {
-                throw new ArgumentNullException(nameof(format));
-            }
+            ThrowHelper.ThrowIfNull(format);
 
             OriginalFormat = format;
 
@@ -129,6 +126,34 @@ namespace Microsoft.Extensions.Logging
 
         public string Format(object?[]? values)
         {
+            object?[]? formattedValues = values;
+
+            if (values != null)
+            {
+                for (int i = 0; i < values.Length; i++)
+                {
+                    object formattedValue = FormatArgument(values[i]);
+                    // If the formatted value is changed, we allocate and copy items to a new array to avoid mutating the array passed in to this method
+                    if (!ReferenceEquals(formattedValue, values[i]))
+                    {
+                        formattedValues = new object[values.Length];
+                        Array.Copy(values, formattedValues, i);
+                        formattedValues[i++] = formattedValue;
+                        for (; i < values.Length; i++)
+                        {
+                            formattedValues[i] = FormatArgument(values[i]);
+                        }
+                        break;
+                    }
+                }
+            }
+
+            return string.Format(CultureInfo.InvariantCulture, _format, formattedValues ?? Array.Empty<object>());
+        }
+
+        // NOTE: This method mutates the items in the array if needed to avoid extra allocations, and should only be used when caller expects this to happen
+        internal string FormatWithOverwrite(object?[]? values)
+        {
             if (values != null)
             {
                 for (int i = 0; i < values.Length; i++)
@@ -205,7 +230,7 @@ namespace Microsoft.Extensions.Logging
             {
                 var vsb = new ValueStringBuilder(stackalloc char[256]);
                 bool first = true;
-                foreach (object e in enumerable)
+                foreach (object? e in enumerable)
                 {
                     if (!first)
                     {

@@ -19,11 +19,11 @@ namespace System.Collections.Immutable
     /// </devremarks>
     [DebuggerDisplay("Count = {Count}")]
     [DebuggerTypeProxy(typeof(ImmutableEnumerableDebuggerProxy<>))]
-    #if !NETSTANDARD1_0 && !NETSTANDARD1_3 && !NETSTANDARD2_0 && !NETFRAMEWORK
+#if NETCOREAPP
     public sealed partial class ImmutableSortedSet<T> : IImmutableSet<T>, ISortKeyCollection<T>, IReadOnlySet<T>, IReadOnlyList<T>, IList<T>, ISet<T>, IList, IStrongEnumerable<T, ImmutableSortedSet<T>.Enumerator>
-    #else
+#else
     public sealed partial class ImmutableSortedSet<T> : IImmutableSet<T>, ISortKeyCollection<T>, IReadOnlyList<T>, IList<T>, ISet<T>, IList, IStrongEnumerable<T, ImmutableSortedSet<T>.Enumerator>
-    #endif
+#endif
     {
         /// <summary>
         /// This is the factor between the small collection's size and the large collection's size in a bulk operation,
@@ -149,15 +149,10 @@ namespace System.Collections.Immutable
         {
             get
             {
-#if !NETSTANDARD1_0
                 return _root.ItemRef(index);
-#else
-                return _root[index];
-#endif
             }
         }
 
-#if !NETSTANDARD1_0
         /// <summary>
         /// Gets a read-only reference of the element of the set at the given index.
         /// </summary>
@@ -167,7 +162,6 @@ namespace System.Collections.Immutable
         {
             return ref _root.ItemRef(index);
         }
-#endif
 
         #endregion
 
@@ -195,8 +189,7 @@ namespace System.Collections.Immutable
         /// </summary>
         public ImmutableSortedSet<T> Add(T value)
         {
-            bool mutated;
-            return this.Wrap(_root.Add(value, _comparer, out mutated));
+            return this.Wrap(_root.Add(value, _comparer, out _));
         }
 
         /// <summary>
@@ -204,8 +197,7 @@ namespace System.Collections.Immutable
         /// </summary>
         public ImmutableSortedSet<T> Remove(T value)
         {
-            bool mutated;
-            return this.Wrap(_root.Remove(value, _comparer, out mutated));
+            return this.Wrap(_root.Remove(value, _comparer, out _));
         }
 
         /// <summary>
@@ -348,10 +340,7 @@ namespace System.Collections.Immutable
         /// </summary>
         public ImmutableSortedSet<T> WithComparer(IComparer<T>? comparer)
         {
-            if (comparer == null)
-            {
-                comparer = Comparer<T>.Default;
-            }
+            comparer ??= Comparer<T>.Default;
 
             if (comparer == _comparer)
             {
@@ -1132,7 +1121,7 @@ namespace System.Collections.Immutable
         /// <summary>
         /// An reverse enumerable of a sorted set.
         /// </summary>
-        private class ReverseEnumerable : IEnumerable<T>
+        private sealed class ReverseEnumerable : IEnumerable<T>
         {
             /// <summary>
             /// The root node to enumerate.

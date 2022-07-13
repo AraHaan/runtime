@@ -7,7 +7,7 @@ using System.Diagnostics;
 
 namespace System.Xml
 {
-    internal class UTF16Decoder : System.Text.Decoder
+    internal sealed class UTF16Decoder : System.Text.Decoder
     {
         private readonly bool _bigEndian;
         private int _lastByte;
@@ -161,7 +161,7 @@ namespace System.Xml
         }
     }
 
-    internal class SafeAsciiDecoder : Decoder
+    internal sealed class SafeAsciiDecoder : Decoder
     {
         public SafeAsciiDecoder()
         {
@@ -422,7 +422,7 @@ namespace System.Xml
         public override int GetChars(byte[] bytes, int byteIndex, int byteCount, char[] chars, int charIndex)
         {
             // finish a character from the bytes that were cached last time
-            int i = lastBytesCount;
+            int i;
             if (lastBytesCount > 0)
             {
                 // copy remaining bytes into the cache
@@ -473,7 +473,7 @@ namespace System.Xml
             bytesUsed = 0;
             charsUsed = 0;
             // finish a character from the bytes that were cached last time
-            int i = 0;
+            int i;
             int lbc = lastBytesCount;
             if (lbc > 0)
             {
@@ -499,7 +499,6 @@ namespace System.Xml
 
                 charIndex += i;
                 charCount -= i;
-                charsUsed = i;
 
                 lastBytesCount = 0;
             }
@@ -537,14 +536,14 @@ namespace System.Xml
             }
         }
 
-        internal void Ucs4ToUTF16(uint code, char[] chars, int charIndex)
+        internal static void Ucs4ToUTF16(uint code, char[] chars, int charIndex)
         {
             chars[charIndex] = (char)(XmlCharType.SurHighStart + (char)((code >> 16) - 1) + (char)((code >> 10) & 0x3F));
             chars[charIndex + 1] = (char)(XmlCharType.SurLowStart + (char)(code & 0x3FF));
         }
     }
 
-    internal class Ucs4Decoder4321 : Ucs4Decoder
+    internal sealed class Ucs4Decoder4321 : Ucs4Decoder
     {
         internal override int GetFullChars(byte[] bytes, int byteIndex, int byteCount, char[] chars, int charIndex)
         {
@@ -585,7 +584,7 @@ namespace System.Xml
         }
     }
 
-    internal class Ucs4Decoder1234 : Ucs4Decoder
+    internal sealed class Ucs4Decoder1234 : Ucs4Decoder
     {
         internal override int GetFullChars(byte[] bytes, int byteIndex, int byteCount, char[] chars, int charIndex)
         {
@@ -627,7 +626,7 @@ namespace System.Xml
     }
 
 
-    internal class Ucs4Decoder2143 : Ucs4Decoder
+    internal sealed class Ucs4Decoder2143 : Ucs4Decoder
     {
         internal override int GetFullChars(byte[] bytes, int byteIndex, int byteCount, char[] chars, int charIndex)
         {
@@ -669,7 +668,7 @@ namespace System.Xml
     }
 
 
-    internal class Ucs4Decoder3412 : Ucs4Decoder
+    internal sealed class Ucs4Decoder3412 : Ucs4Decoder
     {
         internal override int GetFullChars(byte[] bytes, int byteIndex, int byteCount, char[] chars, int charIndex)
         {

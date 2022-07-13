@@ -193,9 +193,6 @@
   <data name="MaskedTextProviderInvalidCharError" xml:space="preserve">
     <value>The specified character value is not allowed for this property.</value>
   </data>
-  <data name="MaskedTextProviderMaskNullOrEmpty" xml:space="preserve">
-    <value>The Mask value cannot be null or empty.</value>
-  </data>
   <data name="MaskedTextProviderMaskInvalidChar" xml:space="preserve">
     <value>The specified mask contains invalid characters.</value>
   </data>
@@ -249,5 +246,8 @@
   </data>
   <data name="MemberRelationshipService_RelationshipNotSupported" xml:space="preserve">
     <value>Relationships between {0}.{1} and {2}.{3} are not supported.</value>
+  </data>
+  <data name="BinaryFormatterMessage" xml:space="preserve">
+    <value>BinaryFormatter serialization is obsolete and should not be used. See https://aka.ms/binaryformatter for more information.</value>
   </data>
 </root>

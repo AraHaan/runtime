@@ -20,7 +20,11 @@
 #ifdef HOST_WINDOWS
 HANDLE StressLogChunk::s_LogChunkHeap = NULL;
 #endif
+#ifdef MEMORY_MAPPED_STRESSLOG
+bool StressLogChunk::s_memoryMapped = false;
+#endif
 thread_local ThreadStressLog* StressLog::t_pCurrentThreadLog;
+thread_local bool t_triedToCreateThreadStressLog;
 #endif // !STRESS_LOG_READONLY
 
 /*********************************************************************************/
@@ -56,7 +60,7 @@ unsigned __int64 getTimeStamp() {
 #if defined(HOST_X86) && !defined(HOST_UNIX)
 
 /*********************************************************************************/
-/* Get the the frequency cooresponding to 'getTimeStamp'.  For x86, this is the
+/* Get the frequency cooresponding to 'getTimeStamp'.  For x86, this is the
    frequency of the RDTSC instruction, which is just the clock rate of the CPU.
    This can vary due to power management, so this is at best a rough approximation.
 */
@@ -104,7 +108,7 @@ unsigned __int64 getTickFrequency()
 
 
 /*********************************************************************************/
-/* Get the the frequency cooresponding to 'getTimeStamp'.  For non-x86
+/* Get the frequency cooresponding to 'getTimeStamp'.  For non-x86
    architectures, this is just the performance counter frequency.
 */
 unsigned __int64 getTickFrequency()
@@ -139,9 +143,64 @@ void StressLog::Leave(CRITSEC_COOKIE) {
     DecCantAllocCount();
 }
 
+#ifdef MEMORY_MAPPED_STRESSLOG
+static LPVOID CreateMemoryMappedFile(LPWSTR logFilename, size_t maxBytesTotal)
+{
+    if (maxBytesTotal < sizeof(StressLog::StressLogHeader))
+    {
+        return nullptr;
+    }
+    WCHAR fileName[MAX_PATH];
+
+    // if the string "{pid}" occurs in the logFilename,
+    // replace it by the PID of our process
+    // only the first occurrence will be replaced
+    const WCHAR* pidLit =  W("{pid}");
+    WCHAR* pidPtr = wcsstr(logFilename, pidLit);
+    if (pidPtr != nullptr)
+    {
+        // copy the file name up to the "{pid}" occurrence
+        ptrdiff_t pidInx = pidPtr - logFilename;
+        wcsncpy_s(fileName, MAX_PATH, logFilename, pidInx);
+
+        // append the string representation of the PID
+        DWORD pid = GetCurrentProcessId();
+        WCHAR pidStr[20];
+        _itow_s(pid, pidStr, ARRAY_SIZE(pidStr), 10);
+        wcscat_s(fileName, MAX_PATH, pidStr);
+
+        // append the rest of the filename
+        wcscat_s(fileName, MAX_PATH, logFilename + pidInx + wcslen(pidLit));
+
+        logFilename = fileName;
+    }
+    HandleHolder hFile = WszCreateFile(logFilename,
+        GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ,
+        NULL,                 // default security descriptor
+        CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL);
+
+    if (hFile == INVALID_HANDLE_VALUE)
+    {
+        return nullptr;
+    }
+
+    size_t fileSize = maxBytesTotal;
+    HandleHolder hMap = WszCreateFileMapping(hFile, NULL, PAGE_READWRITE, (DWORD)(fileSize >> 32), (DWORD)fileSize, NULL);
+    if (hMap == NULL)
+    {
+        return nullptr;
+    }
+
+    return MapViewOfFileEx(hMap, FILE_MAP_ALL_ACCESS, 0, 0, fileSize, MEMORY_MAPPED_STRESSLOG_BASE_ADDRESS);
+}
+#endif //MEMORY_MAPPED_STRESSLOG
+
 /*********************************************************************************/
-void StressLog::Initialize(unsigned facilities,  unsigned level, unsigned maxBytesPerThread,
-            unsigned maxBytesTotal, void* moduleBase)
+void StressLog::Initialize(unsigned facilities, unsigned level, unsigned maxBytesPerThreadArg,
+    unsigned maxBytesTotalArg, void* moduleBase, LPWSTR logFilename)
 {
     STATIC_CONTRACT_LEAF;
 
@@ -151,19 +210,23 @@ void StressLog::Initialize(unsigned facilities,  unsigned level, unsigned maxByt
         return;
     }
 
-    theLog.lock = ClrCreateCriticalSection(CrstStressLog,(CrstFlags)(CRST_UNSAFE_ANYMODE|CRST_DEBUGGER_THREAD|CRST_TAKEN_DURING_SHUTDOWN));
+    theLog.lock = ClrCreateCriticalSection(CrstStressLog, (CrstFlags)(CRST_UNSAFE_ANYMODE | CRST_DEBUGGER_THREAD | CRST_TAKEN_DURING_SHUTDOWN));
     // StressLog::Terminate is going to free memory.
+    size_t maxBytesPerThread = maxBytesPerThreadArg;
     if (maxBytesPerThread < STRESSLOG_CHUNK_SIZE)
     {
-        maxBytesPerThread = STRESSLOG_CHUNK_SIZE;
+        // in this case, interpret the number as GB
+        maxBytesPerThread *= (1024 * 1024 * 1024);
     }
-    theLog.MaxSizePerThread = maxBytesPerThread;
+    theLog.MaxSizePerThread = (unsigned)min(maxBytesPerThread,0xffffffff);
 
+    size_t maxBytesTotal = maxBytesTotalArg;
     if (maxBytesTotal < STRESSLOG_CHUNK_SIZE * 256)
     {
-        maxBytesTotal = STRESSLOG_CHUNK_SIZE * 256;
+        // in this case, interpret the number as GB
+        maxBytesTotal *= (1024 * 1024 * 1024);
     }
-    theLog.MaxSizeTotal = maxBytesTotal;
+    theLog.MaxSizeTotal = (unsigned)min(maxBytesTotal, 0xffffffff);
     theLog.totalChunk = 0;
     theLog.facilitiesToLog = facilities | LF_ALWAYS;
     theLog.levelToLog = level;
@@ -171,7 +234,7 @@ void StressLog::Initialize(unsigned facilities,  unsigned level, unsigned maxByt
 
     theLog.tickFrequency = getTickFrequency();
 
-    GetSystemTimeAsFileTime (&theLog.startTime);
+    GetSystemTimeAsFileTime(&theLog.startTime);
     theLog.startTimeStamp = getTimeStamp();
     theLog.moduleOffset = (SIZE_T)moduleBase;
 
@@ -179,18 +242,116 @@ void StressLog::Initialize(unsigned facilities,  unsigned level, unsigned maxByt
 #ifdef _DEBUG
     HMODULE hModNtdll = GetModuleHandleA("ntdll.dll");
     theLog.RtlCaptureStackBackTrace = reinterpret_cast<PFNRtlCaptureStackBackTrace>(
-            GetProcAddress(hModNtdll, "RtlCaptureStackBackTrace"));
+        GetProcAddress(hModNtdll, "RtlCaptureStackBackTrace"));
 #endif // _DEBUG
 #endif // !HOST_UNIX
 
-#if !defined (STRESS_LOG_READONLY) && defined(HOST_WINDOWS)
-    StressLogChunk::s_LogChunkHeap = HeapCreate (0, STRESSLOG_CHUNK_SIZE * 128, 0);
-    if (StressLogChunk::s_LogChunkHeap == NULL)
+#ifdef MEMORY_MAPPED_STRESSLOG
+    StressLogChunk::s_memoryMapped = false;
+    if (logFilename != nullptr)
     {
-        StressLogChunk::s_LogChunkHeap = GetProcessHeap ();
+        theLog.hMapView = CreateMemoryMappedFile(logFilename, maxBytesTotal);
+        if (theLog.hMapView != nullptr)
+        {
+            StressLogChunk::s_memoryMapped = true;
+            StressLogHeader* hdr = (StressLogHeader*)(uint8_t*)(void*)theLog.hMapView;
+            hdr->headerSize = sizeof(StressLogHeader);
+            hdr->magic = *(uint32_t*)"LRTS";
+            hdr->version = 0x00010001;
+            hdr->memoryBase = (uint8_t*)hdr;
+            hdr->memoryCur = hdr->memoryBase + sizeof(StressLogHeader);
+            hdr->memoryLimit = hdr->memoryBase + maxBytesTotal;
+            hdr->logs = nullptr;
+            hdr->tickFrequency = theLog.tickFrequency;
+            hdr->startTimeStamp = theLog.startTimeStamp;
+            theLog.stressLogHeader = hdr;
+        }
     }
-    _ASSERTE (StressLogChunk::s_LogChunkHeap);
+#endif //MEMORY_MAPPED_STRESSLOG
+
+#if !defined (STRESS_LOG_READONLY) && defined(HOST_WINDOWS)
+#ifdef MEMORY_MAPPED_STRESSLOG
+    if (theLog.hMapView == nullptr)
+#endif //MEMORY_MAPPED_STRESSLOG
+    {
+        StressLogChunk::s_LogChunkHeap = HeapCreate(0, STRESSLOG_CHUNK_SIZE * 128, 0);
+        if (StressLogChunk::s_LogChunkHeap == NULL)
+        {
+            StressLogChunk::s_LogChunkHeap = GetProcessHeap();
+        }
+        _ASSERTE(StressLogChunk::s_LogChunkHeap);
+    }
 #endif //!STRESS_LOG_READONLY
+
+    AddModule((uint8_t*)moduleBase);
+}
+
+void StressLog::AddModule(uint8_t* moduleBase)
+{
+    unsigned moduleIndex = 0;
+#ifdef MEMORY_MAPPED_STRESSLOG
+    StressLogHeader* hdr = theLog.stressLogHeader;
+#endif //MEMORY_MAPPED_STRESSLOG
+    size_t cumSize = 0;
+    while (moduleIndex < MAX_MODULES && theLog.modules[moduleIndex].baseAddress != nullptr)
+    {
+        if (theLog.modules[moduleIndex].baseAddress == moduleBase)
+            return;
+        cumSize += theLog.modules[moduleIndex].size;
+        moduleIndex++;
+    }
+    if (moduleIndex >= MAX_MODULES)
+    {
+        DebugBreak();
+        return;
+    }
+    theLog.modules[moduleIndex].baseAddress = moduleBase;
+#ifdef MEMORY_MAPPED_STRESSLOG
+    if (hdr != nullptr)
+    {
+        hdr->modules[moduleIndex].baseAddress = moduleBase;
+    }
+#endif //MEMORY_MAPPED_STRESSLOG
+#ifdef HOST_WINDOWS
+    uint8_t* addr = moduleBase;
+    while (true)
+    {
+        MEMORY_BASIC_INFORMATION mbi;
+        size_t size = VirtualQuery(addr, &mbi, sizeof(mbi));
+        if (size == 0)
+            break;
+        // copy the region containing string literals to the memory mapped file
+        if (mbi.AllocationBase != moduleBase)
+            break;
+        ptrdiff_t offs = (uint8_t*)mbi.BaseAddress - (uint8_t*)mbi.AllocationBase + cumSize;
+        addr += mbi.RegionSize;
+        theLog.modules[moduleIndex].size = (size_t)(addr - (uint8_t*)moduleBase);
+#ifdef MEMORY_MAPPED_STRESSLOG
+        if (hdr != nullptr)
+        {
+            memcpy(&hdr->moduleImage[offs], mbi.BaseAddress, mbi.RegionSize);
+            hdr->modules[moduleIndex].size = (size_t)(addr - (uint8_t*)moduleBase);
+        }
+#endif //MEMORY_MAPPED_STRESSLOG
+    }
+#else //HOST_WINDOWS
+    uint8_t* destination = nullptr;
+    uint8_t* destination_end = nullptr;
+#ifdef MEMORY_MAPPED_STRESSLOG
+    if (hdr != nullptr)
+    {
+        destination = &hdr->moduleImage[cumSize];
+        destination_end = &hdr->moduleImage[64*1024*1024];
+    }
+#endif //MEMORY_MAPPED_STRESSLOG
+    theLog.modules[moduleIndex].size = PAL_CopyModuleData(moduleBase, destination, destination_end);
+#ifdef MEMORY_MAPPED_STRESSLOG
+    if (hdr != nullptr)
+    {
+        hdr->modules[moduleIndex].size = theLog.modules[moduleIndex].size;
+    }
+#endif //MEMORY_MAPPED_STRESSLOG
+#endif //HOST_WINDOWS
 }
 
 /*********************************************************************************/
@@ -259,7 +420,7 @@ ThreadStressLog* StressLog::CreateThreadStressLog() {
         return NULL;
     }
 
-#ifdef HOST_WINDOWS
+#if defined(HOST_WINDOWS) && !defined(MEMORY_MAPPED_STRESSLOG)
     if (!StressLogChunk::s_LogChunkHeap)
     {
         return NULL;
@@ -397,7 +558,26 @@ ThreadStressLog* StressLog::CreateThreadStressLogHelper() {
         {
             delete msgs;
             msgs = 0;
+#ifdef MEMORY_MAPPED_STRESSLOG
+            if (!t_triedToCreateThreadStressLog && theLog.stressLogHeader != nullptr)
+            {
+                theLog.stressLogHeader->threadsWithNoLog++;
+                t_triedToCreateThreadStressLog = true;
+            }
+#endif //MEMORY_MAPPED_STRESSLOG
             goto LEAVE;
+        }
+    }
+    else
+    {
+        // recycle old thread msg
+        msgs->threadId = GetCurrentThreadId();
+        StressLogChunk* slc = msgs->chunkListHead;
+        while (true)
+        {
+            if (slc == msgs->chunkListTail)
+                break;
+            slc = slc->next;
         }
     }
 
@@ -417,6 +597,10 @@ ThreadStressLog* StressLog::CreateThreadStressLogHelper() {
         // Put it into the stress log
         msgs->next = theLog.logs;
         theLog.logs = msgs;
+#ifdef MEMORY_MAPPED_STRESSLOG
+        if (theLog.stressLogHeader != nullptr)
+        theLog.stressLogHeader->logs = msgs;
+#endif // MEMORY_MAPPED_STRESSLOG
     }
 
 LEAVE:
@@ -470,7 +654,7 @@ BOOL StressLog::AllowNewChunk (LONG numChunksInCurThread)
         return FALSE;
     }
 
-    return (DWORD)theLog.totalChunk * STRESSLOG_CHUNK_SIZE < theLog.MaxSizeTotal;
+    return theLog.MaxSizeTotal == 0xffffffff || (DWORD)theLog.totalChunk * STRESSLOG_CHUNK_SIZE < theLog.MaxSizeTotal;
 }
 
 BOOL StressLog::ReserveStressLogChunks (unsigned chunksToReserve)
@@ -521,45 +705,60 @@ void TrackSO(BOOL tolerance)
 
 /*********************************************************************************/
 /* fetch a buffer that can be used to write a stress message, it is thread safe */
-void ThreadStressLog::LogMsg(unsigned facility, int cArgs, const char* format, va_list Args)
+FORCEINLINE void ThreadStressLog::LogMsg(unsigned facility, int cArgs, const char* format, va_list Args)
 {
     STATIC_CONTRACT_NOTHROW;
     STATIC_CONTRACT_FORBID_FAULT;
 
-	// Asserts in this function cause infinite loops in the asserting mechanism.
-	// Just use debug breaks instead.
+    // Asserts in this function cause infinite loops in the asserting mechanism.
+    // Just use debug breaks instead.
 
 #ifndef DACCESS_COMPILE
 #ifdef _DEBUG
-    // _ASSERTE ( cArgs >= 0 && cArgs <= 7 );
-	if (cArgs < 0 || cArgs > 7) DebugBreak();
+    // _ASSERTE ( cArgs >= 0 && cArgs <= 63 );
+    if (cArgs < 0 || cArgs > 63) DebugBreak();
 #endif //
 
-    size_t offs = ((size_t)format - StressLog::theLog.moduleOffset);
+    size_t offs = 0;
+    unsigned moduleIndex = 0;
+    size_t cumSize = 0;
+    offs = 0;
+    while (moduleIndex < StressLog::MAX_MODULES)
+    {
+        offs = (uint8_t*)format - StressLog::theLog.modules[moduleIndex].baseAddress;
+        if (offs < StressLog::theLog.modules[moduleIndex].size)
+        {
+            offs += cumSize;
+            break;
+        }
+        cumSize += StressLog::theLog.modules[moduleIndex].size;
+        moduleIndex++;
+    }
 
     // _ASSERTE ( offs < StressMsg::maxOffset );
-	if (offs >= StressMsg::maxOffset)
-	{
+    if (offs >= StressMsg::maxOffset)
+    {
 #ifdef _DEBUG
-		DebugBreak(); // in lieu of the above _ASSERTE
+        DebugBreak(); // in lieu of the above _ASSERTE
 #endif // _DEBUG
 
-		// Set it to this string instead.
-		offs =
+        // Set it to this string instead.
+        offs =
 #ifdef _DEBUG
-			(size_t)"<BUG: StressLog format string beyond maxOffset>";
+            (size_t)"<BUG: StressLog format string beyond maxOffset>";
 #else // _DEBUG
-			0; // a 0 offset is ignored by StressLog::Dump
+            0; // a 0 offset is ignored by StressLog::Dump
 #endif // _DEBUG else
-	}
+    }
 
     // Get next available slot
     StressMsg* msg = AdvanceWrite(cArgs);
 
     msg->timeStamp = getTimeStamp();
     msg->facility = facility;
-	msg->formatOffset = offs;
-	msg->numberOfArgs = cArgs;
+    msg->formatOffset = offs;
+    msg->numberOfArgs = cArgs & 0x7;
+    msg->numberOfArgsX = cArgs >> 3;
 
     for ( int i = 0; i < cArgs; ++i )
     {
@@ -567,11 +766,22 @@ void ThreadStressLog::LogMsg(unsigned facility, int cArgs, const char* format, v
         msg->args[i] = data;
     }
 
+    // only store curPtr once the msg is complete
+    curPtr = msg;
+
 #ifdef _DEBUG
     if (!IsValid () || threadId != GetCurrentThreadId ())
         DebugBreak();
 #endif // _DEBUG
 #endif //DACCESS_COMPILE
+}
+
+void ThreadStressLog::LogMsg(unsigned facility, int cArgs, const char* format, ...)
+{
+    va_list Args;
+    va_start(Args, format);
+    LogMsg(facility, cArgs, format, Args);
+    va_end(Args);
 }
 
 FORCEINLINE BOOL StressLog::InlinedStressLogOn(unsigned facility, unsigned level)
@@ -621,7 +831,7 @@ BOOL StressLog::LogOn(unsigned facility, unsigned level)
 #endif
 
 /* static */
-void StressLog::LogMsg (unsigned level, unsigned facility, int cArgs, const char* format, ... )
+void StressLog::LogMsg(unsigned level, unsigned facility, int cArgs, const char* format, ...)
 {
     STATIC_CONTRACT_SUPPORTS_DAC;
 #ifndef DACCESS_COMPILE
@@ -636,26 +846,72 @@ void StressLog::LogMsg (unsigned level, unsigned facility, int cArgs, const char
     // set the stress log config parameter.
     CONTRACT_VIOLATION(TakesLockViolation);
 
-    _ASSERTE ( cArgs >= 0 && cArgs <= 7 );
+    _ASSERTE(cArgs >= 0 && cArgs <= 63);
 
     va_list Args;
 
-    if(InlinedStressLogOn(facility, level))
+    if (InlinedStressLogOn(facility, level))
     {
         ThreadStressLog* msgs = t_pCurrentThreadLog;
 
-        if (msgs == 0) {
+        if (msgs == 0)
+        {
             msgs = CreateThreadStressLog();
 
             if (msgs == 0)
                 return;
         }
         va_start(Args, format);
-        msgs->LogMsg (facility, cArgs, format, Args);
+        msgs->LogMsg(facility, cArgs, format, Args);
         va_end(Args);
     }
 
-// Stress Log ETW feature available only on the desktop versions of the runtime
+    // Stress Log ETW feature available only on the desktop versions of the runtime
+#endif //!DACCESS_COMPILE
+}
+
+/* static */
+void StressLog::LogMsg(unsigned level, unsigned facility, const StressLogMsg &msg)
+{
+    STATIC_CONTRACT_SUPPORTS_DAC;
+#ifndef DACCESS_COMPILE
+    STATIC_CONTRACT_NOTHROW;
+    STATIC_CONTRACT_GC_NOTRIGGER;
+    STATIC_CONTRACT_FORBID_FAULT;
+    STATIC_CONTRACT_SUPPORTS_DAC;
+
+    // Any stresslog LogMsg could theoretically create a new stress log and thus
+    // enter a critical section.  But we don't want these to cause violations in
+    // CANNOT_TAKE_LOCK callers, since the callers would otherwise be fine in runs that don't
+    // set the stress log config parameter.
+    CONTRACT_VIOLATION(TakesLockViolation);
+
+    _ASSERTE(msg.m_cArgs >= 0 && msg.m_cArgs <= 63);
+
+    if (InlinedStressLogOn(facility, level))
+    {
+       ThreadStressLog* msgs = t_pCurrentThreadLog;
+
+        if (msgs == 0)
+        {
+            msgs = CreateThreadStressLog();
+
+            if (msgs == 0)
+                return;
+        }
+#ifdef HOST_WINDOWS
+        // On Linux, this cast: (va_list)msg.m_args gives a compile error
+        msgs->LogMsg(facility, msg.m_cArgs, msg.m_format, (va_list)msg.m_args);
+#else
+        msgs->LogMsg(facility, msg.m_cArgs, msg.m_format,
+        msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3],
+        msg.m_args[4], msg.m_args[5], msg.m_args[6], msg.m_args[7],
+        msg.m_args[8], msg.m_args[9], msg.m_args[10], msg.m_args[11],
+        msg.m_args[12], msg.m_args[13], msg.m_args[14], msg.m_args[15]);
+#endif //HOST_WINDOWS
+    }
+
+    // Stress Log ETW feature available only on the desktop versions of the runtime
 #endif //!DACCESS_COMPILE
 }
 
@@ -679,6 +935,50 @@ void  StressLog::LogCallStack(const char *const callTag){
         }
 }
 #endif //_DEBUG
+
+#ifdef MEMORY_MAPPED_STRESSLOG
+void* StressLog::AllocMemoryMapped(size_t n)
+{
+    if ((ptrdiff_t)n > 0)
+    {
+        StressLogHeader* hdr = theLog.stressLogHeader;
+        assert(hdr != nullptr);
+        uint8_t* newMemValue = (uint8_t*)InterlockedAdd64((LONG64*)&hdr->memoryCur, n);
+        if (newMemValue < hdr->memoryLimit)
+        {
+            return newMemValue - n;
+        }
+        // when we run out, we just can't allocate anymore
+        hdr->memoryCur = hdr->memoryLimit;
+    }
+    return nullptr;
+}
+
+void* __cdecl ThreadStressLog::operator new(size_t n, const NoThrow&) NOEXCEPT
+{
+    if (StressLogChunk::s_memoryMapped)
+        return StressLog::AllocMemoryMapped(n);
+#ifdef HOST_WINDOWS
+    _ASSERTE(StressLogChunk::s_LogChunkHeap);
+    return HeapAlloc(StressLogChunk::s_LogChunkHeap, 0, n);
+#else
+    return malloc(n);
+#endif //HOST_WINDOWS
+}
+
+void __cdecl ThreadStressLog::operator delete(void* p)
+{
+    if (StressLogChunk::s_memoryMapped)
+        return; // Giving up, we will just leak it instead of building a sophisticated allocator
+#ifdef HOST_WINDOWS
+    _ASSERTE(StressLogChunk::s_LogChunkHeap);
+    HeapFree(StressLogChunk::s_LogChunkHeap, 0, p);
+#else
+    free(p);
+#endif //HOST_WINDOWS
+}
+
+#endif //MEMORY_MAPPED_STRESSLOG
 
 #endif // STRESS_LOG
 

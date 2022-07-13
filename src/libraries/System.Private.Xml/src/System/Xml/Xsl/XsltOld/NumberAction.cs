@@ -12,9 +12,9 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace System.Xml.Xsl.XsltOld
 {
-    internal class NumberAction : ContainerAction
+    internal sealed class NumberAction : ContainerAction
     {
-        internal class FormatInfo
+        internal sealed class FormatInfo
         {
             public bool isSeparator;      // False for alphanumeric strings of chars
             public NumberingSequence numSequence;      // Specifies numbering sequence
@@ -33,7 +33,7 @@ namespace System.Xml.Xsl.XsltOld
         private static readonly FormatInfo s_defaultFormat = new FormatInfo(false, "0");
         private static readonly FormatInfo s_defaultSeparator = new FormatInfo(true, ".");
 
-        private class NumberingFormat : NumberFormatterBase
+        private sealed class NumberingFormat : NumberFormatterBase
         {
             private NumberingSequence _seq;
             private int _cMinLen;
@@ -127,20 +127,10 @@ namespace System.Xml.Xsl.XsltOld
                 }
                 else
                 {
-                    str = Convert.ToString(val, CultureInfo.InvariantCulture);
+                    str = val.ToString(CultureInfo.InvariantCulture);
                 }
 
-                if (str.Length >= minLength)
-                {
-                    return str;
-                }
-                else
-                {
-                    StringBuilder sb = new StringBuilder(minLength);
-                    sb.Append('0', minLength - str.Length);
-                    sb.Append(str);
-                    return sb.ToString();
-                }
+                return str.PadLeft(minLength, '0');
             }
         }
 
@@ -481,7 +471,7 @@ namespace System.Xml.Xsl.XsltOld
             return false;
         }
 
-        private XPathNodeType BasicNodeType(XPathNodeType type)
+        private static XPathNodeType BasicNodeType(XPathNodeType type)
         {
             if (type == XPathNodeType.SignificantWhitespace || type == XPathNodeType.Whitespace)
             {
@@ -519,11 +509,6 @@ namespace System.Xml.Xsl.XsltOld
             }
             if (groupingSep != null)
             {
-                if (groupingSep.Length > 1)
-                {
-                    // It is a breaking change to throw an exception, SQLBUDT 324367
-                    //throw XsltException.Create(SR.Xslt_CharAttribute, "grouping-separator");
-                }
                 numberingFormat.setGroupingSeparator(groupingSep);
             }
             if (0 < cFormats)
@@ -663,8 +648,6 @@ namespace System.Xml.Xsl.XsltOld
                         {
                             // 60-based Zodiak numbering begins with two characters
                             seq = NumberingSequence.Zodiac3;
-                            tokLen--;
-                            startLen++;
                         }
                         else
                         {

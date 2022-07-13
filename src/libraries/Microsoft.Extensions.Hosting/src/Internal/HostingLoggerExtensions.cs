@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Diagnostics;
 using System.Reflection;
 using Microsoft.Extensions.Logging;
 
@@ -9,14 +10,16 @@ namespace Microsoft.Extensions.Hosting.Internal
 {
     internal static class HostingLoggerExtensions
     {
-        public static void ApplicationError(this ILogger logger, EventId eventId, string message, Exception exception)
+        public static void ApplicationError(this ILogger logger, EventId eventId, string? message, Exception? exception)
         {
-            var reflectionTypeLoadException = exception as ReflectionTypeLoadException;
-            if (reflectionTypeLoadException != null)
+            if (exception is ReflectionTypeLoadException reflectionTypeLoadException)
             {
-                foreach (Exception ex in reflectionTypeLoadException.LoaderExceptions)
+                foreach (Exception? ex in reflectionTypeLoadException.LoaderExceptions)
                 {
-                    message = message + Environment.NewLine + ex.Message;
+                    if (ex is not null)
+                    {
+                        message = message + Environment.NewLine + ex.Message;
+                    }
                 }
             }
 
@@ -66,7 +69,7 @@ namespace Microsoft.Extensions.Hosting.Internal
             }
         }
 
-        public static void StoppedWithException(this ILogger logger, Exception ex)
+        public static void StoppedWithException(this ILogger logger, Exception? ex)
         {
             if (logger.IsEnabled(LogLevel.Debug))
             {
@@ -77,7 +80,7 @@ namespace Microsoft.Extensions.Hosting.Internal
             }
         }
 
-        public static void BackgroundServiceFaulted(this ILogger logger, Exception ex)
+        public static void BackgroundServiceFaulted(this ILogger logger, Exception? ex)
         {
             if (logger.IsEnabled(LogLevel.Error))
             {
@@ -85,6 +88,17 @@ namespace Microsoft.Extensions.Hosting.Internal
                     eventId: LoggerEventIds.BackgroundServiceFaulted,
                     exception: ex,
                     message: "BackgroundService failed");
+            }
+        }
+
+        public static void BackgroundServiceStoppingHost(this ILogger logger, Exception? ex)
+        {
+            if (logger.IsEnabled(LogLevel.Critical))
+            {
+                logger.LogCritical(
+                    eventId: LoggerEventIds.BackgroundServiceStoppingHost,
+                    exception: ex,
+                    message: SR.BackgroundServiceExceptionStoppedHost);
             }
         }
     }

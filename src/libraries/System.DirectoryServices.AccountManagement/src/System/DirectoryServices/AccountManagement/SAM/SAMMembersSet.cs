@@ -13,7 +13,7 @@ using System.Runtime.InteropServices;
 
 namespace System.DirectoryServices.AccountManagement
 {
-    internal class SAMMembersSet : BookmarkableResultSet
+    internal sealed class SAMMembersSet : BookmarkableResultSet
     {
         internal SAMMembersSet(string groupPath, UnsafeNativeMethods.IADsGroup group, bool recursive, SAMStoreCtx storeCtx, DirectoryEntry ctxBase)
         {
@@ -119,8 +119,7 @@ namespace System.DirectoryServices.AccountManagement
                         _current = null;
                         _currentForeign = null;
 
-                        if (_foreignResultSet != null)
-                            _foreignResultSet.Dispose();
+                        _foreignResultSet?.Dispose();
                         _foreignResultSet = null;
                         return true;
                     }
@@ -195,8 +194,7 @@ namespace System.DirectoryServices.AccountManagement
                             _currentFakePrincipal = null;
                             _currentForeign = null;
 
-                            if (_foreignResultSet != null)
-                                _foreignResultSet.Dispose();
+                            _foreignResultSet?.Dispose();
                             _foreignResultSet = null;
                             return true;
                         }
@@ -297,8 +295,7 @@ namespace System.DirectoryServices.AccountManagement
                         _currentFakePrincipal = null;
                         _currentForeign = foreignPrincipal;
 
-                        if (_foreignResultSet != null)
-                            _foreignResultSet.Dispose();
+                        _foreignResultSet?.Dispose();
                         _foreignResultSet = null;
                         return true;
                     }
@@ -323,7 +320,7 @@ namespace System.DirectoryServices.AccountManagement
                     // We're expanding recursively, and either (1) we're immediately before
                     // the recursive expansion of the first foreign group, or (2) we just completed
                     // the recursive expansion of a foreign group, and now are moving on to the next.
-                    Debug.Assert(_recursive == true);
+                    Debug.Assert(_recursive);
 
                     // Pull off a foreign group to expand.
                     GroupPrincipal foreignGroup = _foreignGroups[0];
@@ -339,7 +336,7 @@ namespace System.DirectoryServices.AccountManagement
                 // that we started on a previous call to MoveNext().
                 if (_foreignResultSet != null)
                 {
-                    Debug.Assert(_recursive == true);
+                    Debug.Assert(_recursive);
 
                     bool f = _foreignResultSet.MoveNext();
 
@@ -532,8 +529,7 @@ namespace System.DirectoryServices.AccountManagement
             _foreignMembers = samBookmark.foreignMembers;
             _foreignGroups = samBookmark.foreignGroups;
 
-            if (_foreignResultSet != null)
-                _foreignResultSet.Dispose();
+            _foreignResultSet?.Dispose();
 
             _foreignResultSet = samBookmark.foreignResultSet;
             _atBeginning = samBookmark.atBeginning;
@@ -597,7 +593,7 @@ namespace System.DirectoryServices.AccountManagement
         private ResultSet _foreignResultSet; // current foreign group's ResultSet (if enumerating via proxy to foreign group)
     }
 
-    internal class SAMMembersSetBookmark : ResultSetBookmark
+    internal sealed class SAMMembersSetBookmark : ResultSetBookmark
     {
         public List<string> groupsToVisit;
         public List<string> groupsVisited;

@@ -3,11 +3,11 @@
 
 using System.Collections;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
-using System.Text;
 
 namespace System
 {
@@ -15,8 +15,6 @@ namespace System
     {
         partial void RestoreRemoteStackTrace(SerializationInfo info, StreamingContext context)
         {
-            _remoteStackTraceString = info.GetString("RemoteStackTraceString"); // Do not rename (binary serialization)
-
             // Get the WatsonBuckets that were serialized - this is particularly
             // done to support exceptions going across AD transitions.
             //
@@ -72,6 +70,7 @@ namespace System
 
         public MethodBase? TargetSite
         {
+            [RequiresUnreferencedCode("Metadata for the method might be incomplete or removed")]
             get
             {
                 if (_exceptionMethod != null)
@@ -86,59 +85,6 @@ namespace System
                 _exceptionMethod = GetExceptionMethodFromStackTrace();
                 return _exceptionMethod;
             }
-        }
-
-        // Returns the stack trace as a string.  If no stack trace is
-        // available, null is returned.
-        public virtual string? StackTrace
-        {
-            get
-            {
-                string? stackTraceString = _stackTraceString;
-                string? remoteStackTraceString = _remoteStackTraceString;
-
-                // if no stack trace, try to get one
-                if (stackTraceString != null)
-                {
-                    return remoteStackTraceString + stackTraceString;
-                }
-                if (_stackTrace == null)
-                {
-                    return remoteStackTraceString;
-                }
-
-                return remoteStackTraceString + GetStackTrace(this);
-            }
-        }
-
-        private static string GetStackTrace(Exception e)
-        {
-            // Do not include a trailing newline for backwards compatibility
-            return new StackTrace(e, fNeedFileInfo: true).ToString(System.Diagnostics.StackTrace.TraceFormat.Normal);
-        }
-
-        private string? CreateSourceName()
-        {
-            StackTrace st = new StackTrace(this, fNeedFileInfo: false);
-            if (st.FrameCount > 0)
-            {
-                StackFrame sf = st.GetFrame(0)!;
-                MethodBase method = sf.GetMethod()!;
-
-                Module module = method.Module;
-
-                if (!(module is RuntimeModule rtModule))
-                {
-                    if (module is System.Reflection.Emit.ModuleBuilder moduleBuilder)
-                        rtModule = moduleBuilder.InternalModule;
-                    else
-                        throw new ArgumentException(SR.Argument_MustBeRuntimeReflectionObject);
-                }
-
-                return rtModule.GetRuntimeAssembly().GetSimpleName();
-            }
-
-            return null;
         }
 
         // This method will clear the _stackTrace of the exception object upon deserialization
@@ -246,24 +192,9 @@ namespace System
         // See src\inc\corexcep.h's EXCEPTION_COMPLUS definition:
         private const int _COMPlusExceptionCode = unchecked((int)0xe0434352);   // Win32 exception code for COM+ exceptions
 
-        private string? SerializationRemoteStackTraceString => _remoteStackTraceString;
+        private bool HasBeenThrown => _stackTrace != null;
 
         private object? SerializationWatsonBuckets => _watsonBuckets;
-
-        private string? SerializationStackTraceString
-        {
-            get
-            {
-                string? stackTraceString = _stackTraceString;
-
-                if (stackTraceString == null && _stackTrace != null)
-                {
-                    stackTraceString = GetStackTrace(this);
-                }
-
-                return stackTraceString;
-            }
-        }
 
         // This piece of infrastructure exists to help avoid deadlocks
         // between parts of CoreLib that might throw an exception while
@@ -289,8 +220,8 @@ namespace System
             return retMesg!;
         }
 
-        [DllImport(RuntimeHelpers.QCall, CharSet = CharSet.Unicode)]
-        private static extern void GetMessageFromNativeResources(ExceptionMessageKind kind, StringHandleOnStack retMesg);
+        [LibraryImport(RuntimeHelpers.QCall, EntryPoint = "ExceptionNative_GetMessageFromNativeResources")]
+        private static partial void GetMessageFromNativeResources(ExceptionMessageKind kind, StringHandleOnStack retMesg);
 
         internal readonly struct DispatchState
         {
@@ -323,14 +254,16 @@ namespace System
                 _remoteStackTraceString, _ipForWatsonBuckets, _watsonBuckets);
         }
 
-        [StackTraceHidden]
-        internal void SetCurrentStackTrace()
+        // Returns true if setting the _remoteStackTraceString field is legal, false if not (immutable exception).
+        // A false return value means the caller should early-exit the operation.
+        // Can also throw InvalidOperationException if a stack trace is already set or if object has been thrown.
+        private bool CanSetRemoteStackTrace()
         {
             // If this is a preallocated singleton exception, silently skip the operation,
             // regardless of the value of throwIfHasExistingStack.
             if (IsImmutableAgileException(this))
             {
-                return;
+                return false;
             }
 
             // Check to see if the exception already has a stack set in it.
@@ -339,13 +272,34 @@ namespace System
                 ThrowHelper.ThrowInvalidOperationException();
             }
 
-            // Store the current stack trace into the "remote" stack trace, which was originally introduced to support
-            // remoting of exceptions cross app-domain boundaries, and is thus concatenated into Exception.StackTrace
-            // when it's retrieved.
-            var sb = new StringBuilder(256);
-            new StackTrace(fNeedFileInfo: true).ToString(System.Diagnostics.StackTrace.TraceFormat.TrailingNewLine, sb);
-            sb.AppendLine(SR.Exception_EndStackTraceFromPreviousThrow);
-            _remoteStackTraceString = sb.ToString();
+            return true;
+        }
+
+        // used by vm
+        internal string? GetHelpContext(out uint helpContext)
+        {
+            helpContext = 0;
+            string? helpFile = HelpLink;
+
+            int poundPos, digitEnd;
+
+            if (helpFile is null || (poundPos = helpFile.LastIndexOf('#')) == -1)
+            {
+                return helpFile;
+            }
+
+            for (digitEnd = poundPos + 1; digitEnd < helpFile.Length; digitEnd++)
+            {
+                if (char.IsWhiteSpace(helpFile[digitEnd]))
+                    break;
+            }
+
+            if (uint.TryParse(helpFile.AsSpan(poundPos + 1, digitEnd - poundPos - 1), out helpContext))
+            {
+                helpFile = helpFile.Substring(0, poundPos);
+            }
+
+            return helpFile;
         }
     }
 }

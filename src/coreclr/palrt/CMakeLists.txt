@@ -2,7 +2,6 @@
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(PALRT_SOURCES
-    bstr.cpp
     coguid.cpp
     comem.cpp
     guid.cpp
@@ -17,4 +16,4 @@ add_library_clr(palrt
 )
 
 # Install the static PAL library for VS
-_install (TARGETS palrt DESTINATION lib)
+install_clr(TARGETS palrt DESTINATIONS lib)

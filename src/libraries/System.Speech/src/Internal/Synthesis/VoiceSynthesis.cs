@@ -449,10 +449,7 @@ namespace System.Speech.Internal.Synthesis
         {
             lock (_waveOut)
             {
-                if (_waveOut != null)
-                {
-                    _waveOut.Pause();
-                }
+                _waveOut?.Pause();
 
                 lock (_pendingSpeakQueue)
                 {
@@ -474,10 +471,7 @@ namespace System.Speech.Internal.Synthesis
         {
             lock (_waveOut)
             {
-                if (_waveOut != null)
-                {
-                    _waveOut.Resume();
-                }
+                _waveOut?.Resume();
                 lock (_pendingSpeakQueue)
                 {
                     if (_pendingSpeakQueue.Count > 0 || _currentPrompt != null)
@@ -536,7 +530,7 @@ namespace System.Speech.Internal.Synthesis
         /// </summary>
         internal TTSVoice GetEngine(string name, CultureInfo culture, VoiceGender gender, VoiceAge age, int variant, bool switchContext)
         {
-            TTSVoice defaultVoice = _currentVoice != null ? _currentVoice : GetVoice(switchContext);
+            TTSVoice defaultVoice = _currentVoice ?? GetVoice(switchContext);
 
             return GetEngineWithVoice(defaultVoice, null, name, culture, gender, age, variant, switchContext);
         }
@@ -755,10 +749,10 @@ namespace System.Speech.Internal.Synthesis
                                     if (paramSpeak._prompt.Exception == null)
                                     {
                                         // No lexicon yet
-                                        List<LexiconEntry> lexicons = new(); ;
+                                        List<LexiconEntry> lexicons = new();
 
                                         //--- Create a single speak info structure for all the text
-                                        TTSVoice voice = _currentVoice != null ? _currentVoice : GetVoice(false);
+                                        TTSVoice voice = _currentVoice ?? GetVoice(false);
                                         //--- Create the speak info
 
                                         SpeakInfo speakInfo = new(this, voice);
@@ -964,10 +958,7 @@ namespace System.Speech.Internal.Synthesis
             uint lCurrRateAd = 0;
             using (ObjectTokenCategory category = ObjectTokenCategory.Create(SAPICategories.CurrentUserVoices))
             {
-                if (category != null)
-                {
-                    category.TryGetDWORD(defaultVoiceRate, ref lCurrRateAd);
-                }
+                category?.TryGetDWORD(defaultVoiceRate, ref lCurrRateAd);
             }
             return lCurrRateAd;
         }
@@ -977,10 +968,7 @@ namespace System.Speech.Internal.Synthesis
             // If the prompt is terminated, release it ASAP
             if (evtId == TtsEventId.EndInputStream)
             {
-                if (_site.EventMapper != null)
-                {
-                    _site.EventMapper.FlushEvent();
-                }
+                _site.EventMapper?.FlushEvent();
                 prompt.Exception = exception;
             }
 
@@ -1139,10 +1127,7 @@ namespace System.Speech.Internal.Synthesis
                     // Pick the first one in the list as the backup default
                     while (voice == null && _installedVoices.Count > 0)
                     {
-                        if (viDefault == null)
-                        {
-                            viDefault = InstalledVoice.FirstEnabled(_installedVoices, CultureInfo.CurrentUICulture);
-                        }
+                        viDefault ??= InstalledVoice.FirstEnabled(_installedVoices, CultureInfo.CurrentUICulture);
 
                         if (viDefault != null)
                         {
@@ -1363,10 +1348,7 @@ namespace System.Speech.Internal.Synthesis
             ITtsEngineProxy engineProxy = GetSsmlEngine(voiceInfo);
 
             // Try to get a COM engine
-            if (engineProxy == null)
-            {
-                engineProxy = GetComEngine(voiceInfo);
-            }
+            engineProxy ??= GetComEngine(voiceInfo);
 
             // store the proxy object
             TTSVoice voice = null;
@@ -1633,10 +1615,7 @@ namespace System.Speech.Internal.Synthesis
                         // Free the COM resources used
                         foreach (KeyValuePair<VoiceInfo, TTSVoice> kv in _voiceDictionary)
                         {
-                            if (kv.Value != null)
-                            {
-                                kv.Value.TtsEngine.ReleaseInterface();
-                            }
+                            kv.Value?.TtsEngine.ReleaseInterface();
                         }
                         _voiceDictionary.Clear();
 
@@ -1742,7 +1721,7 @@ namespace System.Speech.Internal.Synthesis
             SpeakText,
         }
 
-        private class Parameters
+        private sealed class Parameters
         {
             internal Parameters(Action action, object parameter)
             {
@@ -1754,7 +1733,7 @@ namespace System.Speech.Internal.Synthesis
             internal object _parameter;
         }
 
-        private class ParametersSpeak
+        private sealed class ParametersSpeak
         {
             internal ParametersSpeak(string textToSpeak, Prompt prompt, bool isXml, Uri audioFile)
             {

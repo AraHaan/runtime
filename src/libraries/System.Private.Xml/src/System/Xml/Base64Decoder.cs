@@ -5,7 +5,7 @@ using System.Diagnostics;
 
 namespace System.Xml
 {
-    internal class Base64Decoder : IncrementalReadDecoder
+    internal sealed class Base64Decoder : IncrementalReadDecoder
     {
         //
         // Fields
@@ -44,10 +44,8 @@ namespace System.Xml
 
         internal override int Decode(char[] chars, int startPos, int len)
         {
-            if (chars == null)
-            {
-                throw new ArgumentNullException(nameof(chars));
-            }
+            ArgumentNullException.ThrowIfNull(chars);
+
             if (len < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(len));
@@ -74,10 +72,8 @@ namespace System.Xml
 
         internal override int Decode(string str, int startPos, int len)
         {
-            if (str == null)
-            {
-                throw new ArgumentNullException(nameof(str));
-            }
+            ArgumentNullException.ThrowIfNull(str);
+
             if (len < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(len));

@@ -21,9 +21,10 @@ namespace ComWrappersTests.Common
     {
         public static int InstanceCount = 0;
 
+        private int id;
         private int value = -1;
-        public Test() { InstanceCount++; }
-        ~Test() { InstanceCount--; }
+        public Test() { id = Interlocked.Increment(ref InstanceCount); }
+        ~Test() { Interlocked.Decrement(ref InstanceCount); id = -1; }
 
         public void SetValue(int i) => this.value = i;
         public int GetValue() => this.value;
@@ -149,6 +150,18 @@ namespace ComWrappersTests.Common
 
         [DllImport(nameof(MockReferenceTrackerRuntime))]
         extern public static int Trigger_NotifyEndOfReferenceTrackingOnThread();
+
+        [DllImport(nameof(MockReferenceTrackerRuntime))]
+        extern public static IntPtr TrackerTarget_AddRefFromReferenceTrackerAndReturn(IntPtr ptr);
+
+        [DllImport(nameof(MockReferenceTrackerRuntime))]
+        extern public static int TrackerTarget_ReleaseFromReferenceTracker(IntPtr ptr);
+
+        // Suppressing the GC transition here as we want to make sure we are in-sync
+        // with the GC which is setting the connected value.
+        [SuppressGCTransition]
+        [DllImport(nameof(MockReferenceTrackerRuntime))]
+        extern public static byte IsTrackerObjectConnected(IntPtr instance);
     }
 
     [Guid("42951130-245C-485E-B60B-4ED4254256F8")]
@@ -206,8 +219,23 @@ namespace ComWrappersTests.Common
 
         ~ITrackerObjectWrapper()
         {
-            ComWrappersHelper.Cleanup(ref this.classNative);
+            if (this.ReregisterForFinalize)
+            {
+                GC.ReRegisterForFinalize(this);
+            }
+            else
+            {
+                byte isConnected = MockReferenceTrackerRuntime.IsTrackerObjectConnected(this.classNative.Instance);
+                if (isConnected != 0)
+                {
+                    throw new Exception("TrackerObject should be disconnected prior to finalization");
+                }
+
+                ComWrappersHelper.Cleanup(ref this.classNative);
+            }
         }
+
+        public bool ReregisterForFinalize { get; set; } = false;
 
         public int AddObjectRef(IntPtr obj)
         {

@@ -259,7 +259,7 @@ namespace System.Runtime.Loader
 
         public string? Name => _name;
 
-        public override string ToString() => "\"" + Name + "\" " + GetType().ToString() + " #" + _id;
+        public override string ToString() => $"\"{Name}\" {GetType()} #{_id}";
 
         public static IEnumerable<AssemblyLoadContext> All
         {
@@ -295,10 +295,7 @@ namespace System.Runtime.Loader
         // Helper to return AssemblyName corresponding to the path of an IL assembly
         public static AssemblyName GetAssemblyName(string assemblyPath)
         {
-            if (assemblyPath == null)
-            {
-                throw new ArgumentNullException(nameof(assemblyPath));
-            }
+            ArgumentNullException.ThrowIfNull(assemblyPath);
 
             return AssemblyName.GetAssemblyName(assemblyPath);
         }
@@ -311,12 +308,11 @@ namespace System.Runtime.Loader
             return null;
         }
 
-#if !CORERT
+#if !NATIVEAOT
         [System.Security.DynamicSecurityMethod] // Methods containing StackCrawlMark local var has to be marked DynamicSecurityMethod
         public Assembly LoadFromAssemblyName(AssemblyName assemblyName)
         {
-            if (assemblyName == null)
-                throw new ArgumentNullException(nameof(assemblyName));
+            ArgumentNullException.ThrowIfNull(assemblyName);
 
             // Attempt to load the assembly, using the same ordering as static load, in the current load context.
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
@@ -329,10 +325,7 @@ namespace System.Runtime.Loader
         [RequiresUnreferencedCode("Types and members the loaded assembly depends on might be removed")]
         public Assembly LoadFromAssemblyPath(string assemblyPath)
         {
-            if (assemblyPath == null)
-            {
-                throw new ArgumentNullException(nameof(assemblyPath));
-            }
+            ArgumentNullException.ThrowIfNull(assemblyPath);
 
             if (PathInternal.IsPartiallyQualified(assemblyPath))
             {
@@ -350,10 +343,7 @@ namespace System.Runtime.Loader
         [RequiresUnreferencedCode("Types and members the loaded assembly depends on might be removed")]
         public Assembly LoadFromNativeImagePath(string nativeImagePath, string? assemblyPath)
         {
-            if (nativeImagePath == null)
-            {
-                throw new ArgumentNullException(nameof(nativeImagePath));
-            }
+            ArgumentNullException.ThrowIfNull(nativeImagePath);
 
             if (PathInternal.IsPartiallyQualified(nativeImagePath))
             {
@@ -382,10 +372,7 @@ namespace System.Runtime.Loader
         [RequiresUnreferencedCode("Types and members the loaded assembly depends on might be removed")]
         public Assembly LoadFromStream(Stream assembly, Stream? assemblySymbols)
         {
-            if (assembly == null)
-            {
-                throw new ArgumentNullException(nameof(assembly));
-            }
+            ArgumentNullException.ThrowIfNull(assembly);
 
             int iAssemblyStreamLength = (int)assembly.Length;
 
@@ -422,15 +409,7 @@ namespace System.Runtime.Loader
         // platform-independent way. The DLL is loaded with default load flags.
         protected IntPtr LoadUnmanagedDllFromPath(string unmanagedDllPath)
         {
-            if (unmanagedDllPath == null)
-            {
-                throw new ArgumentNullException(nameof(unmanagedDllPath));
-            }
-
-            if (unmanagedDllPath.Length == 0)
-            {
-                throw new ArgumentException(SR.Argument_EmptyPath, nameof(unmanagedDllPath));
-            }
+            ArgumentException.ThrowIfNullOrEmpty(unmanagedDllPath);
 
             if (PathInternal.IsPartiallyQualified(unmanagedDllPath))
             {
@@ -513,7 +492,7 @@ namespace System.Runtime.Loader
         ///
         /// The property is stored in an AsyncLocal&lt;AssemblyLoadContext&gt;. This means the setting can be unique for every async or thread in the process.
         ///
-        /// For more details see https://github.com/dotnet/runtime/blob/master/docs/design/features/AssemblyLoadContext.ContextualReflection.md
+        /// For more details see https://github.com/dotnet/runtime/blob/main/docs/design/features/AssemblyLoadContext.ContextualReflection.md
         /// </remarks>
         public static AssemblyLoadContext? CurrentContextualReflectionContext => s_asyncLocalCurrent?.Value;
 
@@ -599,7 +578,7 @@ namespace System.Runtime.Loader
             }
         }
 
-#if !CORERT
+#if !NATIVEAOT
         // This method is invoked by the VM when using the host-provided assembly load context
         // implementation.
         private static Assembly? Resolve(IntPtr gchManagedAssemblyLoadContext, AssemblyName assemblyName)
@@ -609,6 +588,8 @@ namespace System.Runtime.Loader
             return context.ResolveUsingLoad(assemblyName);
         }
 
+        [UnconditionalSuppressMessage("SingleFile", "IL3000: Avoid accessing Assembly file path when publishing as a single file",
+            Justification = "The code handles the Assembly.Location equals null")]
         private Assembly? GetFirstResolvedAssemblyFromResolvingEvent(AssemblyName assemblyName)
         {
             Assembly? resolvedAssembly = null;
@@ -655,7 +636,7 @@ namespace System.Runtime.Loader
             // Derived type's Load implementation is expected to use one of the LoadFrom* methods to get the assembly
             // which is a RuntimeAssembly instance. However, since Assembly type can be used build any other artifact (e.g. AssemblyBuilder),
             // we need to check for RuntimeAssembly.
-            RuntimeAssembly? rtLoadedAssembly = assembly as RuntimeAssembly;
+            RuntimeAssembly? rtLoadedAssembly = GetRuntimeAssembly(assembly);
             if (rtLoadedAssembly != null)
             {
                 loadedSimpleName = rtLoadedAssembly.GetSimpleName();
@@ -704,7 +685,7 @@ namespace System.Runtime.Loader
         }
 
         // This method is called by the VM.
-        private static RuntimeAssembly? OnResourceResolve(RuntimeAssembly assembly, string resourceName)
+        internal static RuntimeAssembly? OnResourceResolve(RuntimeAssembly assembly, string resourceName)
         {
             return InvokeResolveEvent(ResourceResolve, assembly, resourceName);
         }
@@ -721,6 +702,8 @@ namespace System.Runtime.Loader
             return InvokeResolveEvent(AssemblyResolve, assembly, assemblyFullName);
         }
 
+        [UnconditionalSuppressMessage("SingleFile", "IL3000: Avoid accessing Assembly file path when publishing as a single file",
+            Justification = "The code handles the Assembly.Location equals null")]
         private static RuntimeAssembly? InvokeResolveEvent(ResolveEventHandler? eventHandler, RuntimeAssembly assembly, string name)
         {
             if (eventHandler == null)
@@ -748,10 +731,12 @@ namespace System.Runtime.Loader
 
             return null;
         }
-#endif // !CORERT
+#endif // !NATIVEAOT
 
         [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode",
             Justification = "Satellite assemblies have no code in them and loading is not a problem")]
+        [UnconditionalSuppressMessage("SingleFile", "IL3000: Avoid accessing Assembly file path when publishing as a single file",
+            Justification = "This call is fine because native call runs before this and checks BindSatelliteResourceFromBundle")]
         private Assembly? ResolveSatelliteAssembly(AssemblyName assemblyName)
         {
             // Called by native runtime when CultureName is not empty
@@ -774,8 +759,8 @@ namespace System.Runtime.Loader
 
             string assemblyPath = Path.Combine(parentDirectory, assemblyName.CultureName!, $"{assemblyName.Name}.dll");
 
-            bool exists = Internal.IO.File.InternalExists(assemblyPath);
-            if (!exists && Path.IsCaseSensitive)
+            bool exists = System.IO.FileSystem.FileExists(assemblyPath);
+            if (!exists && PathInternal.IsCaseSensitive)
             {
 #if CORECLR
                 if (AssemblyLoadContext.IsTracingEnabled())
@@ -784,7 +769,7 @@ namespace System.Runtime.Loader
                 }
 #endif // CORECLR
                 assemblyPath = Path.Combine(parentDirectory, assemblyName.CultureName!.ToLowerInvariant(), $"{assemblyName.Name}.dll");
-                exists = Internal.IO.File.InternalExists(assemblyPath);
+                exists = System.IO.FileSystem.FileExists(assemblyPath);
             }
 
             Assembly? asm = exists ? parentALC.LoadFromAssemblyPath(assemblyPath) : null;

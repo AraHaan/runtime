@@ -5,12 +5,13 @@ using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Kernel32
+    internal static partial class Kernel32
     {
-        [DllImport(Libraries.Kernel32, SetLastError = true, CharSet = CharSet.Auto)]
-        internal static extern unsafe bool WaitCommEvent(
+        [LibraryImport(Libraries.Kernel32, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static unsafe partial bool WaitCommEvent(
             SafeFileHandle hFile,
             int* lpEvtMask,
             NativeOverlapped* lpOverlapped);

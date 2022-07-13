@@ -181,6 +181,8 @@ namespace System.Threading
         public static int CompareExchange(ref int location1, int value, int comparand) { throw null; }
         public static long CompareExchange(ref long location1, long value, long comparand) { throw null; }
         public static System.IntPtr CompareExchange(ref System.IntPtr location1, System.IntPtr value, System.IntPtr comparand) { throw null; }
+        [System.CLSCompliantAttribute(false)]
+        public static System.UIntPtr CompareExchange(ref System.UIntPtr location1, System.UIntPtr value, System.UIntPtr comparand) { throw null; }
         [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute("location1")]
         public static object? CompareExchange(ref object? location1, object? value, object? comparand) { throw null; }
         public static float CompareExchange(ref float location1, float value, float comparand) { throw null; }
@@ -200,6 +202,8 @@ namespace System.Threading
         public static int Exchange(ref int location1, int value) { throw null; }
         public static long Exchange(ref long location1, long value) { throw null; }
         public static System.IntPtr Exchange(ref System.IntPtr location1, System.IntPtr value) { throw null; }
+        [System.CLSCompliantAttribute(false)]
+        public static System.UIntPtr Exchange(ref System.UIntPtr location1, System.UIntPtr value) { throw null; }
         [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute("location1")]
         public static object? Exchange([System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute("value")] ref object? location1, object? value) { throw null; }
         public static float Exchange(ref float location1, float value) { throw null; }
@@ -229,13 +233,13 @@ namespace System.Threading
     }
     public static partial class LazyInitializer
     {
-        public static T EnsureInitialized<T>([System.Diagnostics.CodeAnalysis.NotNullAttribute] ref T? target) where T : class { throw null; }
-        public static T EnsureInitialized<T>([System.Diagnostics.CodeAnalysis.AllowNullAttribute] ref T target, ref bool initialized, [System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute("syncLock")] ref object? syncLock) { throw null; }
+        public static T EnsureInitialized<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembersAttribute(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]T>([System.Diagnostics.CodeAnalysis.NotNullAttribute] ref T? target) where T : class { throw null; }
+        public static T EnsureInitialized<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembersAttribute(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]T>([System.Diagnostics.CodeAnalysis.AllowNullAttribute] ref T target, ref bool initialized, [System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute("syncLock")] ref object? syncLock) { throw null; }
         public static T EnsureInitialized<T>([System.Diagnostics.CodeAnalysis.AllowNullAttribute] ref T target, ref bool initialized, [System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute("syncLock")] ref object? syncLock, System.Func<T> valueFactory) { throw null; }
         public static T EnsureInitialized<T>([System.Diagnostics.CodeAnalysis.NotNullAttribute] ref T? target, System.Func<T> valueFactory) where T : class { throw null; }
         public static T EnsureInitialized<T>([System.Diagnostics.CodeAnalysis.NotNullAttribute] ref T? target, [System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute("syncLock")] ref object? syncLock, System.Func<T> valueFactory) where T : class { throw null; }
     }
-    public partial struct LockCookie
+    public partial struct LockCookie : System.IEquatable<System.Threading.LockCookie>
     {
         private int _dummyPrimitive;
         public override bool Equals([System.Diagnostics.CodeAnalysis.NotNullWhenAttribute(true)] object? obj) { throw null; }

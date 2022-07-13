@@ -57,7 +57,7 @@ namespace Microsoft.Win32
 {
     public sealed partial class RegistryKey : MarshalByRefObject, IDisposable
     {
-        private void ClosePerfDataKey()
+        private static void ClosePerfDataKey()
         {
             // System keys should never be closed.  However, we want to call RegCloseKey
             // on HKEY_PERFORMANCE_DATA when called from PerformanceCounter.CloseSharedResources
@@ -111,7 +111,10 @@ namespace Microsoft.Win32
                 }
                 return key;
             }
-            else if (ret != 0) // syscall failed, ret is an error code.
+
+            result.Dispose();
+
+            if (ret != 0) // syscall failed, ret is an error code.
             {
                 Win32Error(ret, _keyName + "\\" + subkey);  // Access denied?
             }
@@ -173,7 +176,7 @@ namespace Microsoft.Win32
             }
             // We really should throw an exception here if errorCode was bad,
             // but we can't for compatibility reasons.
-            Debug.Assert(errorCode == 0, "RegDeleteValue failed.  Here's your error code: " + errorCode);
+            Debug.Assert(errorCode == 0, $"RegDeleteValue failed.  Here's your error code: {errorCode}");
         }
 
         /// <summary>
@@ -219,27 +222,29 @@ namespace Microsoft.Win32
             // connect to the specified remote registry
             int ret = Interop.Advapi32.RegConnectRegistry(machineName, new SafeRegistryHandle(new IntPtr((int)hKey), false), out SafeRegistryHandle foreignHKey);
 
-            if (ret == Interop.Errors.ERROR_DLL_INIT_FAILED)
+            if (ret == 0 && !foreignHKey.IsInvalid)
             {
-                // return value indicates an error occurred
-                throw new ArgumentException(SR.Arg_DllInitFailure);
+                RegistryKey key = new RegistryKey(foreignHKey, true, false, true, ((IntPtr)hKey) == HKEY_PERFORMANCE_DATA, view);
+                key._checkMode = RegistryKeyPermissionCheck.Default;
+                key._keyName = s_hkeyNames[index];
+                return key;
             }
+
+            foreignHKey.Dispose();
 
             if (ret != 0)
             {
+                if (ret == Interop.Errors.ERROR_DLL_INIT_FAILED)
+                {
+                    // return value indicates an error occurred
+                    throw new ArgumentException(SR.Arg_DllInitFailure);
+                }
+
                 Win32ErrorStatic(ret, null);
             }
 
-            if (foreignHKey.IsInvalid)
-            {
-                // return value indicates an error occurred
-                throw new ArgumentException(SR.Format(SR.Arg_RegKeyNoRemoteConnect, machineName));
-            }
-
-            RegistryKey key = new RegistryKey(foreignHKey, true, false, true, ((IntPtr)hKey) == HKEY_PERFORMANCE_DATA, view);
-            key._checkMode = RegistryKeyPermissionCheck.Default;
-            key._keyName = s_hkeyNames[index];
-            return key;
+            // return value indicates an error occurred
+            throw new ArgumentException(SR.Format(SR.Arg_RegKeyNoRemoteConnect, machineName));
         }
 
         private RegistryKey? InternalOpenSubKeyCore(string name, RegistryKeyPermissionCheck permissionCheck, int rights)
@@ -252,6 +257,8 @@ namespace Microsoft.Win32
                 key._checkMode = permissionCheck;
                 return key;
             }
+
+            result.Dispose();
 
             if (ret == Interop.Errors.ERROR_ACCESS_DENIED || ret == Interop.Errors.ERROR_BAD_IMPERSONATION_LEVEL)
             {
@@ -275,6 +282,8 @@ namespace Microsoft.Win32
                 return key;
             }
 
+            result.Dispose();
+
             if (ret == Interop.Errors.ERROR_ACCESS_DENIED || ret == Interop.Errors.ERROR_BAD_IMPERSONATION_LEVEL)
             {
                 // We need to throw SecurityException here for compatibility reasons,
@@ -295,6 +304,8 @@ namespace Microsoft.Win32
                 key._keyName = _keyName + "\\" + name;
                 return key;
             }
+
+            result.Dispose();
 
             return null;
         }
@@ -588,7 +599,7 @@ namespace Microsoft.Win32
                 case Interop.Advapi32.RegistryValues.REG_BINARY:
                     {
                         byte[] blob = new byte[datasize];
-                        ret = Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, blob, ref datasize);
+                        Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, blob, ref datasize);
                         data = blob;
                     }
                     break;
@@ -602,7 +613,7 @@ namespace Microsoft.Win32
                         long blob = 0;
                         Debug.Assert(datasize == 8, "datasize==8");
                         // Here, datasize must be 8 when calling this
-                        ret = Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, ref blob, ref datasize);
+                        Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, ref blob, ref datasize);
 
                         data = blob;
                     }
@@ -617,7 +628,7 @@ namespace Microsoft.Win32
                         int blob = 0;
                         Debug.Assert(datasize == 4, "datasize==4");
                         // Here, datasize must be four when calling this
-                        ret = Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, ref blob, ref datasize);
+                        Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, ref blob, ref datasize);
 
                         data = blob;
                     }
@@ -639,7 +650,7 @@ namespace Microsoft.Win32
                         }
                         char[] blob = new char[datasize / 2];
 
-                        ret = Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, blob, ref datasize);
+                        Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, blob, ref datasize);
                         if (blob.Length > 0 && blob[blob.Length - 1] == (char)0)
                         {
                             data = new string(blob, 0, blob.Length - 1);
@@ -669,7 +680,7 @@ namespace Microsoft.Win32
                         }
                         char[] blob = new char[datasize / 2];
 
-                        ret = Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, blob, ref datasize);
+                        Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, blob, ref datasize);
 
                         if (blob.Length > 0 && blob[blob.Length - 1] == (char)0)
                         {

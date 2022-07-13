@@ -18,6 +18,25 @@
 
 #include "peimagelayout.inl"
 
+#ifndef DACCESS_COMPILE
+VOID FieldDesc::SetStaticOBJECTREF(OBJECTREF objRef)
+{
+    CONTRACTL
+    {
+        THROWS;
+        GC_TRIGGERS;
+        MODE_COOPERATIVE;
+        INJECT_FAULT(COMPlusThrowOM());
+    }
+    CONTRACTL_END
+
+    GCPROTECT_BEGIN(objRef);
+    OBJECTREF *pObjRef = (OBJECTREF *)GetCurrentStaticAddress();
+    SetObjectReference(pObjRef, objRef);
+    GCPROTECT_END();
+}
+#endif
+
 // called from code:MethodTableBuilder::InitializeFieldDescs#InitCall
 VOID FieldDesc::Init(mdFieldDef mb, CorElementType FieldType, DWORD dwMemberAttrs, BOOL fIsStatic, BOOL fIsRVA, BOOL fIsThreadLocal, LPCSTR pszFieldName)
 {
@@ -42,6 +61,8 @@ VOID FieldDesc::Init(mdFieldDef mb, CorElementType FieldType, DWORD dwMemberAttr
         FieldType == ELEMENT_TYPE_R8 ||
         FieldType == ELEMENT_TYPE_CLASS ||
         FieldType == ELEMENT_TYPE_VALUETYPE ||
+        FieldType == ELEMENT_TYPE_BYREF ||
+        FieldType == ELEMENT_TYPE_TYPEDBYREF ||
         FieldType == ELEMENT_TYPE_PTR ||
         FieldType == ELEMENT_TYPE_FNPTR
         );
@@ -51,7 +72,8 @@ VOID FieldDesc::Init(mdFieldDef mb, CorElementType FieldType, DWORD dwMemberAttr
     m_requiresFullMbValue = 0;
     SetMemberDef(mb);
 
-    m_type = FieldType;
+    // A TypedByRef should be treated like a regular value type.
+    m_type = FieldType != ELEMENT_TYPE_TYPEDBYREF ? FieldType : ELEMENT_TYPE_VALUETYPE;
     m_prot = fdFieldAccessMask & dwMemberAttrs;
     m_isStatic = fIsStatic != 0;
     m_isRVA = fIsRVA != 0;
@@ -62,7 +84,7 @@ VOID FieldDesc::Init(mdFieldDef mb, CorElementType FieldType, DWORD dwMemberAttr
 #endif
 
     _ASSERTE(GetMemberDef() == mb);                 // no truncation
-    _ASSERTE(GetFieldType() == FieldType);
+    _ASSERTE(GetFieldType() == FieldType || (FieldType == ELEMENT_TYPE_TYPEDBYREF && m_type == ELEMENT_TYPE_VALUETYPE));
     _ASSERTE(GetFieldProtection() == (fdFieldAccessMask & dwMemberAttrs));
     _ASSERTE((BOOL) IsStatic() == (fIsStatic != 0));
 }
@@ -75,40 +97,17 @@ BOOL FieldDesc::IsObjRef()
     return CorTypeInfo::IsObjRef_NoThrow(GetFieldType());
 }
 
-#ifndef DACCESS_COMPILE
-void FieldDesc::PrecomputeNameHash()
+// Return whether the field is a GC ref type
+BOOL FieldDesc::IsByRef()
 {
-    CONTRACTL
-    {
-        STANDARD_VM_CHECK;
-        PRECONDITION(IsCompilationProcess());
-    }
-    CONTRACTL_END;
-
-    // We only have space for the name hash when we can use the packed mb layout
-    if (m_requiresFullMbValue)
-    {
-        return;
-    }
-
-    // Store a case-insensitive hash so that we can use this value for
-    // both case-sensitive and case-insensitive name lookups
-    SString name(SString::Utf8Literal, GetName());
-    ULONG nameHashValue = name.HashCaseInsensitive() & enum_packedMbLayout_NameHashMask;
-
-    // We should never overwrite any other bits
-    _ASSERTE((m_mb & enum_packedMbLayout_NameHashMask) == 0 ||
-               (m_mb & enum_packedMbLayout_NameHashMask) == nameHashValue);
-
-    m_mb |= nameHashValue;
+    WRAPPER_NO_CONTRACT;
+    SUPPORTS_DAC;
+    return CorTypeInfo::IsByRef_NoThrow(GetFieldType());
 }
-#endif
 
 BOOL FieldDesc::MightHaveName(ULONG nameHashValue)
 {
     LIMITED_METHOD_CONTRACT;
-
-    g_IBCLogger.LogFieldDescsAccess(this);
 
     // We only have space for a name hash when we are using the packed mb layout
     if (m_requiresFullMbValue)
@@ -162,6 +161,7 @@ TypeHandle FieldDesc::LookupFieldTypeHandle(ClassLoadLevel level, BOOL dropGener
     _ASSERTE(type == ELEMENT_TYPE_CLASS ||
              type == ELEMENT_TYPE_VALUETYPE ||
              type == ELEMENT_TYPE_STRING ||
+             type == ELEMENT_TYPE_TYPEDBYREF ||
              type == ELEMENT_TYPE_SZARRAY ||
              type == ELEMENT_TYPE_VAR
              );
@@ -253,8 +253,6 @@ PTR_VOID FieldDesc::GetStaticAddressHandle(PTR_VOID base)
     }
     CONTRACTL_END
 
-     g_IBCLogger.LogFieldDescsAccess(this);
-
     _ASSERTE(IsStatic());
 #ifdef EnC_SUPPORTED
     if (IsEnCNew())
@@ -287,7 +285,7 @@ PTR_VOID FieldDesc::GetStaticAddressHandle(PTR_VOID base)
     if (IsRVA())
     {
         Module* pModule = GetModule();
-        PTR_VOID ret = pModule->GetRvaField(GetOffset(), IsZapped());
+        PTR_VOID ret = pModule->GetRvaField(GetOffset());
 
         _ASSERTE(!pModule->IsPEFile() || !pModule->IsRvaFieldTls(GetOffset()));
 
@@ -303,7 +301,6 @@ PTR_VOID FieldDesc::GetStaticAddressHandle(PTR_VOID base)
 }
 
 
-#ifndef CROSSGEN_COMPILE
 
 // These routines encapsulate the operation of getting and setting
 // fields.
@@ -470,7 +467,6 @@ PTR_VOID FieldDesc::GetAddress(PTR_VOID o)
     _ASSERTE(!IsEnCNew()); // when we call this while finding an EnC field via the DAC,
                            // the field desc is for the EnCHelper, not the new EnC field
 #endif
-    g_IBCLogger.LogFieldDescsAccess(this);
 
 #if defined(EnC_SUPPORTED) && !defined(DACCESS_COMPILE)
     // EnC added fields aren't at a simple offset like normal fields.
@@ -491,8 +487,6 @@ void *FieldDesc::GetInstanceAddress(OBJECTREF o)
         if(IsEnCNew()) {GC_TRIGGERS;} else {DISABLED(GC_NOTRIGGER);};
     }
     CONTRACTL_END;
-
-    g_IBCLogger.LogFieldDescsAccess(this);
 
     DWORD dwOffset = m_dwOffset; // GetOffset()
 
@@ -679,79 +673,6 @@ VOID    FieldDesc::SetValue64(OBJECTREF o, __int64 value)
 }
 #endif // #ifndef DACCESS_COMPILE
 
-#endif // !CROSSGEN_COMPILE
-
-
-#ifndef DACCESS_COMPILE
-
-#ifdef FEATURE_NATIVE_IMAGE_GENERATION
-void FieldDesc::SaveContents(DataImage *image)
-{
-    STANDARD_VM_CONTRACT;
-
-#ifdef _DEBUG
-    if (m_debugName && !image->IsStored((void*) m_debugName))
-        image->StoreStructure((void *) m_debugName,
-                                        (ULONG)(strlen(m_debugName) + 1),
-                                        DataImage::ITEM_DEBUG,
-                                        1);
-#endif
-
-    //
-    // If we are compiling an IL only image, and our RVA fits
-    // in the designated range, copy the RVA data over to the prejit
-    // image.
-    //
-
-    if (IsRVA())
-    {
-        //
-        // Move the RVA data into the prejit image.
-        //
-
-        UINT size = LoadSize();
-
-        //
-        // Compute an alignment for the data based on the alignment
-        // of the RVA.  We'll align up to 8 bytes.
-        //
-
-        UINT align = 1;
-        DWORD rva = GetOffset();
-        DWORD rvaTemp = rva;
-
-        while ((rvaTemp&1) == 0 && align < 8 && align < size)
-        {
-            align <<= 1;
-            rvaTemp >>= 1;
-        }
-
-        image->StoreRvaInfo(this,
-                            rva,
-                            size,
-                            align);
-    }
-}
-
-void FieldDesc::Fixup(DataImage *image)
-{
-    STANDARD_VM_CONTRACT;
-
-    LOG((LF_ZAP, LL_INFO10000, "FieldDesc::Fixup %s::%s\n", GetApproxEnclosingMethodTable()->GetDebugClassName(), m_debugName));
-    image->FixupRelativePointerField(this, offsetof(FieldDesc, m_pMTOfEnclosingClass));
-
-#ifdef _DEBUG
-    image->FixupPointerField(this, offsetof(FieldDesc, m_debugName));
-#endif
-
-    // if (IsRVAFieldWithLessThanBigOffset())
-    // {
-    //      offset of RVA fields is fixed up in DataImage::FixupRvaStructure
-    // }
-}
-#endif // FEATURE_NATIVE_IMAGE_GENERATION
-
-#endif // #ifndef DACCESS_COMPILE
 
 UINT FieldDesc::LoadSize()
 {
@@ -853,7 +774,7 @@ TypeHandle FieldDesc::GetExactFieldType(TypeHandle owner)
         GetSig(&pSig, &cSig);
         SigPointer sig(pSig, cSig);
 
-        ULONG callConv;
+        uint32_t callConv;
         IfFailThrow(sig.GetCallingConv(&callConv));
         _ASSERTE(callConv == IMAGE_CEE_CS_CALLCONV_FIELD);
 
@@ -865,7 +786,7 @@ TypeHandle FieldDesc::GetExactFieldType(TypeHandle owner)
     }
 }
 
-#if !defined(DACCESS_COMPILE) && !defined(CROSSGEN_COMPILE)
+#if !defined(DACCESS_COMPILE)
 REFLECTFIELDREF FieldDesc::GetStubFieldInfo()
 {
     CONTRACTL
@@ -891,4 +812,4 @@ REFLECTFIELDREF FieldDesc::GetStubFieldInfo()
 
     return retVal;
 }
-#endif // !DACCESS_COMPILE && !CROSSGEN_COMPILE
+#endif // !DACCESS_COMPILE

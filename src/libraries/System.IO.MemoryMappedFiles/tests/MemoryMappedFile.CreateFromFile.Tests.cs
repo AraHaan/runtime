@@ -5,6 +5,8 @@ using Microsoft.Win32.SafeHandles;
 using System.Collections.Generic;
 using Microsoft.DotNet.XUnitExtensions;
 using Xunit;
+using System.IO.Pipes;
+using System.Threading.Tasks;
 
 namespace System.IO.MemoryMappedFiles.Tests
 {
@@ -293,6 +295,7 @@ namespace System.IO.MemoryMappedFiles.Tests
             new string[] { null, "CreateUniqueMapName()" },
             new long[] { 1, 256, -1 /*pagesize*/, 10000 },
             new MemoryMappedFileAccess[] { MemoryMappedFileAccess.ReadWrite })]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/51375", TestPlatforms.iOS | TestPlatforms.tvOS | TestPlatforms.MacCatalyst)]
         public void ValidArgumentCombinationsWithPath_ModesOpenOrCreate(
             FileMode mode, string mapName, long capacity, MemoryMappedFileAccess access)
         {
@@ -343,6 +346,7 @@ namespace System.IO.MemoryMappedFiles.Tests
             new string[] { null, "CreateUniqueMapName()" },
             new long[] { 1, 256, -1 /*pagesize*/, 10000 },
             new MemoryMappedFileAccess[] { MemoryMappedFileAccess.Read, MemoryMappedFileAccess.ReadWrite, MemoryMappedFileAccess.CopyOnWrite })]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/51375", TestPlatforms.iOS | TestPlatforms.tvOS | TestPlatforms.MacCatalyst)]
         public void ValidArgumentCombinationsWithPath_ModeCreateNew(
             FileMode mode, string mapName, long capacity, MemoryMappedFileAccess access)
         {
@@ -367,6 +371,7 @@ namespace System.IO.MemoryMappedFiles.Tests
         [MemberData(nameof(MemberData_ValidNameCapacityCombinationsWithPath),
             new string[] { null, "CreateUniqueMapName()" },
             new long[] { 1, 256, -1 /*pagesize*/, 10000 })]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/51375", TestPlatforms.iOS | TestPlatforms.tvOS | TestPlatforms.MacCatalyst)]
         public void ValidArgumentCombinationsWithPath_ModeCreate(string mapName, long capacity)
         {
             using (TempFile file = new TempFile(GetTestFilePath(), capacity))
@@ -453,6 +458,7 @@ namespace System.IO.MemoryMappedFiles.Tests
             new MemoryMappedFileAccess[] { MemoryMappedFileAccess.Read, MemoryMappedFileAccess.ReadWrite, MemoryMappedFileAccess.CopyOnWrite },
             new HandleInheritability[] { HandleInheritability.None, HandleInheritability.Inheritable },
             new bool[] { false, true })]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/51375", TestPlatforms.iOS | TestPlatforms.tvOS | TestPlatforms.MacCatalyst)]
         public void ValidArgumentCombinationsWithStream(
             string mapName, long capacity, MemoryMappedFileAccess access, HandleInheritability inheritability, bool leaveOpen)
         {
@@ -613,7 +619,7 @@ namespace System.IO.MemoryMappedFiles.Tests
         /// Test exceptional behavior when trying to create a map for a non-shared file that's currently in use.
         /// </summary>
         [Fact]
-        [PlatformSpecific(~TestPlatforms.Browser)] // the emscripten implementation ignores FileShare.None
+        [SkipOnPlatform(TestPlatforms.Browser, "the emscripten implementation ignores FileShare.None")]
         public void FileInUse_CreateFromFile_FailsWithExistingNoShareFile()
         {
             // Already opened with a FileStream
@@ -768,7 +774,7 @@ namespace System.IO.MemoryMappedFiles.Tests
         /// Test to validate we can create multiple maps from the same FileStream.
         /// </summary>
         [Fact]
-        [PlatformSpecific(~TestPlatforms.Browser)] // the emscripten implementation doesn't share data
+        [SkipOnPlatform(TestPlatforms.Browser, "the emscripten implementation doesn't share data")]
         public void MultipleMapsForTheSameFileStream()
         {
             const int Capacity = 4096;
@@ -829,7 +835,8 @@ namespace System.IO.MemoryMappedFiles.Tests
         /// <summary>
         /// Test the exceptional behavior when attempting to create a map so large it's not supported.
         /// </summary>
-        [PlatformSpecific(~TestPlatforms.OSX)] // Because of the file-based backing, OS X pops up a warning dialog about being out-of-space (even though we clean up immediately)
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/51375", TestPlatforms.Browser)]
+        [SkipOnPlatform(TestPlatforms.OSX, "Because of the file-based backing, OS X pops up a warning dialog about being out-of-space (even though we clean up immediately)")]
         [Fact]
         public void TooLargeCapacity()
         {
@@ -944,6 +951,75 @@ namespace System.IO.MemoryMappedFiles.Tests
             catch (UnauthorizedAccessException) { }
             // ENODEV Operation not supported by device.
             catch (IOException ex) when (ex.HResult == 19) { };
+        }
+
+        /// <summary>
+        /// Test to verify that the MemoryMappedFile has the same underlying handle as the FileStream it's created from
+        /// </summary>
+        [PlatformSpecific(TestPlatforms.AnyUnix)]
+        [Fact]
+        public void MapHandleMatchesFileStreamHandle()
+        {
+            using (FileStream fs = File.OpenWrite(GetTestFilePath()))
+            {
+                using (MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(fs, null, 4096, MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, false))
+                {
+                    SafeMemoryMappedFileHandle handle = mmf.SafeMemoryMappedFileHandle;
+                    Assert.Equal(fs.SafeFileHandle.DangerousGetHandle(), handle.DangerousGetHandle());
+                }
+            }
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [SkipOnPlatform(TestPlatforms.Browser, "mkfifo is not supported on WASM")]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks fifo")]
+        public async Task OpeningMemoryMappedFileFromFileStreamThatWrapsPipeThrowsNotSupportedException(long capacity)
+        {
+            (string pipePath, NamedPipeServerStream? serverStream) = CreatePipe();
+            using FileStream clientStream = new (pipePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+            if (serverStream is not null)
+            {
+                await serverStream.WaitForConnectionAsync();
+            }
+
+            Assert.Throws<NotSupportedException>(() => MemoryMappedFile.CreateFromFile(clientStream, null, capacity, MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, false));
+
+            serverStream?.Dispose();
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [SkipOnPlatform(TestPlatforms.Browser, "mkfifo is not supported on WASM")]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks fifo")]
+        public void OpeningMemoryMappedFileFromPipePathThrowsNotSupportedException(long capacity)
+        {
+            (string pipePath, NamedPipeServerStream? serverStream) = CreatePipe();
+
+            Assert.Throws<NotSupportedException>(() => MemoryMappedFile.CreateFromFile(pipePath, FileMode.Open, null, capacity, MemoryMappedFileAccess.ReadWrite));
+
+            serverStream?.Dispose();
+        }
+
+        private (string pipePath, NamedPipeServerStream? serverStream) CreatePipe()
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                string pipeName = GetNamedPipeServerStreamName();
+                string pipePath = Path.GetFullPath($@"\\.\pipe\{pipeName}");
+
+                return (pipePath, new NamedPipeServerStream(pipeName, PipeDirection.InOut));
+            }
+            else
+            {
+                string fifoPath = GetTestFilePath();
+                Assert.Equal(0, mkfifo(fifoPath, 438 /* 666 in octal */ ));
+
+                return (fifoPath, null);
+            }
         }
     }
 }

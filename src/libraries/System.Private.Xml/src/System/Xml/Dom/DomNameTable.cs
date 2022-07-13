@@ -7,7 +7,7 @@ using System.Xml.Schema;
 
 namespace System.Xml
 {
-    internal class DomNameTable
+    internal sealed class DomNameTable
     {
         private XmlName[] _entries;
         private int _count;
@@ -28,14 +28,8 @@ namespace System.Xml
 
         public XmlName? GetName(string? prefix, string localName, string? ns, IXmlSchemaInfo? schemaInfo)
         {
-            if (prefix == null)
-            {
-                prefix = string.Empty;
-            }
-            if (ns == null)
-            {
-                ns = string.Empty;
-            }
+            prefix ??= string.Empty;
+            ns ??= string.Empty;
 
             int hashCode = XmlName.GetHashCode(localName);
 
@@ -58,14 +52,8 @@ namespace System.Xml
 
         public XmlName AddName(string? prefix, string localName, string? ns, IXmlSchemaInfo? schemaInfo)
         {
-            if (prefix == null)
-            {
-                prefix = string.Empty;
-            }
-            if (ns == null)
-            {
-                ns = string.Empty;
-            }
+            prefix ??= string.Empty;
+            ns ??= string.Empty;
 
             int hashCode = XmlName.GetHashCode(localName);
 

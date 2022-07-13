@@ -6,16 +6,13 @@ using System.Reflection;
 
 namespace System.ComponentModel.Composition.ReflectionModel
 {
-    internal partial class ReflectionMethod : ReflectionMember
+    internal sealed partial class ReflectionMethod : ReflectionMember
     {
         private readonly MethodInfo _method;
 
         public ReflectionMethod(MethodInfo method)
         {
-            if (method == null)
-            {
-                throw new ArgumentNullException(nameof(method));
-            }
+            ArgumentNullException.ThrowIfNull(method);
 
             _method = method;
         }

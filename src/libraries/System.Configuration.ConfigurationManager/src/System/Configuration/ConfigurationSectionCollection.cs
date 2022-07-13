@@ -70,7 +70,10 @@ namespace System.Configuration
 
         public void CopyTo(ConfigurationSection[] array, int index)
         {
-            if (array == null) throw new ArgumentNullException(nameof(array));
+            if (array is null)
+            {
+                throw new ArgumentNullException(nameof(array));
+            }
 
             int c = Count;
             if (array.Length < c + index) throw new ArgumentOutOfRangeException(nameof(index));
@@ -92,7 +95,11 @@ namespace System.Configuration
                 throw ExceptionUtil.ParameterNullOrEmpty(nameof(name));
 
             // prevent GetConfig from returning config not in this collection
-            if (name.IndexOf('/') >= 0) // string.Contains(char) is .NetCore2.1+ specific
+#if NETCOREAPP
+            if (name.Contains('/'))
+#else
+            if (name.IndexOf('/') >= 0)
+#endif
                 return null;
 
             // get the section from the config record

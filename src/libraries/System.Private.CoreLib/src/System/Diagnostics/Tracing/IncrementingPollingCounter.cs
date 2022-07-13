@@ -8,6 +8,7 @@ using System;
 #if ES_BUILD_STANDALONE
 namespace Microsoft.Diagnostics.Tracing
 #else
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Versioning;
 
 namespace System.Diagnostics.Tracing
@@ -21,9 +22,6 @@ namespace System.Diagnostics.Tracing
     /// Unlike IncrementingEventCounter, this takes in a polling callback that it can call to update
     /// its own metric periodically.
     /// </summary>
-#if NETCOREAPP
-    [UnsupportedOSPlatform("browser")]
-#endif
     public partial class IncrementingPollingCounter : DiagnosticCounter
     {
         /// <summary>
@@ -36,8 +34,10 @@ namespace System.Diagnostics.Tracing
         /// <param name="totalValueProvider">The delegate to invoke to get the total value for this counter.</param>
         public IncrementingPollingCounter(string name, EventSource eventSource, Func<double> totalValueProvider) : base(name, eventSource)
         {
-            if (totalValueProvider == null)
+            if (totalValueProvider is null)
+            {
                 throw new ArgumentNullException(nameof(totalValueProvider));
+            }
 
             _totalValueProvider = totalValueProvider;
             Publish();
@@ -69,6 +69,11 @@ namespace System.Diagnostics.Tracing
             }
         }
 
+#if !ES_BUILD_STANDALONE
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode",
+            Justification = "The DynamicDependency will preserve the properties of IncrementingCounterPayload")]
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(IncrementingCounterPayload))]
+#endif
         internal override void WritePayload(float intervalSec, int pollingIntervalMillisec)
         {
             UpdateMetric();
@@ -93,7 +98,7 @@ namespace System.Diagnostics.Tracing
     /// This is the payload that is sent in the with EventSource.Write
     /// </summary>
     [EventData]
-    internal class IncrementingPollingCounterPayloadType
+    internal sealed class IncrementingPollingCounterPayloadType
     {
         public IncrementingPollingCounterPayloadType(IncrementingCounterPayload payload) { Payload = payload; }
         public IncrementingCounterPayload Payload { get; set; }

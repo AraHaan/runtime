@@ -6,7 +6,7 @@ using System.Xml;
 
 namespace System.Configuration
 {
-    internal class PropertySourceInfo
+    internal sealed class PropertySourceInfo
     {
         internal PropertySourceInfo(XmlReader reader)
         {
@@ -18,14 +18,14 @@ namespace System.Configuration
 
         internal int LineNumber { get; }
 
-        private string GetFilename(XmlReader reader)
+        private static string GetFilename(XmlReader reader)
         {
             IConfigErrorInfo err = reader as IConfigErrorInfo;
 
             return err != null ? err.Filename : "";
         }
 
-        private int GetLineNumber(XmlReader reader)
+        private static int GetLineNumber(XmlReader reader)
         {
             IConfigErrorInfo err = reader as IConfigErrorInfo;
 

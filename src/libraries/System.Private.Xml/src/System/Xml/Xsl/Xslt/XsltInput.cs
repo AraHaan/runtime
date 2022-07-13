@@ -5,14 +5,14 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
+using StringConcat = System.Xml.Xsl.Runtime.StringConcat;
 
 namespace System.Xml.Xsl.Xslt
 {
-    using StringConcat = System.Xml.Xsl.Runtime.StringConcat;
     //         a) Forward only, one pass.
     //         b) You should call MoveToFirstChildren on nonempty element node. (or may be skip)
 
-    internal class XsltInput : IErrorHelper
+    internal sealed class XsltInput : IErrorHelper
     {
 #if DEBUG
         private const int InitRecordsSize = 1;
@@ -1134,7 +1134,7 @@ namespace System.Xml.Xsl.Xslt
 
         // -------------------------------- ContextInfo ------------------------------------
 
-        internal class ContextInfo
+        internal sealed class ContextInfo
         {
             public NsDecl? nsList;
             public ISourceLineInfo? lineInfo;       // Line info for whole start tag
@@ -1187,7 +1187,7 @@ namespace System.Xml.Xsl.Xslt
             }
 
             // We need this wrapper class because elementTagLi is not yet calculated
-            internal class EmptyElementEndTag : ISourceLineInfo
+            internal sealed class EmptyElementEndTag : ISourceLineInfo
             {
                 private readonly ISourceLineInfo _elementTagLi;
 
@@ -1212,7 +1212,7 @@ namespace System.Xml.Xsl.Xslt
             public Location start;
             public Location valueStart;
             public Location end;
-            public string QualifiedName { get { return prefix.Length == 0 ? localName : string.Concat(prefix, ":", localName); } }
+            public string QualifiedName { get { return prefix.Length == 0 ? localName : $"{prefix}:{localName}"; } }
         }
     }
 }

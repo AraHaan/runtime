@@ -52,7 +52,7 @@ namespace MS.Internal.Xml.Cache
     /// <summary>
     /// Iterate over all element children with a particular QName.
     /// </summary>
-    internal class XPathDocumentElementChildIterator : XPathDocumentBaseIterator
+    internal sealed class XPathDocumentElementChildIterator : XPathDocumentBaseIterator
     {
         private readonly string? _localName;
         private readonly string _namespaceUri;
@@ -62,7 +62,7 @@ namespace MS.Internal.Xml.Cache
         /// </summary>
         public XPathDocumentElementChildIterator(XPathDocumentNavigator parent, string name, string namespaceURI) : base(parent)
         {
-            if (namespaceURI == null) throw new ArgumentNullException(nameof(namespaceURI));
+            ArgumentNullException.ThrowIfNull(namespaceURI);
 
             _localName = parent.NameTable.Get(name);
             _namespaceUri = namespaceURI;
@@ -110,7 +110,7 @@ namespace MS.Internal.Xml.Cache
     /// <summary>
     /// Iterate over all content children with a particular XPathNodeType.
     /// </summary>
-    internal class XPathDocumentKindChildIterator : XPathDocumentBaseIterator
+    internal sealed class XPathDocumentKindChildIterator : XPathDocumentBaseIterator
     {
         private readonly XPathNodeType _typ;
 
@@ -163,7 +163,7 @@ namespace MS.Internal.Xml.Cache
     /// <summary>
     /// Iterate over all element descendants with a particular QName.
     /// </summary>
-    internal class XPathDocumentElementDescendantIterator : XPathDocumentBaseIterator
+    internal sealed class XPathDocumentElementDescendantIterator : XPathDocumentBaseIterator
     {
         private readonly XPathDocumentNavigator? _end;
         private readonly string? _localName;
@@ -175,7 +175,7 @@ namespace MS.Internal.Xml.Cache
         /// </summary>
         public XPathDocumentElementDescendantIterator(XPathDocumentNavigator root, string name, string namespaceURI, bool matchSelf) : base(root)
         {
-            if (namespaceURI == null) throw new ArgumentNullException(nameof(namespaceURI));
+            ArgumentNullException.ThrowIfNull(namespaceURI);
 
             _localName = root.NameTable.Get(name);
             _namespaceUri = namespaceURI;
@@ -236,7 +236,7 @@ namespace MS.Internal.Xml.Cache
     /// <summary>
     /// Iterate over all content descendants with a particular XPathNodeType.
     /// </summary>
-    internal class XPathDocumentKindDescendantIterator : XPathDocumentBaseIterator
+    internal sealed class XPathDocumentKindDescendantIterator : XPathDocumentBaseIterator
     {
         private readonly XPathDocumentNavigator? _end;
         private readonly XPathNodeType _typ;

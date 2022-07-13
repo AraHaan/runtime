@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Tracing;
 
 namespace System.Net
@@ -73,13 +74,17 @@ namespace System.Net
         public void AuthenticationError(string? uri, string message) =>
             WriteEvent(AuthenticationErrorId, uri, message);
 
+#if !ES_BUILD_STANDALONE
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:UnrecognizedReflectionPattern",
+                   Justification = "Parameters to this method are primitive and are trimmer safe")]
+#endif
         [NonEvent]
         private unsafe void WriteEvent(int eventId, int arg1, int arg2, int arg3, string? arg4, string? arg5)
         {
             if (IsEnabled())
             {
-                if (arg4 == null) arg4 = "";
-                if (arg5 == null) arg5 = "";
+                arg4 ??= "";
+                arg5 ??= "";
 
                 fixed (char* string4Bytes = arg4)
                 fixed (char* string5Bytes = arg5)

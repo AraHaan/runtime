@@ -175,7 +175,7 @@ namespace System.Data.OleDb
 
         }
 
-        private string BuildRegularExpression(string invalidChars, string invalidStartingChars)
+        private static string BuildRegularExpression(string invalidChars, string invalidStartingChars)
         {
             StringBuilder regularExpression = new StringBuilder("[^");
             ADP.EscapeSpecialCharacters(invalidStartingChars, regularExpression);
@@ -214,13 +214,13 @@ namespace System.Data.OleDb
                 StringBuilder compositeSeparatorPattern = new StringBuilder();
                 StringBuilder patternEscaped = new StringBuilder();
                 ADP.EscapeSpecialCharacters(catalogSeparatorPattern, patternEscaped);
-                compositeSeparatorPattern.Append(patternEscaped.ToString());
+                compositeSeparatorPattern.Append(patternEscaped);
                 if ((schemaSeparatorPattern != null) && (schemaSeparatorPattern != catalogSeparatorPattern))
                 {
                     compositeSeparatorPattern.Append('|');
                     patternEscaped.Length = 0;
                     ADP.EscapeSpecialCharacters(schemaSeparatorPattern, patternEscaped);
-                    compositeSeparatorPattern.Append(patternEscaped.ToString());
+                    compositeSeparatorPattern.Append(patternEscaped);
                 }
                 dataSourceInformation[DbMetaDataColumnNames.CompositeIdentifierSeparatorPattern] = compositeSeparatorPattern.ToString();
             }
@@ -319,10 +319,7 @@ namespace System.Data.OleDb
             {
                 // if the quote suffix is null assume that it is the same as the prefix (See OLEDB spec
                 // IDBInfo::GetLiteralInfo DBLITERAL_QUOTE_SUFFIX.)
-                if (quoteSuffix == null)
-                {
-                    quoteSuffix = quotePrefix;
-                }
+                quoteSuffix ??= quotePrefix;
 
                 // only know how to build the parttern if the suffix is 1 character
                 // in all other cases just leave the field null
@@ -540,7 +537,7 @@ namespace System.Data.OleDb
                             DataTable metaDataCollectionsTable = CollectionDataSet.Tables[DbMetaDataCollectionNames.MetaDataCollections]!;
                             int numberOfSupportedRestictions = -1;
                             // prepare colletion is called with the exact collection name so
-                            // we can do an exact string comparision here
+                            // we can do an exact string comparison here
                             foreach (DataRow row in metaDataCollectionsTable.Rows)
                             {
                                 string candidateCollectionName = ((string)row[DbMetaDataColumnNames.CollectionName, DataRowVersion.Current]);
@@ -656,7 +653,7 @@ namespace System.Data.OleDb
             return resultTable;
         }
 
-        private void SetIdentifierCase(string columnName, int propertyID, DataRow row, OleDbConnection connection)
+        private static void SetIdentifierCase(string columnName, int propertyID, DataRow row, OleDbConnection connection)
         {
             object? property = connection.GetDataSourcePropertyValue(OleDbPropertySetGuid.DataSourceInfo, propertyID);
             IdentifierCase identifierCase = IdentifierCase.Unknown;

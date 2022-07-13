@@ -82,7 +82,7 @@ namespace System.Diagnostics.Tests
             p.WaitForExit(); // This ensures async event handlers are finished processing.
 
             const string Expected = RemotelyInvokable.TestConsoleApp + " started error stream" + RemotelyInvokable.TestConsoleApp + " closed error stream";
-            Assert.Equal(Expected, sb.ToString());
+            AssertExtensions.Equal(Expected, sb.ToString());
             Assert.Equal(invokeRequired ? 3 : 0, invokeCalled);
         }
 
@@ -344,8 +344,7 @@ namespace System.Diagnostics.Tests
             }
         }
 
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/44329")]
-        [PlatformSpecific(~TestPlatforms.Windows)] // currently on Windows these operations async-over-sync on Windows	
+        [SkipOnPlatform(TestPlatforms.Windows, "currently on Windows these operations async-over-sync on Windows")]
         [ConditionalFact(typeof(RemoteExecutor), nameof(RemoteExecutor.IsSupported))]
         public async Task ReadAsync_OutputStreams_Cancel_RespondsQuickly()
         {

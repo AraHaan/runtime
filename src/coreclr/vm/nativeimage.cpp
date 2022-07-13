@@ -43,7 +43,7 @@ NativeImageIndexTraits::count_t NativeImageIndexTraits::Hash(LPCUTF8 a)
     return SString(SString::Utf8Literal, a).HashCaseInsensitive();
 }
 
-NativeImage::NativeImage(AssemblyLoadContext *pAssemblyLoadContext, PEImageLayout *pImageLayout, LPCUTF8 imageFileName)
+NativeImage::NativeImage(AssemblyBinder *pAssemblyBinder, PEImageLayout *pImageLayout, LPCUTF8 imageFileName)
     : m_eagerFixupsLock(CrstNativeImageEagerFixups)
 {
     CONTRACTL
@@ -55,10 +55,11 @@ NativeImage::NativeImage(AssemblyLoadContext *pAssemblyLoadContext, PEImageLayou
     }
     CONTRACTL_END;
 
-    m_pAssemblyLoadContext = pAssemblyLoadContext;
+    m_pAssemblyBinder = pAssemblyBinder;
     m_pImageLayout = pImageLayout;
     m_fileName = imageFileName;
     m_eagerFixupsHaveRun = false;
+    m_readyToRunCodeDisabled = false;
 }
 
 void NativeImage::Initialize(READYTORUN_HEADER *pHeader, LoaderAllocator *pLoaderAllocator, AllocMemTracker *pamTracker)
@@ -67,6 +68,7 @@ void NativeImage::Initialize(READYTORUN_HEADER *pHeader, LoaderAllocator *pLoade
 
     m_pReadyToRunInfo = new ReadyToRunInfo(/*pModule*/ NULL, pLoaderAllocator, m_pImageLayout, pHeader, /*compositeImage*/ NULL, pamTracker);
     m_pComponentAssemblies = m_pReadyToRunInfo->FindSection(ReadyToRunSectionType::ComponentAssemblies);
+    m_pComponentAssemblyMvids = m_pReadyToRunInfo->FindSection(ReadyToRunSectionType::ManifestAssemblyMvids);
     m_componentAssemblyCount = m_pComponentAssemblies->Size / sizeof(READYTORUN_COMPONENT_ASSEMBLIES_ENTRY);
     
     // Check if the current module's image has native manifest metadata, otherwise the current->GetNativeAssemblyImport() asserts.
@@ -112,15 +114,24 @@ NativeImage::~NativeImage()
 NativeImage *NativeImage::Open(
     Module *componentModule,
     LPCUTF8 nativeImageFileName,
-    AssemblyLoadContext *pAssemblyLoadContext,
-    LoaderAllocator *pLoaderAllocator)
+    AssemblyBinder *pAssemblyBinder,
+    LoaderAllocator *pLoaderAllocator,
+    /* out */ bool *isNewNativeImage)
 {
     STANDARD_VM_CONTRACT;
 
     NativeImage *pExistingImage = AppDomain::GetCurrentDomain()->GetNativeImage(nativeImageFileName);
     if (pExistingImage != nullptr)
     {
-        return pExistingImage->GetAssemblyLoadContext() == pAssemblyLoadContext ? pExistingImage : nullptr;
+        *isNewNativeImage = false;
+        if (pExistingImage->GetAssemblyBinder() == pAssemblyBinder)
+        {
+            return pExistingImage;
+        }
+        else
+        {
+            return nullptr;
+        }
     }
 
     SString path = componentModule->GetPath();
@@ -138,61 +149,78 @@ NativeImage *NativeImage::Open(
     LPWSTR searchPathsConfig;
     IfFailThrow(CLRConfig::GetConfigValue(CLRConfig::INTERNAL_NativeImageSearchPaths, &searchPathsConfig));
 
-    NewHolder<PEImageLayout> peLoadedImage;
+    PEImageLayoutHolder peLoadedImage;
 
-    EX_TRY
+    BundleFileLocation bundleFileLocation = Bundle::ProbeAppBundle(fullPath, /*pathIsBundleRelative */ true);
+    if (bundleFileLocation.IsValid())
     {
-        peLoadedImage = PEImageLayout::LoadNative(fullPath);
+        // No need to use cache for this PE image.
+        // Composite r2r PE image is not a part of anyone's identity.
+        // We only need it to obtain the native image, which will be cached at AppDomain level.
+        PEImageHolder pImage = PEImage::OpenImage(fullPath, MDInternalImport_NoCache, bundleFileLocation);
+        PEImageLayout* loaded = pImage->GetOrCreateLayout(PEImageLayout::LAYOUT_LOADED);
+        // We will let pImage instance be freed after exiting this scope, but we will keep the layout,
+        // thus the layout needs an AddRef, or it will be gone together with pImage.
+        loaded->AddRef();
+        peLoadedImage = loaded;
     }
-    EX_CATCH
-    {
-        SString searchPaths(searchPathsConfig);
-        SString::CIterator start = searchPaths.Begin();
-        while (start != searchPaths.End())
-        {
-            SString::CIterator end = start;
-            if (!searchPaths.Find(end, PATH_SEPARATOR_CHAR_W))
-            {
-                end = searchPaths.End();
-            }
-            fullPath.Set(searchPaths, start, (COUNT_T)(end - start));
-
-            if (end != searchPaths.End())
-            {
-                // Skip path separator character
-                ++end;
-            }
-            start = end;
-
-            if (fullPath.GetCount() == 0)
-            {
-                continue;
-            }
-
-            fullPath.Append(DIRECTORY_SEPARATOR_CHAR_W);
-            fullPath += compositeImageFileName;
-            
-            EX_TRY
-            {
-                peLoadedImage = PEImageLayout::LoadNative(fullPath);
-                break;
-            }
-            EX_CATCH
-            {
-            }
-            EX_END_CATCH(SwallowAllExceptions)
-        }
-    }
-    EX_END_CATCH(SwallowAllExceptions)
 
     if (peLoadedImage.IsNull())
     {
-        // Failed to locate the native composite R2R image
-        LOG((LF_LOADER, LL_ALWAYS, "LOADER: failed to load native image '%s' for component assembly '%S' using search paths: '%S'\n",
-            nativeImageFileName,
-            path.GetUnicode(),
-            searchPathsConfig != nullptr ? searchPathsConfig : W("<use COMPlus_NativeImageSearchPaths to set>")));
-        RaiseFailFastException(nullptr, nullptr, 0);
+        EX_TRY
+        {
+            peLoadedImage = PEImageLayout::LoadNative(fullPath);
+        }
+        EX_CATCH
+        {
+            SString searchPaths(searchPathsConfig);
+            SString::CIterator start = searchPaths.Begin();
+            while (start != searchPaths.End())
+            {
+                SString::CIterator end = start;
+                if (!searchPaths.Find(end, PATH_SEPARATOR_CHAR_W))
+                {
+                    end = searchPaths.End();
+                }
+                fullPath.Set(searchPaths, start, (COUNT_T)(end - start));
+
+                if (end != searchPaths.End())
+                {
+                    // Skip path separator character
+                    ++end;
+                }
+                start = end;
+
+                if (fullPath.GetCount() == 0)
+                {
+                    continue;
+                }
+
+                fullPath.Append(DIRECTORY_SEPARATOR_CHAR_W);
+                fullPath += compositeImageFileName;
+                
+                EX_TRY
+                {
+                    peLoadedImage = PEImageLayout::LoadNative(fullPath);
+                    break;
+                }
+                EX_CATCH
+                {
+                }
+                EX_END_CATCH(SwallowAllExceptions)
+            }
+        }
+        EX_END_CATCH(SwallowAllExceptions)
+
+        if (peLoadedImage.IsNull())
+        {
+            // Failed to locate the native composite R2R image
+            LOG((LF_LOADER, LL_ALWAYS, "LOADER: failed to load native image '%s' for component assembly '%S' using search paths: '%S'\n",
+                nativeImageFileName,
+                path.GetUnicode(),
+                searchPathsConfig != nullptr ? searchPathsConfig : W("<use COMPlus_NativeImageSearchPaths to set>")));
+            RaiseFailFastException(nullptr, nullptr, 0);
+        }
     }
 
     READYTORUN_HEADER *pHeader = (READYTORUN_HEADER *)peLoadedImage->GetExport("RTR_HEADER");
@@ -208,18 +236,27 @@ NativeImage *NativeImage::Open(
     {
         COMPlusThrowHR(COR_E_BADIMAGEFORMAT);
     }
-    NewHolder<NativeImage> image = new NativeImage(pAssemblyLoadContext, peLoadedImage.Extract(), nativeImageFileName);
+    NewHolder<NativeImage> image = new NativeImage(pAssemblyBinder, peLoadedImage.Extract(), nativeImageFileName);
     AllocMemTracker amTracker;
     image->Initialize(pHeader, pLoaderAllocator, &amTracker);
     pExistingImage = AppDomain::GetCurrentDomain()->SetNativeImage(nativeImageFileName, image);
     if (pExistingImage == nullptr)
     {
         // No pre-existing image, new image has been stored in the map
+        *isNewNativeImage = true;
         amTracker.SuppressRelease();
         return image.Extract();
     }
     // Return pre-existing image if it was loaded into the same ALC, null otherwise
-    return (pExistingImage->GetAssemblyLoadContext() == pAssemblyLoadContext ? pExistingImage : nullptr);
+    *isNewNativeImage = false;
+    if (pExistingImage->GetAssemblyBinder() == pAssemblyBinder)
+    {
+        return pExistingImage;
+    }
+    else
+    {
+        return nullptr;
+    }
 }
 #endif
 
@@ -248,6 +285,56 @@ PTR_READYTORUN_CORE_HEADER NativeImage::GetComponentAssemblyHeader(LPCUTF8 simpl
         return (PTR_READYTORUN_CORE_HEADER)&pImageBase[componentAssembly->ReadyToRunCoreHeader.VirtualAddress];
     }
     return NULL;
+}
+#endif
+
+#ifndef DACCESS_COMPILE
+void NativeImage::CheckAssemblyMvid(Assembly *assembly) const
+{
+    STANDARD_VM_CONTRACT;
+    if (m_pComponentAssemblyMvids == NULL)
+    {
+        return;
+    }
+
+    const AssemblyNameIndex *assemblyNameIndex = m_assemblySimpleNameToIndexMap.LookupPtr(assembly->GetSimpleName());
+    if (assemblyNameIndex == NULL)
+    {
+        return;
+    }
+
+    GUID assemblyMvid;
+    assembly->GetMDImport()->GetScopeProps(NULL, &assemblyMvid);
+
+    const byte *pImageBase = (const BYTE *)m_pImageLayout->GetBase();
+    const GUID *componentMvid = (const GUID *)&pImageBase[m_pComponentAssemblyMvids->VirtualAddress] + assemblyNameIndex->Index;
+    if (IsEqualGUID(*componentMvid, assemblyMvid))
+    {
+        return;
+    }
+
+    GUID emptyGuid  = {0};
+    if (IsEqualGUID(*componentMvid, emptyGuid))
+    {
+        // Empty guid always succeeds, as it isn't used for dependency checks
+        return;
+    }
+
+    static const size_t MVID_TEXT_LENGTH = 39;
+    WCHAR assemblyMvidText[MVID_TEXT_LENGTH];
+    StringFromGUID2(assemblyMvid, assemblyMvidText, MVID_TEXT_LENGTH);
+
+    WCHAR componentMvidText[MVID_TEXT_LENGTH];
+    StringFromGUID2(*componentMvid, componentMvidText, MVID_TEXT_LENGTH);
+
+    SString message;
+    message.Printf(W("MVID mismatch between loaded assembly '%s' (MVID = %s) and an assembly with the same simple name embedded in the native image '%s' (MVID = %s)"),
+        SString(SString::Utf8, assembly->GetSimpleName()).GetUnicode(),
+        assemblyMvidText,
+        SString(SString::Utf8, GetFileName()).GetUnicode(),
+        componentMvidText);
+
+    EEPOLICY_HANDLE_FATAL_ERROR_WITH_MESSAGE(COR_E_FAILFAST, message.GetUnicode());
 }
 #endif
 

@@ -19,6 +19,11 @@ namespace System.Text
     /// </remarks>
     [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public readonly struct Rune : IComparable, IComparable<Rune>, IEquatable<Rune>
+#if SYSTEM_PRIVATE_CORELIB
+#pragma warning disable SA1001 // Commas should be spaced correctly
+        , ISpanFormattable
+#pragma warning restore SA1001
+#endif
     {
         internal const int MaxUtf16CharsPerRune = 2; // supplementary plane code points are encoded as 2 UTF-16 code units
         internal const int MaxUtf8BytesPerRune = 4; // supplementary plane code points are encoded as 4 UTF-8 code units
@@ -107,7 +112,7 @@ namespace System.Text
         }
 
         // non-validating ctor
-        private Rune(uint scalarValue, bool unused)
+        private Rune(uint scalarValue, bool _)
         {
             UnicodeDebug.AssertIsValidScalar(scalarValue);
             _value = scalarValue;
@@ -135,7 +140,7 @@ namespace System.Text
         public static explicit operator Rune(int value) => new Rune(value);
 
         // Displayed as "'<char>' (U+XXXX)"; e.g., "'e' (U+0065)"
-        private string DebuggerDisplay => FormattableString.Invariant($"U+{_value:X4} '{(IsValid(_value) ? ToString() : "\uFFFD")}'");
+        private string DebuggerDisplay => string.Create(CultureInfo.InvariantCulture, $"U+{_value:X4} '{(IsValid(_value) ? ToString() : "\uFFFD")}'");
 
         /// <summary>
         /// Returns true if and only if this scalar value is ASCII ([ U+0000..U+007F ])
@@ -316,7 +321,7 @@ namespace System.Text
                 // Let's optimistically assume for now it's a high surrogate and hope
                 // that combining it with the next char yields useful results.
 
-                if (1 < (uint)source.Length)
+                if (source.Length > 1)
                 {
                     char secondChar = source[1];
                     if (TryCreate(firstChar, secondChar, out result))
@@ -390,46 +395,38 @@ namespace System.Text
             // it tries to consume as many code units as possible as long as those code
             // units constitute the beginning of a longer well-formed subsequence per Table 3-7.
 
+            // Try reading source[0].
+
             int index = 0;
-
-            // Try reading input[0].
-
-            if ((uint)index >= (uint)source.Length)
+            if (source.IsEmpty)
             {
                 goto NeedsMoreData;
             }
 
-            uint tempValue = source[index];
-            if (!UnicodeUtility.IsAsciiCodePoint(tempValue))
+            uint tempValue = source[0];
+            if (UnicodeUtility.IsAsciiCodePoint(tempValue))
             {
-                goto NotAscii;
+                bytesConsumed = 1;
+                result = UnsafeCreate(tempValue);
+                return OperationStatus.Done;
             }
-
-        Finish:
-
-            bytesConsumed = index + 1;
-            Debug.Assert(1 <= bytesConsumed && bytesConsumed <= 4); // Valid subsequences are always length [1..4]
-            result = UnsafeCreate(tempValue);
-            return OperationStatus.Done;
-
-        NotAscii:
 
             // Per Table 3-7, the beginning of a multibyte sequence must be a code unit in
             // the range [C2..F4]. If it's outside of that range, it's either a standalone
             // continuation byte, or it's an overlong two-byte sequence, or it's an out-of-range
             // four-byte sequence.
 
+            // Try reading source[1].
+
+            index = 1;
             if (!UnicodeUtility.IsInRangeInclusive(tempValue, 0xC2, 0xF4))
             {
-                goto FirstByteInvalid;
+                goto Invalid;
             }
 
             tempValue = (tempValue - 0xC2) << 6;
 
-            // Try reading input[1].
-
-            index++;
-            if ((uint)index >= (uint)source.Length)
+            if (source.Length <= 1)
             {
                 goto NeedsMoreData;
             }
@@ -438,7 +435,7 @@ namespace System.Text
             // complement representation is in the range [-65..-128]. This allows us to
             // perform a single comparison to see if a byte is a continuation byte.
 
-            int thisByteSignExtended = (sbyte)source[index];
+            int thisByteSignExtended = (sbyte)source[1];
             if (thisByteSignExtended >= -64)
             {
                 goto Invalid;
@@ -480,15 +477,15 @@ namespace System.Text
             // The first two bytes were just fine. We don't need to perform any other checks
             // on the remaining bytes other than to see that they're valid continuation bytes.
 
-            // Try reading input[2].
+            // Try reading source[2].
 
-            index++;
-            if ((uint)index >= (uint)source.Length)
+            index = 2;
+            if (source.Length <= 2)
             {
                 goto NeedsMoreData;
             }
 
-            thisByteSignExtended = (sbyte)source[index];
+            thisByteSignExtended = (sbyte)source[2];
             if (thisByteSignExtended >= -64)
             {
                 goto Invalid; // this byte is not a UTF-8 continuation byte
@@ -505,15 +502,15 @@ namespace System.Text
                 goto Finish; // this is a valid 3-byte sequence
             }
 
-            // Try reading input[3].
+            // Try reading source[3].
 
-            index++;
-            if ((uint)index >= (uint)source.Length)
+            index = 3;
+            if (source.Length <= 3)
             {
                 goto NeedsMoreData;
             }
 
-            thisByteSignExtended = (sbyte)source[index];
+            thisByteSignExtended = (sbyte)source[3];
             if (thisByteSignExtended >= -64)
             {
                 goto Invalid; // this byte is not a UTF-8 continuation byte
@@ -524,19 +521,15 @@ namespace System.Text
             tempValue += 0x80; // remove the continuation byte marker
             tempValue -= (0xF0 - 0xE0) << 18; // remove the leading byte marker
 
+            // Valid 4-byte sequence
             UnicodeDebug.AssertIsValidSupplementaryPlaneScalar(tempValue);
-            goto Finish; // this is a valid 4-byte sequence
 
-        FirstByteInvalid:
+        Finish:
 
-            index = 1; // Invalid subsequences are always at least length 1.
-
-        Invalid:
-
-            Debug.Assert(1 <= index && index <= 3); // Invalid subsequences are always length 1..3
-            bytesConsumed = index;
-            result = ReplacementChar;
-            return OperationStatus.InvalidData;
+            bytesConsumed = index + 1;
+            Debug.Assert(1 <= bytesConsumed && bytesConsumed <= 4); // Valid subsequences are always length [1..4]
+            result = UnsafeCreate(tempValue);
+            return OperationStatus.Done;
 
         NeedsMoreData:
 
@@ -544,6 +537,13 @@ namespace System.Text
             bytesConsumed = index;
             result = ReplacementChar;
             return OperationStatus.NeedMoreData;
+
+        Invalid:
+
+            Debug.Assert(1 <= index && index <= 3); // Invalid subsequences are always length 1..3
+            bytesConsumed = index;
+            result = ReplacementChar;
+            return OperationStatus.InvalidData;
         }
 
         /// <summary>
@@ -817,7 +817,7 @@ namespace System.Text
 
                 // Treat 'returnValue' as the high surrogate.
 
-                if (1 >= (uint)input.Length)
+                if (input.Length <= 1)
                 {
                     return -1; // not an argument exception - just a "bad data" failure
                 }
@@ -842,9 +842,9 @@ namespace System.Text
                 ThrowHelper.ThrowArgumentNullException(ExceptionArgument.input);
             }
 
-            if ((uint)index >= (uint)input!.Length)
+            if ((uint)index >= (uint)input.Length)
             {
-                ThrowHelper.ThrowArgumentOutOfRange_IndexException();
+                ThrowHelper.ThrowArgumentOutOfRange_IndexMustBeLessException();
             }
 
             // Optimistically assume input is within BMP.
@@ -910,6 +910,13 @@ namespace System.Text
             }
 #endif
         }
+
+#if SYSTEM_PRIVATE_CORELIB
+        bool ISpanFormattable.TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider) =>
+            TryEncodeToUtf16(destination, out charsWritten);
+
+        string IFormattable.ToString(string? format, IFormatProvider? formatProvider) => ToString();
+#endif
 
         /// <summary>
         /// Attempts to create a <see cref="Rune"/> from the provided input value.
@@ -994,19 +1001,27 @@ namespace System.Text
         /// The <see cref="Utf16SequenceLength"/> property can be queried ahead of time to determine
         /// the required size of the <paramref name="destination"/> buffer.
         /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryEncodeToUtf16(Span<char> destination, out int charsWritten)
         {
-            if (destination.Length >= 1)
+            // The Rune type fits cleanly into a register, so pass byval rather than byref
+            // to avoid stack-spilling the 'this' parameter.
+            return TryEncodeToUtf16(this, destination, out charsWritten);
+        }
+
+        private static bool TryEncodeToUtf16(Rune value, Span<char> destination, out int charsWritten)
+        {
+            if (!destination.IsEmpty)
             {
-                if (IsBmp)
+                if (value.IsBmp)
                 {
-                    destination[0] = (char)_value;
+                    destination[0] = (char)value._value;
                     charsWritten = 1;
                     return true;
                 }
-                else if (destination.Length >= 2)
+                else if (destination.Length > 1)
                 {
-                    UnicodeUtility.GetUtf16SurrogatesFromSupplementaryPlaneScalar(_value, out destination[0], out destination[1]);
+                    UnicodeUtility.GetUtf16SurrogatesFromSupplementaryPlaneScalar((uint)value._value, out destination[0], out destination[1]);
                     charsWritten = 2;
                     return true;
                 }
@@ -1030,49 +1045,57 @@ namespace System.Text
         /// The <see cref="Utf8SequenceLength"/> property can be queried ahead of time to determine
         /// the required size of the <paramref name="destination"/> buffer.
         /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryEncodeToUtf8(Span<byte> destination, out int bytesWritten)
+        {
+            // The Rune type fits cleanly into a register, so pass byval rather than byref
+            // to avoid stack-spilling the 'this' parameter.
+            return TryEncodeToUtf8(this, destination, out bytesWritten);
+        }
+
+        private static bool TryEncodeToUtf8(Rune value, Span<byte> destination, out int bytesWritten)
         {
             // The bit patterns below come from the Unicode Standard, Table 3-6.
 
-            if (destination.Length >= 1)
+            if (!destination.IsEmpty)
             {
-                if (IsAscii)
+                if (value.IsAscii)
                 {
-                    destination[0] = (byte)_value;
+                    destination[0] = (byte)value._value;
                     bytesWritten = 1;
                     return true;
                 }
 
-                if (destination.Length >= 2)
+                if (destination.Length > 1)
                 {
-                    if (_value <= 0x7FFu)
+                    if (value.Value <= 0x7FFu)
                     {
                         // Scalar 00000yyy yyxxxxxx -> bytes [ 110yyyyy 10xxxxxx ]
-                        destination[0] = (byte)((_value + (0b110u << 11)) >> 6);
-                        destination[1] = (byte)((_value & 0x3Fu) + 0x80u);
+                        destination[0] = (byte)((value._value + (0b110u << 11)) >> 6);
+                        destination[1] = (byte)((value._value & 0x3Fu) + 0x80u);
                         bytesWritten = 2;
                         return true;
                     }
 
-                    if (destination.Length >= 3)
+                    if (destination.Length > 2)
                     {
-                        if (_value <= 0xFFFFu)
+                        if (value.Value <= 0xFFFFu)
                         {
                             // Scalar zzzzyyyy yyxxxxxx -> bytes [ 1110zzzz 10yyyyyy 10xxxxxx ]
-                            destination[0] = (byte)((_value + (0b1110 << 16)) >> 12);
-                            destination[1] = (byte)(((_value & (0x3Fu << 6)) >> 6) + 0x80u);
-                            destination[2] = (byte)((_value & 0x3Fu) + 0x80u);
+                            destination[0] = (byte)((value._value + (0b1110 << 16)) >> 12);
+                            destination[1] = (byte)(((value._value & (0x3Fu << 6)) >> 6) + 0x80u);
+                            destination[2] = (byte)((value._value & 0x3Fu) + 0x80u);
                             bytesWritten = 3;
                             return true;
                         }
 
-                        if (destination.Length >= 4)
+                        if (destination.Length > 3)
                         {
                             // Scalar 000uuuuu zzzzyyyy yyxxxxxx -> bytes [ 11110uuu 10uuzzzz 10yyyyyy 10xxxxxx ]
-                            destination[0] = (byte)((_value + (0b11110 << 21)) >> 18);
-                            destination[1] = (byte)(((_value & (0x3Fu << 12)) >> 12) + 0x80u);
-                            destination[2] = (byte)(((_value & (0x3Fu << 6)) >> 6) + 0x80u);
-                            destination[3] = (byte)((_value & 0x3Fu) + 0x80u);
+                            destination[0] = (byte)((value._value + (0b11110 << 21)) >> 18);
+                            destination[1] = (byte)(((value._value & (0x3Fu << 12)) >> 12) + 0x80u);
+                            destination[2] = (byte)(((value._value & (0x3Fu << 6)) >> 6) + 0x80u);
+                            destination[3] = (byte)((value._value & 0x3Fu) + 0x80u);
                             bytesWritten = 4;
                             return true;
                         }
@@ -1374,9 +1397,7 @@ namespace System.Text
 
             if (GlobalizationMode.Invariant)
             {
-                // If the value isn't ASCII and if the globalization tables aren't available,
-                // case changing has no effect.
-                return value;
+                return UnsafeCreate(CharUnicodeInfo.ToLower(value._value));
             }
 
             // Non-ASCII data requires going through the case folding tables.
@@ -1425,9 +1446,7 @@ namespace System.Text
 
             if (GlobalizationMode.Invariant)
             {
-                // If the value isn't ASCII and if the globalization tables aren't available,
-                // case changing has no effect.
-                return value;
+                return UnsafeCreate(CharUnicodeInfo.ToUpper(value._value));
             }
 
             // Non-ASCII data requires going through the case folding tables.

@@ -1,14 +1,14 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.IO;
+
 namespace System.Xml.Serialization
 {
-    using System.IO;
-
     /// <summary>
     /// This class will write to a stream and manage indentation.
     /// </summary>
-    internal class IndentedWriter
+    internal sealed class IndentedWriter
     {
         private readonly TextWriter _writer;
         private bool _needIndent;

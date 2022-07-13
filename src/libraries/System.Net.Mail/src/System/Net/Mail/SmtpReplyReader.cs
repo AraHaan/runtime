@@ -7,7 +7,7 @@ using System.IO;
 namespace System.Net.Mail
 {
     //streams are read only; return of 0 means end of server's reply
-    internal class SmtpReplyReader
+    internal sealed class SmtpReplyReader
     {
         private readonly SmtpReplyReaderFactory _reader;
 
@@ -31,14 +31,14 @@ namespace System.Net.Mail
             _reader.Close(this);
         }
 
-        internal LineInfo[] EndReadLines(IAsyncResult result)
+        internal static LineInfo[] EndReadLines(IAsyncResult result)
         {
-            return _reader.EndReadLines(result);
+            return SmtpReplyReaderFactory.EndReadLines(result);
         }
 
-        internal LineInfo EndReadLine(IAsyncResult result)
+        internal static LineInfo EndReadLine(IAsyncResult result)
         {
-            return _reader.EndReadLine(result);
+            return SmtpReplyReaderFactory.EndReadLine(result);
         }
 
         internal LineInfo[] ReadLines()

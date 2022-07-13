@@ -22,14 +22,10 @@ namespace System.IO.Pipes.Tests
         public TestAccountImpersonator()
         {
             string testAccountPassword;
-            using (RandomNumberGenerator rng = new RNGCryptoServiceProvider())
-            {
-                var randomBytes = new byte[33];
-                rng.GetBytes(randomBytes);
+            byte[] randomBytes = RandomNumberGenerator.GetBytes(33);
 
-                // Add special chars to ensure it satisfies password requirements.
-                testAccountPassword = Convert.ToBase64String(randomBytes) + "_-As@!%*(1)4#2";
-            }
+            // Add special chars to ensure it satisfies password requirements.
+            testAccountPassword = Convert.ToBase64String(randomBytes) + "_-As@!%*(1)4#2";
 
             DateTime accountExpirationDate = DateTime.UtcNow + TimeSpan.FromMinutes(2);
             using (var principalCtx = new PrincipalContext(ContextType.Machine))
@@ -166,12 +162,14 @@ namespace System.IO.Pipes.Tests
         }
 
         [OuterLoop]
-        [ConditionalFact(nameof(IsAdminOnSupportedWindowsVersions))]
-        public void Allow_Connection_UnderDifferentUsers_ForClientReading()
+        [ConditionalTheory(nameof(IsAdminOnSupportedWindowsVersions))]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void Allow_Connection_UnderDifferentUsers_ForClientReading(bool useTimeSpan)
         {
             string name = PipeStreamConformanceTests.GetUniquePipeName();
             using (var server = new NamedPipeServerStream(
-                name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous))
+                       name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous))
             {
                 Task serverTask = server.WaitForConnectionAsync(CancellationToken.None);
 
@@ -179,7 +177,14 @@ namespace System.IO.Pipes.Tests
                 {
                     using (var client = new NamedPipeClientStream(".", name, PipeDirection.In))
                     {
-                        client.Connect(10_000);
+                        if (useTimeSpan)
+                        {
+                            client.Connect(TimeSpan.FromMilliseconds(10_000));
+                        }
+                        else
+                        {
+                            client.Connect(10_000);
+                        }
                     }
                 });
 

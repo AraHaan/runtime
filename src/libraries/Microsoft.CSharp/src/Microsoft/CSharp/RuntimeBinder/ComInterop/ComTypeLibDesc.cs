@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Dynamic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Runtime.InteropServices;
@@ -32,15 +33,7 @@ namespace Microsoft.CSharp.RuntimeBinder.ComInterop
             _classes = new LinkedList<ComTypeClassDesc>();
         }
 
-        public override string ToString()
-        {
-            return string.Format(CultureInfo.CurrentCulture, "<type library {0}>", Name);
-        }
-
-        public string Documentation
-        {
-            get { return string.Empty; }
-        }
+        public override string ToString() => $"<type library {Name}>";
 
         #region IDynamicMetaObjectProvider Members
 
@@ -51,6 +44,7 @@ namespace Microsoft.CSharp.RuntimeBinder.ComInterop
 
         #endregion
 
+        [RequiresUnreferencedCode(Binder.TrimmerWarning)]
         internal static ComTypeLibDesc GetFromTypeLib(ComTypes.ITypeLib typeLib)
         {
             // check whether we have already loaded this type library

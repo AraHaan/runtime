@@ -17,7 +17,7 @@ using System.Threading.Tasks;
 
 namespace System.Net.Http
 {
-    internal partial class HttpConnection : HttpConnectionBase, IDisposable
+    internal sealed partial class HttpConnection : HttpConnectionBase
     {
         /// <summary>Default size of the read buffer used for the connection.</summary>
         private const int InitialReadBufferSize =
@@ -33,17 +33,22 @@ namespace System.Net.Http
         /// to final error status code sent by the server when using Expect: 100-continue.
         /// </summary>
         private const int Expect100ErrorSendThreshold = 1024;
+        /// <summary>How long a chunk indicator is allowed to be.</summary>
+        /// <remarks>
+        /// While most chunks indicators will contain no more than ulong.MaxValue.ToString("X").Length characters,
+        /// "chunk extensions" are allowed. We place a limit on how long a line can be to avoid OOM issues if an
+        /// infinite chunk length is sent.  This value is arbitrary and can be changed as needed.
+        /// </remarks>
+        private const int MaxChunkBytesAllowed = 16 * 1024;
 
-        private static readonly byte[] s_contentLength0NewlineAsciiBytes = Encoding.ASCII.GetBytes("Content-Length: 0\r\n");
-        private static readonly byte[] s_spaceHttp10NewlineAsciiBytes = Encoding.ASCII.GetBytes(" HTTP/1.0\r\n");
-        private static readonly byte[] s_spaceHttp11NewlineAsciiBytes = Encoding.ASCII.GetBytes(" HTTP/1.1\r\n");
-        private static readonly byte[] s_httpSchemeAndDelimiter = Encoding.ASCII.GetBytes(Uri.UriSchemeHttp + Uri.SchemeDelimiter);
-        private static readonly byte[] s_http1DotBytes = Encoding.ASCII.GetBytes("HTTP/1.");
-        private static readonly ulong s_http10Bytes = BitConverter.ToUInt64(Encoding.ASCII.GetBytes("HTTP/1.0"));
-        private static readonly ulong s_http11Bytes = BitConverter.ToUInt64(Encoding.ASCII.GetBytes("HTTP/1.1"));
+        private static readonly byte[] s_contentLength0NewlineAsciiBytes = "Content-Length: 0\r\n"u8.ToArray();
+        private static readonly byte[] s_spaceHttp10NewlineAsciiBytes = " HTTP/1.0\r\n"u8.ToArray();
+        private static readonly byte[] s_spaceHttp11NewlineAsciiBytes = " HTTP/1.1\r\n"u8.ToArray();
+        private static readonly byte[] s_httpSchemeAndDelimiter = "http://"u8.ToArray();
+        private static readonly ulong s_http10Bytes = BitConverter.ToUInt64("HTTP/1.0"u8);
+        private static readonly ulong s_http11Bytes = BitConverter.ToUInt64("HTTP/1.1"u8);
 
         private readonly HttpConnectionPool _pool;
-        private readonly Socket? _socket; // used for polling; _stream should be used for all reading/writing. _stream owns disposal.
         private readonly Stream _stream;
         private readonly TransportContext? _transportContext;
         private readonly WeakReference<HttpConnection> _weakThisRef;
@@ -61,8 +66,11 @@ namespace System.Net.Http
         private int _readOffset;
         private int _readLength;
 
+        private long _idleSinceTickCount;
         private bool _inUse;
+        private bool _detachedFromPool;
         private bool _canRetry;
+        private bool _startedSendingRequestBody;
         private bool _connectionClose; // Connection: close was seen on last response
 
         private const int Status_Disposed = 1;
@@ -79,10 +87,6 @@ namespace System.Net.Http
 
             _pool = pool;
             _stream = stream;
-            if (stream is NetworkStream networkStream)
-            {
-                _socket = networkStream.Socket;
-            }
 
             _transportContext = transportContext;
 
@@ -90,6 +94,8 @@ namespace System.Net.Http
             _readBuffer = new byte[InitialReadBufferSize];
 
             _weakThisRef = new WeakReference<HttpConnection>(this);
+
+            _idleSinceTickCount = Environment.TickCount64;
 
             if (HttpTelemetry.Log.IsEnabled())
             {
@@ -102,9 +108,9 @@ namespace System.Net.Http
 
         ~HttpConnection() => Dispose(disposing: false);
 
-        public void Dispose() => Dispose(disposing: true);
+        public override void Dispose() => Dispose(disposing: true);
 
-        protected void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             // Ensure we're only disposed once.  Dispose could be called concurrently, for example,
             // if the request and the response were running concurrently and both incurred an exception.
@@ -119,7 +125,10 @@ namespace System.Net.Http
                     HttpTelemetry.Log.Http11ConnectionClosed();
                 }
 
-                _pool.DecrementConnectionCount();
+                if (!_detachedFromPool)
+                {
+                    _pool.InvalidateHttp11Connection(this, disposing);
+                }
 
                 if (disposing)
                 {
@@ -137,54 +146,81 @@ namespace System.Net.Http
             }
         }
 
-        /// <summary>Do a non-blocking poll to see whether the connection has data available or has been closed.</summary>
-        /// <remarks>If we don't have direct access to the underlying socket, we instead use a read-ahead task.</remarks>
-        public bool PollRead()
+        /// <summary>Prepare an idle connection to be used for a new request.</summary>
+        /// <param name="async">Indicates whether the coming request will be sync or async.</param>
+        /// <returns>True if connection can be used, false if it is invalid due to receiving EOF or unexpected data.</returns>
+        public bool PrepareForReuse(bool async)
         {
-            if (_socket != null) // may be null if we don't have direct access to the socket
+            // We may already have a read-ahead task if we did a previous scavenge and haven't used the connection since.
+            // If the read-ahead task is completed, then we've received either EOF or erroneous data the connection, so it's not usable.
+            if (_readAheadTask is not null)
             {
+                return !_readAheadTask.Value.IsCompleted;
+            }
+
+            // Check to see if we've received anything on the connection; if we have, that's
+            // either erroneous data (we shouldn't have received anything yet) or the connection
+            // has been closed; either way, we can't use it.
+            if (!async && _stream is NetworkStream networkStream)
+            {
+                // Directly poll the socket rather than doing an async read, so that we can
+                // issue an appropriate sync read when we actually need it.
                 try
                 {
-                    return _socket.Poll(0, SelectMode.SelectRead);
+                    return !networkStream.Socket.Poll(0, SelectMode.SelectRead);
                 }
                 catch (Exception e) when (e is SocketException || e is ObjectDisposedException)
                 {
                     // Poll can throw when used on a closed socket.
-                    return true;
+                    return false;
                 }
             }
             else
             {
-                return EnsureReadAheadAndPollRead();
-            }
-        }
-
-        /// <summary>
-        /// Issues a read-ahead on the connection, which will serve both as the first read on the
-        /// response as well as a polling indication of whether the connection is usable.
-        /// </summary>
-        /// <returns>true if there's data available on the connection or it's been closed; otherwise, false.</returns>
-        public bool EnsureReadAheadAndPollRead()
-        {
-            try
-            {
-                Debug.Assert(_readAheadTask == null || _socket == null, "Should only already have a read-ahead task if we don't have a socket to poll");
-                if (_readAheadTask == null)
+                // Perform an async read on the stream, since we're going to need to read from it
+                // anyway, and in doing so we can avoid the extra syscall.
+                try
                 {
 #pragma warning disable CA2012 // we're very careful to ensure the ValueTask is only consumed once, even though it's stored into a field
                     _readAheadTask = _stream.ReadAsync(new Memory<byte>(_readBuffer));
 #pragma warning restore CA2012
+                    return !_readAheadTask.Value.IsCompleted;
+                }
+                catch (Exception error)
+                {
+                    // If reading throws, eat the error and don't reuse the connection.
+                    if (NetEventSource.Log.IsEnabled()) Trace($"Error performing read ahead: {error}");
+                    return false;
                 }
             }
-            catch (Exception error)
-            {
-                // If reading throws, eat the error and don't pool the connection.
-                if (NetEventSource.Log.IsEnabled()) Trace($"Error performing read ahead: {error}");
-                Dispose();
-                _readAheadTask = new ValueTask<int>(0);
-            }
+        }
 
-            return _readAheadTask.Value.IsCompleted; // equivalent to polling
+        /// <summary>Check whether a currently idle connection is still usable, or should be scavenged.</summary>
+        /// <returns>True if connection can be used, false if it is invalid due to receiving EOF or unexpected data.</returns>
+        public override bool CheckUsabilityOnScavenge()
+        {
+            // We may already have a read-ahead task if we did a previous scavenge and haven't used the connection since.
+#pragma warning disable CA2012 // we're very careful to ensure the ValueTask is only consumed once, even though it's stored into a field
+            _readAheadTask ??= ReadAheadWithZeroByteReadAsync();
+#pragma warning restore CA2012
+
+            // If the read-ahead task is completed, then we've received either EOF or erroneous data the connection, so it's not usable.
+            return !_readAheadTask.Value.IsCompleted;
+
+            async ValueTask<int> ReadAheadWithZeroByteReadAsync()
+            {
+                Debug.Assert(_readAheadTask is null);
+                Debug.Assert(RemainingBuffer.Length == 0);
+
+                // Issue a zero-byte read.
+                // If the underlying stream supports it, this will not complete until the stream has data available,
+                // which will avoid pinning the connection's read buffer (and possibly allow us to release it to the buffer pool in the future, if desired).
+                // If not, it will complete immediately.
+                await _stream.ReadAsync(Memory<byte>.Empty).ConfigureAwait(false);
+
+                // We don't know for sure that the stream actually has data available, so we need to issue a real read now.
+                return await _stream.ReadAsync(new Memory<byte>(_readBuffer)).ConfigureAwait(false);
+            }
         }
 
         private ValueTask<int>? ConsumeReadAheadTask()
@@ -201,6 +237,8 @@ namespace System.Net.Http
             // by someone else who will consume the task.
             return null;
         }
+
+        public override long GetIdleTicks(long nowTicks) => nowTicks - _idleSinceTickCount;
 
         public TransportContext? TransportContext => _transportContext;
 
@@ -220,13 +258,15 @@ namespace System.Net.Http
         {
             Debug.Assert(_currentRequest != null);
 
-            if (headers.HeaderStore != null)
+            if (headers.GetEntriesArray() is HeaderEntry[] entries)
             {
-                foreach (KeyValuePair<HeaderDescriptor, object> header in headers.HeaderStore)
+                for (int i = 0; i < headers.Count; i++)
                 {
-                    if (header.Key.KnownHeader != null)
+                    HeaderEntry header = entries[i];
+
+                    if (header.Key.KnownHeader is KnownHeader knownHeader)
                     {
-                        await WriteBytesAsync(header.Key.KnownHeader.AsciiBytesWithColonSpace, async).ConfigureAwait(false);
+                        await WriteBytesAsync(knownHeader.AsciiBytesWithColonSpace, async).ConfigureAwait(false);
                     }
                     else
                     {
@@ -234,7 +274,7 @@ namespace System.Net.Http
                         await WriteTwoBytesAsync((byte)':', (byte)' ', async).ConfigureAwait(false);
                     }
 
-                    int headerValuesCount = HttpHeaders.GetValuesAsStrings(header.Key, header.Value, ref _headerValues);
+                    int headerValuesCount = HttpHeaders.GetStoreValuesIntoStringArray(header.Key, header.Value, ref _headerValues);
                     Debug.Assert(headerValuesCount > 0, "No values for header??");
                     if (headerValuesCount > 0)
                     {
@@ -242,7 +282,7 @@ namespace System.Net.Http
 
                         await WriteStringAsync(_headerValues[0], async, valueEncoding).ConfigureAwait(false);
 
-                        if (cookiesFromContainer != null && header.Key.KnownHeader == KnownHeaders.Cookie)
+                        if (cookiesFromContainer != null && header.Key.Equals(KnownHeaders.Cookie))
                         {
                             await WriteTwoBytesAsync((byte)';', (byte)' ', async).ConfigureAwait(false);
                             await WriteStringAsync(cookiesFromContainer, async, valueEncoding).ConfigureAwait(false);
@@ -260,10 +300,10 @@ namespace System.Net.Http
                                 separator = parser.Separator!;
                             }
 
-                            for (int i = 1; i < headerValuesCount; i++)
+                            for (int j = 1; j < headerValuesCount; j++)
                             {
                                 await WriteAsciiStringAsync(separator, async).ConfigureAwait(false);
-                                await WriteStringAsync(_headerValues[i], async, valueEncoding).ConfigureAwait(false);
+                                await WriteStringAsync(_headerValues[j], async, valueEncoding).ConfigureAwait(false);
                             }
                         }
                     }
@@ -297,14 +337,11 @@ namespace System.Net.Http
             {
                 Debug.Assert(Kind == HttpConnectionKind.Proxy);
 
-                // TODO https://github.com/dotnet/runtime/issues/25782:
-                // Uri.IdnHost is missing '[', ']' characters around IPv6 address.
-                // So, we need to add them manually for now.
+                // Uri.IdnHost is missing '[', ']' characters around IPv6 address
+                // and it also contains ScopeID for Link-Local addresses
                 if (uri.HostNameType == UriHostNameType.IPv6)
                 {
-                    await WriteByteAsync((byte)'[', async).ConfigureAwait(false);
-                    await WriteAsciiStringAsync(uri.IdnHost, async).ConfigureAwait(false);
-                    await WriteByteAsync((byte)']', async).ConfigureAwait(false);
+                    await WriteAsciiStringAsync(uri.Host, async).ConfigureAwait(false);
                 }
                 else
                 {
@@ -357,8 +394,8 @@ namespace System.Net.Http
             _currentRequest = request;
             HttpMethod normalizedMethod = HttpMethod.Normalize(request.Method);
 
-            Debug.Assert(!_canRetry);
-            _canRetry = true;
+            _canRetry = false;
+            _startedSendingRequestBody = false;
 
             // Send the request.
             if (NetEventSource.Log.IsEnabled()) Trace($"Sending request: {request}");
@@ -533,19 +570,28 @@ namespace System.Net.Http
 
                     if (NetEventSource.Log.IsEnabled()) Trace($"Received {bytesRead} bytes.");
 
-                    if (bytesRead == 0)
-                    {
-                        throw new IOException(SR.net_http_invalid_response_premature_eof);
-                    }
-
                     _readOffset = 0;
                     _readLength = bytesRead;
                 }
+                else
+                {
+                    // No read-ahead, so issue a read ourselves. We will check below for EOF.
+                    await InitialFillAsync(async).ConfigureAwait(false);
+                }
 
-                // The request is no longer retryable; either we received data from the _readAheadTask,
-                // or there was no _readAheadTask because this is the first request on the connection.
-                // (We may have already set this as well if we sent request content.)
-                _canRetry = false;
+                if (_readLength == 0)
+                {
+                    // The server shutdown the connection on their end, likely because of an idle timeout.
+                    // If we haven't started sending the request body yet (or there is no request body),
+                    // then we allow the request to be retried.
+                    if (!_startedSendingRequestBody)
+                    {
+                        _canRetry = true;
+                    }
+
+                    throw new IOException(SR.net_http_invalid_response_premature_eof);
+                }
+
 
                 // Parse the response status line.
                 var response = new HttpResponseMessage() { RequestMessage = request, Content = new HttpConnectionResponseContent() };
@@ -671,14 +717,28 @@ namespace System.Net.Http
                     // Successful response to CONNECT does not have body.
                     // What ever comes next should be opaque.
                     responseStream = new RawConnectionStream(this);
+
                     // Don't put connection back to the pool if we upgraded to tunnel.
                     // We cannot use it for normal HTTP requests any more.
                     _connectionClose = true;
 
+                    _pool.InvalidateHttp11Connection(this);
+                    _detachedFromPool = true;
                 }
                 else if (response.StatusCode == HttpStatusCode.SwitchingProtocols)
                 {
                     responseStream = new RawConnectionStream(this);
+
+                    // Don't put connection back to the pool if we switched protocols.
+                    // We cannot use it for normal HTTP requests any more.
+                    _connectionClose = true;
+
+                    _pool.InvalidateHttp11Connection(this);
+                    _detachedFromPool = true;
+                }
+                else if (response.Headers.TransferEncodingChunked == true)
+                {
+                    responseStream = new ChunkedEncodingReadStream(this, response);
                 }
                 else if (response.Content.Headers.ContentLength != null)
                 {
@@ -692,10 +752,6 @@ namespace System.Net.Http
                     {
                         responseStream = new ContentLengthReadStream(this, (ulong)contentLength);
                     }
-                }
-                else if (response.Headers.TransferEncodingChunked == true)
-                {
-                    responseStream = new ChunkedEncodingReadStream(this, response);
                 }
                 else
                 {
@@ -764,7 +820,7 @@ namespace System.Net.Http
             }
         }
 
-        public sealed override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, bool async, CancellationToken cancellationToken) =>
+        public Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, bool async, CancellationToken cancellationToken) =>
             SendAsyncCore(request, async, cancellationToken);
 
         private bool MapSendException(Exception exception, CancellationToken cancellationToken, out Exception mappedException)
@@ -793,7 +849,7 @@ namespace System.Net.Http
             {
                 // For consistency with other handlers we wrap the exception in an HttpRequestException.
                 // If the request is retryable, indicate that on the exception.
-                mappedException = new HttpRequestException(SR.net_http_client_execution_error, ioe, _canRetry ? RequestRetryType.RetryOnSameOrNextProxy : RequestRetryType.NoRetry);
+                mappedException = new HttpRequestException(SR.net_http_client_execution_error, ioe, _canRetry ? RequestRetryType.RetryOnConnectionFailure : RequestRetryType.NoRetry);
                 return true;
             }
             // Otherwise, just allow the original exception to propagate.
@@ -803,10 +859,11 @@ namespace System.Net.Http
 
         private HttpContentWriteStream CreateRequestContentStream(HttpRequestMessage request)
         {
+            Debug.Assert(request.Content is not null);
             bool requestTransferEncodingChunked = request.HasHeaders && request.Headers.TransferEncodingChunked == true;
             HttpContentWriteStream requestContentStream = requestTransferEncodingChunked ? (HttpContentWriteStream)
                 new ChunkedEncodingWriteStream(this) :
-                new ContentLengthWriteStream(this);
+                new ContentLengthWriteStream(this, request.Content.Headers.ContentLength.GetValueOrDefault());
             return requestContentStream;
         }
 
@@ -835,8 +892,8 @@ namespace System.Net.Http
 
         private async ValueTask SendRequestContentAsync(HttpRequestMessage request, HttpContentWriteStream stream, bool async, CancellationToken cancellationToken)
         {
-            // Now that we're sending content, prohibit retries on this connection.
-            _canRetry = false;
+            // Now that we're sending content, prohibit retries of this request by setting this flag.
+            _startedSendingRequestBody = true;
 
             Debug.Assert(stream.BytesWritten == 0);
             if (HttpTelemetry.Log.IsEnabled()) HttpTelemetry.Log.RequestContentStart();
@@ -919,8 +976,7 @@ namespace System.Net.Http
             else
             {
                 byte minorVersion = line[7];
-                if (IsDigit(minorVersion) &&
-                    line.Slice(0, 7).SequenceEqual(s_http1DotBytes))
+                if (IsDigit(minorVersion) && line.StartsWith("HTTP/1."u8))
                 {
                     response.SetVersionWithoutValidation(new Version(1, minorVersion - '0'));
                 }
@@ -947,7 +1003,7 @@ namespace System.Net.Http
             {
                 ReadOnlySpan<byte> reasonBytes = line.Slice(MinStatusLineLength + 1);
                 string? knownReasonPhrase = HttpStatusDescription.Get(response.StatusCode);
-                if (knownReasonPhrase != null && EqualsOrdinal(knownReasonPhrase, reasonBytes))
+                if (knownReasonPhrase != null && ByteArrayHelpers.EqualsOrdinalAscii(knownReasonPhrase, reasonBytes))
                 {
                     response.SetReasonPhraseWithoutValidation(knownReasonPhrase);
                 }
@@ -996,7 +1052,7 @@ namespace System.Net.Http
                 throw new HttpRequestException(SR.Format(SR.net_http_invalid_response_header_name, Encoding.ASCII.GetString(line.Slice(0, pos))));
             }
 
-            if (isFromTrailer && descriptor.KnownHeader != null && (descriptor.KnownHeader.HeaderType & HttpHeaderType.NonTrailing) == HttpHeaderType.NonTrailing)
+            if (isFromTrailer && (descriptor.HeaderType & HttpHeaderType.NonTrailing) == HttpHeaderType.NonTrailing)
             {
                 // Disallowed trailer fields.
                 // A recipient MUST ignore fields that are forbidden to be sent in a trailer.
@@ -1392,28 +1448,49 @@ namespace System.Net.Http
             }
         }
 
-        private bool TryReadNextLine(out ReadOnlySpan<byte> line)
+        private bool TryReadNextChunkedLine(bool readingHeader, out ReadOnlySpan<byte> line)
         {
+            int maxByteLength = readingHeader ? _allowedReadLineBytes : MaxChunkBytesAllowed;
             var buffer = new ReadOnlySpan<byte>(_readBuffer, _readOffset, _readLength - _readOffset);
-            int length = buffer.IndexOf((byte)'\n');
-            if (length < 0)
-            {
-                if (_allowedReadLineBytes < buffer.Length)
-                {
-                    throw new HttpRequestException(SR.Format(SR.net_http_response_headers_exceeded_length, _pool.Settings._maxResponseHeadersLength * 1024L));
-                }
 
-                line = default;
-                return false;
+            int lineFeedIndex = buffer.IndexOf((byte)'\n');
+            if (lineFeedIndex < 0)
+            {
+                if (buffer.Length < maxByteLength)
+                {
+                    line = default;
+                    return false;
+                }
+            }
+            else
+            {
+                int bytesConsumed = lineFeedIndex + 1;
+                int maxBytesRemaining = maxByteLength - bytesConsumed;
+                if (maxBytesRemaining >= 0)
+                {
+                    _readOffset += bytesConsumed;
+
+                    if (readingHeader)
+                    {
+                        _allowedReadLineBytes = maxBytesRemaining;
+                    }
+
+                    int carriageReturnIndex = lineFeedIndex - 1;
+
+                    int length = (uint)carriageReturnIndex < (uint)buffer.Length && buffer[carriageReturnIndex] == '\r'
+                        ? carriageReturnIndex
+                        : lineFeedIndex;
+
+                    line = buffer.Slice(0, length);
+                    return true;
+                }
             }
 
-            int bytesConsumed = length + 1;
-            _readOffset += bytesConsumed;
-            _allowedReadLineBytes -= bytesConsumed;
-            ThrowIfExceededAllowedReadLineBytes();
+            string message = readingHeader
+                ? SR.Format(SR.net_http_response_headers_exceeded_length, _pool.Settings._maxResponseHeadersLength * 1024L)
+                : SR.net_http_chunk_too_large;
 
-            line = buffer.Slice(0, length > 0 && buffer[length - 1] == '\r' ? length - 1 : length);
-            return true;
+            throw new HttpRequestException(message);
         }
 
         private async ValueTask<ReadOnlyMemory<byte>> ReadNextResponseHeaderLineAsync(bool async, bool foldedHeadersAllowed = false)
@@ -1520,6 +1597,19 @@ namespace System.Net.Http
             ValueTask fillTask = FillAsync(async: false);
             Debug.Assert(fillTask.IsCompleted);
             fillTask.GetAwaiter().GetResult();
+        }
+
+        // Does not throw on EOF. Also assumes there is no buffered data.
+        private async ValueTask InitialFillAsync(bool async)
+        {
+            Debug.Assert(_readAheadTask == null);
+
+            _readOffset = 0;
+            _readLength = async ?
+                await _stream.ReadAsync(_readBuffer).ConfigureAwait(false) :
+                _stream.Read(_readBuffer);
+
+            if (NetEventSource.Log.IsEnabled()) Trace($"Received {_readLength} bytes.");
         }
 
         // Throws IOException on EOF.  This is only called when we expect more data.
@@ -1638,8 +1728,6 @@ namespace System.Net.Http
         private int ReadBuffered(Span<byte> destination)
         {
             // This is called when reading the response body.
-            Debug.Assert(destination.Length != 0);
-
             int remaining = _readLength - _readOffset;
             if (remaining > 0)
             {
@@ -1661,7 +1749,7 @@ namespace System.Net.Http
 
             // Do a buffered read directly against the underlying stream.
             Debug.Assert(_readAheadTask == null, "Read ahead task should have been consumed as part of the headers.");
-            int bytesRead = _stream.Read(_readBuffer, 0, _readBuffer.Length);
+            int bytesRead = _stream.Read(_readBuffer, 0, destination.Length == 0 ? 0 : _readBuffer.Length);
             if (NetEventSource.Log.IsEnabled()) Trace($"Received {bytesRead} bytes.");
             _readLength = bytesRead;
 
@@ -1677,7 +1765,9 @@ namespace System.Net.Http
             // If the caller provided buffer, and thus the amount of data desired to be read,
             // is larger than the internal buffer, there's no point going through the internal
             // buffer, so just do an unbuffered read.
-            return destination.Length >= _readBuffer.Length ?
+            // Also avoid avoid using the internal buffer if the user requested a zero-byte read to allow
+            // underlying streams to efficiently handle such a read (e.g. SslStream defering buffer allocation).
+            return destination.Length >= _readBuffer.Length || destination.Length == 0 ?
                 ReadAsync(destination) :
                 ReadBufferedAsyncCore(destination);
         }
@@ -1718,20 +1808,24 @@ namespace System.Net.Http
             return bytesToCopy;
         }
 
-        private async ValueTask CopyFromBufferAsync(Stream destination, bool async, int count, CancellationToken cancellationToken)
+        private ValueTask CopyFromBufferAsync(Stream destination, bool async, int count, CancellationToken cancellationToken)
         {
             Debug.Assert(count <= _readLength - _readOffset);
 
             if (NetEventSource.Log.IsEnabled()) Trace($"Copying {count} bytes to stream.");
+
+            int offset = _readOffset;
+            _readOffset += count;
+
             if (async)
             {
-                await destination.WriteAsync(new ReadOnlyMemory<byte>(_readBuffer, _readOffset, count), cancellationToken).ConfigureAwait(false);
+                return destination.WriteAsync(new ReadOnlyMemory<byte>(_readBuffer, offset, count), cancellationToken);
             }
             else
             {
-                destination.Write(_readBuffer, _readOffset, count);
+                destination.Write(_readBuffer, offset, count);
+                return default;
             }
-            _readOffset += count;
         }
 
         private Task CopyToUntilEofAsync(Stream destination, bool async, int bufferSize, CancellationToken cancellationToken)
@@ -1881,6 +1975,17 @@ namespace System.Net.Http
             }
         }
 
+        /// <summary>
+        /// Detach the connection from the pool, so it is no longer counted against the connection limit.
+        /// This is used when we are creating a replacement connection for NT auth challenges.
+        /// </summary>
+        internal void DetachFromPool()
+        {
+            Debug.Assert(_inUse);
+
+            _detachedFromPool = true;
+        }
+
         private void CompleteResponse()
         {
             Debug.Assert(_currentRequest != null, "Expected the connection to be associated with a request.");
@@ -1964,29 +2069,13 @@ namespace System.Net.Http
             }
             else
             {
+                Debug.Assert(!_detachedFromPool, "Should not be detached from pool unless _connectionClose is true");
+
+                _idleSinceTickCount = Environment.TickCount64;
+
                 // Put connection back in the pool.
-                _pool.ReturnConnection(this);
+                _pool.ReturnHttp11Connection(this, isNewConnection: false);
             }
-        }
-
-        private static bool EqualsOrdinal(string left, ReadOnlySpan<byte> right)
-        {
-            Debug.Assert(left != null, "Expected non-null string");
-
-            if (left.Length != right.Length)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < left.Length; i++)
-            {
-                if (left[i] != right[i])
-                {
-                    return false;
-                }
-            }
-
-            return true;
         }
 
         public sealed override string ToString() => $"{nameof(HttpConnection)}({_pool})"; // Description for diagnostic purposes

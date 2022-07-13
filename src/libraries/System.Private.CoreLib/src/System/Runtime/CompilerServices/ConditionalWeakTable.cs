@@ -5,8 +5,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
-using Internal.Runtime.CompilerServices;
 
 namespace System.Runtime.CompilerServices
 {
@@ -86,6 +86,30 @@ namespace System.Runtime.CompilerServices
                 }
 
                 CreateEntry(key, value);
+            }
+        }
+
+        /// <summary>Adds a key to the table if it doesn't already exist.</summary>
+        /// <param name="key">The key to add.</param>
+        /// <param name="value">The key's property value.</param>
+        /// <returns>true if the key/value pair was added; false if the table already contained the key.</returns>
+        public bool TryAdd(TKey key, TValue value)
+        {
+            if (key is null)
+            {
+                ThrowHelper.ThrowArgumentNullException(ExceptionArgument.key);
+            }
+
+            lock (_lock)
+            {
+                int entryIndex = _container.FindEntry(key, out _);
+                if (entryIndex != -1)
+                {
+                    return false;
+                }
+
+                CreateEntry(key, value);
+                return true;
             }
         }
 
@@ -180,13 +204,9 @@ namespace System.Runtime.CompilerServices
         /// </remarks>
         public TValue GetValue(TKey key, CreateValueCallback createValueCallback)
         {
+            ArgumentNullException.ThrowIfNull(createValueCallback);
+
             // key is validated by TryGetValue
-
-            if (createValueCallback is null)
-            {
-                throw new ArgumentNullException(nameof(createValueCallback));
-            }
-
             return TryGetValue(key, out TValue? existingValue) ?
                 existingValue :
                 GetValueLocked(key, createValueCallback);
@@ -515,6 +535,7 @@ namespace System.Runtime.CompilerServices
             /// Returns -1 if not found (if key expires during FindEntry, this can be treated as "not found.").
             /// Must hold _lock, or be prepared to retry the search while holding _lock.
             /// </summary>
+            /// <remarks>This method requires <paramref name="value"/> to be on the stack to be properly tracked.</remarks>
             internal int FindEntry(TKey key, out object? value)
             {
                 Debug.Assert(key != null); // Key already validated as non-null.
@@ -523,14 +544,15 @@ namespace System.Runtime.CompilerServices
                 int bucket = hashCode & (_buckets.Length - 1);
                 for (int entriesIndex = Volatile.Read(ref _buckets[bucket]); entriesIndex != -1; entriesIndex = _entries[entriesIndex].Next)
                 {
-                    if (_entries[entriesIndex].HashCode == hashCode && _entries[entriesIndex].depHnd.GetPrimaryAndSecondary(out value) == key)
+                    if (_entries[entriesIndex].HashCode == hashCode && _entries[entriesIndex].depHnd.UnsafeGetTargetAndDependent(out value) == key)
                     {
-                        GC.KeepAlive(this); // ensure we don't get finalized while accessing DependentHandles.
+                        GC.KeepAlive(this); // Ensure we don't get finalized while accessing DependentHandle
+
                         return entriesIndex;
                     }
                 }
 
-                GC.KeepAlive(this); // ensure we don't get finalized while accessing DependentHandles.
+                GC.KeepAlive(this); // Ensure we don't get finalized while accessing DependentHandle
                 value = null;
                 return -1;
             }
@@ -540,8 +562,9 @@ namespace System.Runtime.CompilerServices
             {
                 if (index < _entries.Length)
                 {
-                    object? oKey = _entries[index].depHnd.GetPrimaryAndSecondary(out object? oValue);
-                    GC.KeepAlive(this); // ensure we don't get finalized while accessing DependentHandles.
+                    object? oKey = _entries[index].depHnd.UnsafeGetTargetAndDependent(out object? oValue);
+
+                    GC.KeepAlive(this); // Ensure we don't get finalized while accessing DependentHandle
 
                     if (oKey != null)
                     {
@@ -592,7 +615,7 @@ namespace System.Runtime.CompilerServices
                 Volatile.Write(ref entry.HashCode, -1);
 
                 // Also, clear the key to allow GC to collect objects pointed to by the entry
-                entry.depHnd.SetPrimary(null);
+                entry.depHnd.UnsafeSetTargetToNull();
             }
 
             internal void UpdateValue(int entryIndex, TValue newValue)
@@ -602,7 +625,7 @@ namespace System.Runtime.CompilerServices
                 VerifyIntegrity();
                 _invalid = true;
 
-                _entries[entryIndex].depHnd.SetSecondary(newValue);
+                _entries[entryIndex].depHnd.UnsafeSetDependent(newValue);
 
                 _invalid = false;
             }
@@ -634,7 +657,7 @@ namespace System.Runtime.CompilerServices
                             break;
                         }
 
-                        if (entry.depHnd.IsAllocated && entry.depHnd.GetPrimary() is null)
+                        if (entry.depHnd.IsAllocated && entry.depHnd.UnsafeGetTarget() is null)
                         {
                             // the entry has expired
                             hasExpiredEntries = true;
@@ -699,7 +722,7 @@ namespace System.Runtime.CompilerServices
                         DependentHandle depHnd = oldEntry.depHnd;
                         if (hashCode != -1 && depHnd.IsAllocated)
                         {
-                            if (depHnd.GetPrimary() != null)
+                            if (depHnd.UnsafeGetTarget() is not null)
                             {
                                 ref Entry newEntry = ref newEntries[newEntriesIndex];
 
@@ -795,7 +818,7 @@ namespace System.Runtime.CompilerServices
                         //   another container, removed entries are not, therefore this container must free them.
                         if (_oldKeepAlive is null || entries[entriesIndex].HashCode == -1)
                         {
-                            entries[entriesIndex].depHnd.Free();
+                            entries[entriesIndex].depHnd.Dispose();
                         }
                     }
                 }

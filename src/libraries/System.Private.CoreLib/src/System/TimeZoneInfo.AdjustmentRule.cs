@@ -31,7 +31,10 @@ namespace System
 
             public TransitionTime DaylightTransitionEnd => _daylightTransitionEnd;
 
-            internal TimeSpan BaseUtcOffsetDelta => _baseUtcOffsetDelta;
+            /// <summary>
+            /// Gets the time difference with the base UTC offset for the time zone during the adjustment-rule period.
+            /// </summary>
+            public TimeSpan BaseUtcOffsetDelta => _baseUtcOffsetDelta;
 
             /// <summary>
             /// Gets a value indicating that this AdjustmentRule fixes the time zone offset
@@ -52,6 +55,12 @@ namespace System
                 _baseUtcOffsetDelta == other._baseUtcOffsetDelta &&
                 _daylightTransitionEnd.Equals(other._daylightTransitionEnd) &&
                 _daylightTransitionStart.Equals(other._daylightTransitionStart);
+
+            /// <summary>Indicates whether the current instance is equal to another instance.</summary>
+            /// <param name="obj">An instance to compare with this instance.</param>
+            /// <returns>true if the current instance is equal to the other instance; otherwise, false.</returns>
+            public override bool Equals([NotNullWhen(true)] object? obj) =>
+                obj is AdjustmentRule other && Equals(other);
 
             public override int GetHashCode() => _dateStart.GetHashCode();
 
@@ -74,6 +83,34 @@ namespace System
                 _daylightTransitionEnd = daylightTransitionEnd;
                 _baseUtcOffsetDelta = baseUtcOffsetDelta;
                 _noDaylightTransitions = noDaylightTransitions;
+            }
+
+            /// <summary>
+            /// Creates a new adjustment rule for a particular time zone.
+            /// </summary>
+            /// <param name="dateStart">The effective date of the adjustment rule. If the value is <c>DateTime.MinValue.Date</c>, this is the first adjustment rule in effect for a time zone.</param>
+            /// <param name="dateEnd">The last date that the adjustment rule is in force. If the value is <c>DateTime.MaxValue.Date</c>, the adjustment rule has no end date.</param>
+            /// <param name="daylightDelta">The time change that results from the adjustment. This value is added to the time zone's <see cref="P:System.TimeZoneInfo.BaseUtcOffset" /> and <see cref="P:System.TimeZoneInfo.BaseUtcOffsetDelta" /> properties to obtain the correct daylight offset from Coordinated Universal Time (UTC). This value can range from -14 to 14.</param>
+            /// <param name="daylightTransitionStart">The start of daylight saving time.</param>
+            /// <param name="daylightTransitionEnd">The end of daylight saving time.</param>
+            /// <param name="baseUtcOffsetDelta">The time difference with the base UTC offset for the time zone during the adjustment-rule period.</param>
+            /// <returns>The new adjustment rule.</returns>
+            public static AdjustmentRule CreateAdjustmentRule(
+                DateTime dateStart,
+                DateTime dateEnd,
+                TimeSpan daylightDelta,
+                TransitionTime daylightTransitionStart,
+                TransitionTime daylightTransitionEnd,
+                TimeSpan baseUtcOffsetDelta)
+            {
+                return new AdjustmentRule(
+                    dateStart,
+                    dateEnd,
+                    daylightDelta,
+                    daylightTransitionStart,
+                    daylightTransitionEnd,
+                    baseUtcOffsetDelta,
+                    noDaylightTransitions: false);
             }
 
             public static AdjustmentRule CreateAdjustmentRule(
@@ -225,10 +262,7 @@ namespace System
 
             void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context)
             {
-                if (info == null)
-                {
-                    throw new ArgumentNullException(nameof(info));
-                }
+                ArgumentNullException.ThrowIfNull(info);
 
                 info.AddValue("DateStart", _dateStart); // Do not rename (binary serialization)
                 info.AddValue("DateEnd", _dateEnd); // Do not rename (binary serialization)
@@ -241,10 +275,7 @@ namespace System
 
             private AdjustmentRule(SerializationInfo info, StreamingContext context)
             {
-                if (info == null)
-                {
-                    throw new ArgumentNullException(nameof(info));
-                }
+                ArgumentNullException.ThrowIfNull(info);
 
                 _dateStart = (DateTime)info.GetValue("DateStart", typeof(DateTime))!; // Do not rename (binary serialization)
                 _dateEnd = (DateTime)info.GetValue("DateEnd", typeof(DateTime))!; // Do not rename (binary serialization)

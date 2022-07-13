@@ -335,7 +335,7 @@ void ConsoleArgs::CleanUpArgs()
     }
 }
 
-bool ConsoleArgs::GetFullFileName(LPCWSTR szSource, __out_ecount(cchFilenameBuffer) LPWSTR filenameBuffer, DWORD cchFilenameBuffer, bool fOutputFilename)
+bool ConsoleArgs::GetFullFileName(LPCWSTR szSource, _Out_writes_(cchFilenameBuffer) LPWSTR filenameBuffer, DWORD cchFilenameBuffer, bool fOutputFilename)
 {
 #ifdef TARGET_UNIX
     WCHAR tempBuffer[MAX_LONGPATH];
@@ -365,7 +365,7 @@ bool ConsoleArgs::GetFullFileName(LPCWSTR szSource, __out_ecount(cchFilenameBuff
 // Clear previous error message if any and set the new one by copying into m_lastErrorMessage.
 // We are responsible for freeing the memory destruction.
 //
-void ConsoleArgs::SetErrorMessage(__in LPCWSTR pwzMessage)
+void ConsoleArgs::SetErrorMessage(_In_ LPCWSTR pwzMessage)
 {
     if (m_lastErrorMessage != nullptr)
     {
@@ -647,14 +647,21 @@ LEADINGWHITE:
 
         size_t cchLen = pLast - pFirst + 1;
         WCHAR * szArgCopy = new WCHAR[cchLen];
-        if (!szArgCopy || FAILED(StringCchCopyW(szArgCopy, cchLen, pFirst)))
+        if (!szArgCopy)
         {
+            SetErrorMessage(W("Out of memory."));
+            break;
+        }
+        if (FAILED(StringCchCopyW(szArgCopy, cchLen, pFirst)))
+        {
+            delete[] szArgCopy;
             SetErrorMessage(W("Out of memory."));
             break;
         }
         WStrList * listArgNew = new WStrList( szArgCopy, (*argLast));
         if (!listArgNew)
         {
+            delete[] szArgCopy;
             SetErrorMessage(W("Out of memory."));
             break;
         }
@@ -673,7 +680,7 @@ LEADINGWHITE:
 // We expand any response files that may be contained in the args and return a new
 // set of args, pargc2 and pppargv2 that contain the full flat command line.
 //
-bool ConsoleArgs::ExpandResponseFiles(__in int argc, __deref_in_ecount(argc) const LPCWSTR * argv, int * pargc2, __deref_out_ecount(*pargc2) LPWSTR ** pppargv2)
+bool ConsoleArgs::ExpandResponseFiles(_In_ int argc, _In_reads_(argc) const LPCWSTR * argv, int * pargc2, _Outptr_result_buffer_(*pargc2) LPWSTR ** pppargv2)
 {
     *pargc2 = 0;
     *pppargv2 = NULL;
@@ -744,7 +751,7 @@ bool ConsoleArgs::ExpandResponseFiles(__in int argc, __deref_in_ecount(argc) con
 // Read file to end, converting to unicode
 // ppwzTextBuffer is allocated.  Caller is responsible for freeing
 //
-bool ConsoleArgs::ReadTextFile(LPCWSTR pwzFilename, __deref_out LPWSTR *ppwzTextBuffer)
+bool ConsoleArgs::ReadTextFile(LPCWSTR pwzFilename, _Outptr_ LPWSTR *ppwzTextBuffer)
 {
     bool success = false;
     char *bufA = nullptr;
@@ -946,6 +953,11 @@ void ConsoleArgs::ProcessResponseArgs()
 #endif
 
         TextToArgs(szActualText, &listCurArg->next);
+
+        delete[] pwzFileBuffer;
+#ifndef TARGET_UNIX
+        delete[] szExpandedBuffer;
+#endif
         }
 
 CONTINUE:  // remove the response file argument, and continue to the next.

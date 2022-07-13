@@ -10,7 +10,7 @@ namespace System.Threading
 {
     public sealed partial class Semaphore
     {
-        private void CreateSemaphoreCore(int initialCount, int maximumCount, string name, out bool createdNew)
+        private void CreateSemaphoreCore(int initialCount, int maximumCount, string? name, out bool createdNew)
         {
             if (name != null)
             {
@@ -21,10 +21,12 @@ namespace System.Threading
             createdNew = true;
         }
 
-        private static OpenExistingResult OpenExistingWorker(string name, out Semaphore result)
+#pragma warning disable IDE0060
+        private static OpenExistingResult OpenExistingWorker(string name, out Semaphore? result)
         {
             throw new PlatformNotSupportedException(SR.PlatformNotSupported_NamedSynchronizationPrimitives);
         }
+#pragma warning restore IDE0060
 
         private int ReleaseCore(int releaseCount)
         {

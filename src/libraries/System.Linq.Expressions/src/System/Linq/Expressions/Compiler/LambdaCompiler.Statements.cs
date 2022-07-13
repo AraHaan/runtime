@@ -13,7 +13,7 @@ using static System.Linq.Expressions.CachedReflectionInfo;
 
 namespace System.Linq.Expressions.Compiler
 {
-    internal partial class LambdaCompiler
+    internal sealed partial class LambdaCompiler
     {
         private void EmitBlockExpression(Expression expr, CompilationFlags flags)
         {
@@ -714,9 +714,7 @@ namespace System.Linq.Expressions.Compiler
             // if (switchValue == null) {
             //     switchIndex = nullCase;
             // } else {
-            //     if (_dictField == null) {
-            //         _dictField = new Dictionary<string, int>(count) { { ... }, ... };
-            //     }
+            //     _dictField ??= new Dictionary<string, int>(count) { { ... }, ... };
             //     if (!_dictField.TryGetValue(switchValue, out switchIndex)) {
             //         switchIndex = -1;
             //     }
@@ -946,7 +944,7 @@ namespace System.Linq.Expressions.Compiler
             // begin the catch, clear the exception, we've
             // already saved it
             _ilg.MarkLabel(endFilter);
-            _ilg.BeginCatchBlock(exceptionType: null!);
+            _ilg.BeginCatchBlock(exceptionType: null);
             _ilg.Emit(OpCodes.Pop);
         }
 

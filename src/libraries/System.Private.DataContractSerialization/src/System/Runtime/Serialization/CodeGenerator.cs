@@ -12,10 +12,11 @@ using System.IO;
 using System.Security;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.Serialization.Json;
 
 namespace System.Runtime.Serialization
 {
-    internal class CodeGenerator
+    internal sealed class CodeGenerator
     {
         private static MethodInfo? s_getTypeFromHandle;
         private static MethodInfo GetTypeFromHandle
@@ -90,17 +91,8 @@ namespace System.Runtime.Serialization
         private Type _delegateType = null!; // initialized in BeginMethod
 
         private static Module? s_serializationModule;
-        private static Module SerializationModule
-        {
-            get
-            {
-                if (s_serializationModule == null)
-                {
-                    s_serializationModule = typeof(CodeGenerator).Module;   // could to be replaced by different dll that has SkipVerification set to false
-                }
-                return s_serializationModule;
-            }
-        }
+        private static Module SerializationModule => s_serializationModule ??= typeof(CodeGenerator).Module;   // could to be replaced by different dll that has SkipVerification set to false
+
         private DynamicMethod _dynamicMethod = null!; // initialized in BeginMethod
 
         private ILGenerator _ilGen = null!; // initialized in BeginMethod
@@ -131,7 +123,7 @@ namespace System.Runtime.Serialization
 
         internal void BeginMethod(string methodName, Type delegateType, bool allowPrivateMemberAccess)
         {
-            MethodInfo signature = delegateType.GetMethod("Invoke")!;
+            MethodInfo signature = JsonFormatWriterGenerator.GetInvokeMethod(delegateType);
             ParameterInfo[] parameters = signature.GetParameters();
             Type[] paramTypes = new Type[parameters.Length];
             for (int i = 0; i < parameters.Length; i++)
@@ -167,7 +159,7 @@ namespace System.Runtime.Serialization
                 EmitSourceLabel("} End method");
             Ret();
 
-            Delegate? retVal = null;
+            Delegate? retVal;
             retVal = _dynamicMethod.CreateDelegate(_delegateType);
             _dynamicMethod = null!;
             _delegateType = null!;
@@ -191,7 +183,7 @@ namespace System.Runtime.Serialization
             return (ArgBuilder)_argList[index];
         }
 
-        internal Type GetVariableType(object var)
+        internal static Type GetVariableType(object var)
         {
             if (var is ArgBuilder)
                 return ((ArgBuilder)var).ArgType;
@@ -366,7 +358,7 @@ namespace System.Runtime.Serialization
             InternalIf(true);
         }
 
-        private OpCode GetBranchCode(Cmp cmp)
+        private static OpCode GetBranchCode(Cmp cmp)
         {
             switch (cmp)
             {
@@ -435,7 +427,7 @@ namespace System.Runtime.Serialization
             MarkLabel(ifState.EndIf);
         }
 
-        internal void VerifyParameterCount(MethodInfo methodInfo, int expectedCount)
+        internal static void VerifyParameterCount(MethodInfo methodInfo, int expectedCount)
         {
             if (methodInfo.GetParameters().Length != expectedCount)
                 throw DiagnosticUtility.ExceptionUtility.ThrowHelperError(XmlObjectSerializer.CreateSerializationException(SR.Format(SR.ParameterCountMismatch, methodInfo.Name, methodInfo.GetParameters().Length, expectedCount)));
@@ -607,10 +599,9 @@ namespace System.Runtime.Serialization
 
         internal Type LoadMember(MemberInfo memberInfo)
         {
-            Type? memberType = null;
-            if (memberInfo is FieldInfo)
+            Type? memberType;
+            if (memberInfo is FieldInfo fieldInfo)
             {
-                FieldInfo fieldInfo = (FieldInfo)memberInfo;
                 memberType = fieldInfo.FieldType;
                 if (fieldInfo.IsStatic)
                 {
@@ -636,9 +627,8 @@ namespace System.Runtime.Serialization
                     Call(getMethod);
                 }
             }
-            else if (memberInfo is MethodInfo)
+            else if (memberInfo is MethodInfo method)
             {
-                MethodInfo method = (MethodInfo)memberInfo;
                 memberType = method.ReturnType;
                 Call(method);
             }
@@ -651,9 +641,8 @@ namespace System.Runtime.Serialization
 
         internal void StoreMember(MemberInfo memberInfo)
         {
-            if (memberInfo is FieldInfo)
+            if (memberInfo is FieldInfo fieldInfo)
             {
-                FieldInfo fieldInfo = (FieldInfo)memberInfo;
                 if (fieldInfo.IsStatic)
                 {
                     if (_codeGenTrace != CodeGenTrace.None)
@@ -806,7 +795,7 @@ namespace System.Runtime.Serialization
             _ilGen.Emit(OpCodes.Unbox, type);
         }
 
-        private OpCode GetLdindOpCode(TypeCode typeCode) =>
+        private static OpCode GetLdindOpCode(TypeCode typeCode) =>
             typeCode switch
             {
                 TypeCode.Boolean => OpCodes.Ldind_I1, // TypeCode.Boolean:
@@ -1073,7 +1062,7 @@ namespace System.Runtime.Serialization
             _ilGen.Emit(OpCodes.Conv_I4);
         }
 
-        private OpCode GetLdelemOpCode(TypeCode typeCode) =>
+        private static OpCode GetLdelemOpCode(TypeCode typeCode) =>
             typeCode switch
             {
                 TypeCode.Object => OpCodes.Ldelem_Ref, // TypeCode.Object:
@@ -1120,7 +1109,7 @@ namespace System.Runtime.Serialization
             EmitStackTop(arrayElementType);
         }
 
-        private OpCode GetStelemOpCode(TypeCode typeCode) =>
+        private static OpCode GetStelemOpCode(TypeCode typeCode) =>
             typeCode switch
             {
                 TypeCode.Object => OpCodes.Stelem_Ref, // TypeCode.Object:
@@ -1281,7 +1270,7 @@ namespace System.Runtime.Serialization
             _blockStack.Push(ifState);
         }
 
-        private OpCode GetConvOpCode(TypeCode typeCode) =>
+        private static OpCode GetConvOpCode(TypeCode typeCode) =>
             typeCode switch
             {
                 TypeCode.Boolean => OpCodes.Conv_I1, // TypeCode.Boolean:
@@ -1357,21 +1346,21 @@ namespace System.Runtime.Serialization
         }
 
         [DoesNotReturn]
-        private void ThrowMismatchException(object expected)
+        private static void ThrowMismatchException(object expected)
         {
             throw System.Runtime.Serialization.DiagnosticUtility.ExceptionUtility.ThrowHelperError(XmlObjectSerializer.CreateSerializationException(SR.Format(SR.ExpectingEnd, expected.ToString())));
         }
 
 
-        internal void EmitSourceInstruction(string line)
+        internal static void EmitSourceInstruction(string line)
         {
         }
 
-        internal void EmitSourceLabel(string line)
+        internal static void EmitSourceLabel(string line)
         {
         }
 
-        internal void EmitSourceComment(string comment)
+        internal static void EmitSourceComment(string comment)
         {
         }
 
@@ -1472,8 +1461,7 @@ namespace System.Runtime.Serialization
         internal void CallStringFormat(string msg, params object[] values)
         {
             NewArray(typeof(object), values.Length);
-            if (_stringFormatArray == null)
-                _stringFormatArray = DeclareLocal(typeof(object[]), "stringFormatArray");
+            _stringFormatArray ??= DeclareLocal(typeof(object[]), "stringFormatArray");
             Stloc(_stringFormatArray);
             for (int i = 0; i < values.Length; i++)
                 StoreArrayElement(_stringFormatArray, i, values[i]);
@@ -1496,7 +1484,7 @@ namespace System.Runtime.Serialization
         }
     }
 
-    internal class ArgBuilder
+    internal sealed class ArgBuilder
     {
         internal int Index;
         internal Type ArgType;
@@ -1507,7 +1495,7 @@ namespace System.Runtime.Serialization
         }
     }
 
-    internal class ForState
+    internal sealed class ForState
     {
         private readonly LocalBuilder? _indexVar;
         private readonly Label _beginLabel;
@@ -1591,7 +1579,7 @@ namespace System.Runtime.Serialization
         GreaterThanOrEqualTo
     }
 
-    internal class IfState
+    internal sealed class IfState
     {
         private Label _elseBegin;
         private Label _endIf;
@@ -1622,7 +1610,7 @@ namespace System.Runtime.Serialization
     }
 
 
-    internal class SwitchState
+    internal sealed class SwitchState
     {
         private readonly Label _defaultLabel;
         private readonly Label _endOfSwitchLabel;

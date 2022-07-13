@@ -17,6 +17,17 @@ namespace ILCompiler
         {
             _genericsMode = genericsMode;
         }
+
+        internal DefType GetClosestDefType(TypeDesc type)
+        {
+            if (type.IsArray)
+            {
+                return GetWellKnownType(WellKnownType.Array);
+            }
+
+            Debug.Assert(type is DefType);
+            return (DefType)type;
+        }
     }
 
     public partial class ReadyToRunCompilerContext : CompilerTypeSystemContext
@@ -25,8 +36,9 @@ namespace ILCompiler
         private SystemObjectFieldLayoutAlgorithm _systemObjectFieldLayoutAlgorithm;
         private VectorOfTFieldLayoutAlgorithm _vectorOfTFieldLayoutAlgorithm;
         private VectorFieldLayoutAlgorithm _vectorFieldLayoutAlgorithm;
+        private Int128FieldLayoutAlgorithm _int128FieldLayoutAlgorithm;
 
-        public ReadyToRunCompilerContext(TargetDetails details, SharedGenericsMode genericsMode, bool bubbleIncludesCorelib)
+        public ReadyToRunCompilerContext(TargetDetails details, SharedGenericsMode genericsMode, bool bubbleIncludesCorelib, CompilerTypeSystemContext oldTypeSystemContext = null)
             : base(details, genericsMode)
         {
             _r2rFieldLayoutAlgorithm = new ReadyToRunMetadataFieldLayoutAlgorithm();
@@ -43,6 +55,14 @@ namespace ILCompiler
 
             // No architecture has completely stable handling of Vector<T> in the abi (Arm64 may change to SVE)
             _vectorOfTFieldLayoutAlgorithm = new VectorOfTFieldLayoutAlgorithm(_r2rFieldLayoutAlgorithm, _vectorFieldLayoutAlgorithm, matchingVectorType, bubbleIncludesCorelib);
+
+            // Int128 and UInt128 should be ABI stable on all currently supported platforms
+            _int128FieldLayoutAlgorithm = new Int128FieldLayoutAlgorithm(_r2rFieldLayoutAlgorithm);
+
+            if (oldTypeSystemContext != null)
+            {
+                InheritOpenModules(oldTypeSystemContext);
+            }
         }
 
         public override FieldLayoutAlgorithm GetLayoutAlgorithmForType(DefType type)
@@ -61,12 +81,23 @@ namespace ILCompiler
             {
                 return _vectorFieldLayoutAlgorithm;
             }
+            else if (Int128FieldLayoutAlgorithm.IsIntegerType(type))
+            {
+                return _int128FieldLayoutAlgorithm;
+            }
             else
             {
                 Debug.Assert(_r2rFieldLayoutAlgorithm != null);
                 return _r2rFieldLayoutAlgorithm;
             }
         }
+
+        /// <summary>
+        /// This is a rough equivalent of the CoreCLR runtime method ReadyToRunInfo::GetFieldBaseOffset.
+        /// In contrast to the auto field layout algorithm, this method unconditionally applies alignment
+        /// between base and derived class (even when they reside in the same version bubble).
+        /// </summary>
+        public LayoutInt CalculateFieldBaseOffset(MetadataType type) => _r2rFieldLayoutAlgorithm.CalculateFieldBaseOffset(type, type.RequiresAlign8(), requiresAlignedBase: true);
 
         public void SetCompilationGroup(ReadyToRunCompilationModuleGroupBase compilationModuleGroup)
         {
@@ -106,6 +137,22 @@ namespace ILCompiler
         {
             return BaseTypeRuntimeInterfacesAlgorithm.Instance;
         }
+
+        TypeDesc _asyncStateMachineBox;
+        public TypeDesc AsyncStateMachineBoxType
+        {
+            get
+            {
+                if (_asyncStateMachineBox == null)
+                {
+                    _asyncStateMachineBox = SystemModule.GetType("System.Runtime.CompilerServices", "AsyncTaskMethodBuilder`1").GetNestedType("AsyncStateMachineBox`1");
+                    if (_asyncStateMachineBox == null)
+                        throw new Exception();
+                }
+
+                return _asyncStateMachineBox;
+            }
+        }
     }
 
     internal class VectorOfTFieldLayoutAlgorithm : FieldLayoutAlgorithm
@@ -138,6 +185,11 @@ namespace ILCompiler
         }
 
         public override bool ComputeContainsGCPointers(DefType type)
+        {
+            return false;
+        }
+
+        public override bool ComputeIsUnsafeValueType(DefType type)
         {
             return false;
         }

@@ -4,7 +4,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
-using TestLibrary;
+using Xunit;
 
 namespace SafeHandleTests
 {
@@ -15,43 +15,34 @@ namespace SafeHandleTests
         public static void RunTest()
         {
             var testHandle = new TestSafeHandle(initialValue);
-            Assert.IsTrue(SafeHandleNative.SafeHandleByValue(testHandle, initialValue));
-            Assert.IsTrue(SafeHandleNative.SafeHandleByValue(null, IntPtr.Zero));
+            Assert.True(SafeHandleNative.SafeHandleByValue(testHandle, initialValue));
 
-            Assert.IsTrue(SafeHandleNative.SafeHandleByRef(ref testHandle, initialValue, newValue));
-            Assert.AreEqual(newValue, testHandle.DangerousGetHandle());
-
-            testHandle = null;
-            Assert.IsTrue(SafeHandleNative.SafeHandleByRef(ref testHandle, IntPtr.Zero, newValue));
-            Assert.AreEqual(newValue, testHandle.DangerousGetHandle());
+            Assert.True(SafeHandleNative.SafeHandleByRef(ref testHandle, initialValue, newValue));
+            Assert.Equal(newValue, testHandle.DangerousGetHandle());
 
             AbstractDerivedSafeHandle abstrHandle = new AbstractDerivedSafeHandleImplementation(initialValue);
-            Assert.IsTrue(SafeHandleNative.SafeHandleInByRef(abstrHandle, initialValue));
+            Assert.True(SafeHandleNative.SafeHandleInByRef(abstrHandle, initialValue));
             Assert.Throws<MarshalDirectiveException>(() => SafeHandleNative.SafeHandleByRef(ref abstrHandle, initialValue, newValue));
-
-            abstrHandle = null;
-            Assert.IsTrue(SafeHandleNative.SafeHandleInByRef(abstrHandle, IntPtr.Zero));
-            Assert.AreEqual(null, abstrHandle);
 
             NoDefaultConstructorSafeHandle noDefaultCtorHandle = new NoDefaultConstructorSafeHandle(initialValue);
             Assert.Throws<MissingMethodException>(() => SafeHandleNative.SafeHandleByRef(ref noDefaultCtorHandle, initialValue, newValue));
 
             testHandle = null;
             SafeHandleNative.SafeHandleOut(out testHandle, initialValue);
-            Assert.AreEqual(initialValue, testHandle.DangerousGetHandle());
+            Assert.Equal(initialValue, testHandle.DangerousGetHandle());
 
             testHandle = SafeHandleNative.SafeHandleReturn(newValue);
-            Assert.AreEqual(newValue, testHandle.DangerousGetHandle());
-            
+            Assert.Equal(newValue, testHandle.DangerousGetHandle());
+
             Assert.Throws<MarshalDirectiveException>(() => SafeHandleNative.SafeHandleReturn_AbstractDerived(initialValue));
             Assert.Throws<MissingMethodException>(() => SafeHandleNative.SafeHandleReturn_NoDefaultConstructor(initialValue));
 
             var abstractDerivedImplementationHandle = SafeHandleNative.SafeHandleReturn_AbstractDerivedImplementation(initialValue);
-            Assert.AreEqual(initialValue, abstractDerivedImplementationHandle.DangerousGetHandle());
-        
+            Assert.Equal(initialValue, abstractDerivedImplementationHandle.DangerousGetHandle());
+
             testHandle = SafeHandleNative.SafeHandleReturn_Swapped(newValue);
-            Assert.AreEqual(newValue, testHandle.DangerousGetHandle());
-            
+            Assert.Equal(newValue, testHandle.DangerousGetHandle());
+
             Assert.Throws<MarshalDirectiveException>(() => SafeHandleNative.SafeHandleReturn_Swapped_AbstractDerived(initialValue));
             Assert.Throws<MissingMethodException>(() => SafeHandleNative.SafeHandleReturn_Swapped_NoDefaultConstructor(initialValue));
 
@@ -60,9 +51,9 @@ namespace SafeHandleTests
                 handle = new TestSafeHandle(initialValue)
             };
 
-            Assert.IsTrue(SafeHandleNative.StructWithSafeHandleByValue(str, initialValue));
-            
-            Assert.IsTrue(SafeHandleNative.StructWithSafeHandleByRef(ref str, initialValue, initialValue));
+            Assert.True(SafeHandleNative.StructWithSafeHandleByValue(str, initialValue));
+
+            Assert.True(SafeHandleNative.StructWithSafeHandleByRef(ref str, initialValue, initialValue));
 
             // Cannot change the value of a SafeHandle-derived field in a struct when marshalling byref.
             Assert.Throws<NotSupportedException>(() => SafeHandleNative.StructWithSafeHandleByRef(ref str, initialValue, newValue));

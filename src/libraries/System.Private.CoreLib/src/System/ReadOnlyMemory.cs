@@ -6,11 +6,9 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
+
 using EditorBrowsableAttribute = System.ComponentModel.EditorBrowsableAttribute;
 using EditorBrowsableState = System.ComponentModel.EditorBrowsableState;
-
-using Internal.Runtime.CompilerServices;
 
 namespace System
 {
@@ -145,7 +143,7 @@ namespace System
             {
                 return (_object is string str) ? str.Substring(_index, _length) : Span.ToString();
             }
-            return string.Format("System.ReadOnlyMemory<{0}>[{1}]", typeof(T).Name, _length);
+            return $"System.ReadOnlyMemory<{typeof(T).Name}>[{_length}]";
         }
 
         /// <summary>

@@ -20,11 +20,6 @@ enum MonoAssemblyBuilderAccess {
 typedef struct _ArrayMethod ArrayMethod;
 
 typedef struct {
-	guint32 owner;
-	MonoReflectionGenericParam *gparam;
-} GenericParamTableEntry;
-
-typedef struct {
 	MonoReflectionILGen *ilgen;
 	MonoReflectionType *rtype;
 	MonoArray *parameters;
@@ -99,16 +94,13 @@ MonoType* mono_type_array_get_and_resolve (MonoArrayHandle array, int idx, MonoE
 void
 mono_sre_array_method_free (ArrayMethod *am);
 
-void
-mono_sre_generic_param_table_entry_free (GenericParamTableEntry *entry);
-
 gboolean
 mono_reflection_methodbuilder_from_method_builder (ReflectionMethodBuilder *rmb, MonoReflectionMethodBuilder *mb,
 						   MonoError *error);
 gboolean
 mono_reflection_methodbuilder_from_ctor_builder (ReflectionMethodBuilder *rmb, MonoReflectionCtorBuilder *mb,
 						 MonoError *error);
-							    
+
 guint32
 mono_reflection_resolution_scope_from_image (MonoDynamicImage *assembly, MonoImage *image);
 

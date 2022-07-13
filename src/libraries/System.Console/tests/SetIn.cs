@@ -10,8 +10,7 @@ using Xunit;
 //
 public class SetIn
 {
-    [Fact]
-    [PlatformSpecific(~TestPlatforms.Browser)]
+    [ConditionalFact(typeof(Helpers), nameof(Helpers.IsConsoleInSupported))]
     public static void SetInThrowsOnNull()
     {
         TextReader savedIn = Console.In;
@@ -25,8 +24,7 @@ public class SetIn
         }
     }
 
-    [Fact]
-    [PlatformSpecific(~TestPlatforms.Browser)]
+    [ConditionalFact(typeof(Helpers), nameof(Helpers.IsConsoleInSupported))]
     public static void SetInReadLine()
     {
         const string TextStringFormat = "Test {0}";

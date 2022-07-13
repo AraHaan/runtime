@@ -225,8 +225,10 @@ namespace System.Formats.Asn1
         /// </exception>
         public bool EncodedValueEquals(AsnWriter other)
         {
-            if (other == null)
+            if (other is null)
+            {
                 throw new ArgumentNullException(nameof(other));
+            }
 
             return EncodeAsSpan().SequenceEqual(other.EncodeAsSpan());
         }
@@ -261,10 +263,7 @@ namespace System.Formats.Asn1
                 byte[]? oldBytes = _buffer;
                 Array.Resize(ref _buffer, BlockSize * blocks);
 
-                if (oldBytes != null)
-                {
-                    oldBytes.AsSpan(0, _offset).Clear();
-                }
+                oldBytes?.AsSpan(0, _offset).Clear();
 #endif
 
 #if DEBUG
@@ -383,8 +382,10 @@ namespace System.Formats.Asn1
         /// </exception>
         public void CopyTo(AsnWriter destination)
         {
-            if (destination == null)
+            if (destination is null)
+            {
                 throw new ArgumentNullException(nameof(destination));
+            }
 
             try
             {
@@ -445,10 +446,7 @@ namespace System.Formats.Asn1
 
         private Scope PushTag(Asn1Tag tag, UniversalTagNumber tagType)
         {
-            if (_nestingStack == null)
-            {
-                _nestingStack = new Stack<StackFrame>();
-            }
+            _nestingStack ??= new Stack<StackFrame>();
 
             Debug.Assert(tag.IsConstructed);
             WriteTag(tag);
@@ -648,7 +646,7 @@ namespace System.Formats.Asn1
             }
         }
 
-        private class ArrayIndexSetOfValueComparer : IComparer<(int, int)>
+        private sealed class ArrayIndexSetOfValueComparer : IComparer<(int, int)>
         {
             private readonly byte[] _data;
 

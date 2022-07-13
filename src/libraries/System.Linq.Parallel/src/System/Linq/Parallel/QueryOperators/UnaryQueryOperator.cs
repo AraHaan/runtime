@@ -62,7 +62,7 @@ namespace System.Linq.Parallel
             get { return _child; }
         }
 
-        internal override sealed OrdinalIndexState OrdinalIndexState
+        internal sealed override OrdinalIndexState OrdinalIndexState
         {
             get { return _indexState; }
         }
@@ -138,7 +138,7 @@ namespace System.Linq.Parallel
             // operator).
             //
 
-            private class ChildResultsRecipient : IPartitionedStreamRecipient<TInput>
+            private sealed class ChildResultsRecipient : IPartitionedStreamRecipient<TInput>
             {
                 private readonly IPartitionedStreamRecipient<TOutput> _outputRecipient;
                 private readonly UnaryQueryOperator<TInput, TOutput> _op;

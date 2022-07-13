@@ -9,7 +9,7 @@ using System.Text;
 
 namespace System.ComponentModel.Composition.ReflectionModel
 {
-    internal class PartCreatorParameterImportDefinition : ReflectionParameterImportDefinition, IPartCreatorImportDefinition
+    internal sealed class PartCreatorParameterImportDefinition : ReflectionParameterImportDefinition, IPartCreatorImportDefinition
     {
         private readonly ContractBasedImportDefinition _productImportDefinition;
 
@@ -20,10 +20,8 @@ namespace System.ComponentModel.Composition.ReflectionModel
             : base(importingLazyParameter, CompositionConstants.PartCreatorContractName, CompositionConstants.PartCreatorTypeIdentity,
                 productImportDefinition.RequiredMetadata, productImportDefinition.Cardinality, CreationPolicy.Any, MetadataServices.EmptyMetadata, origin)
         {
-            if (productImportDefinition == null)
-            {
-                throw new ArgumentNullException(nameof(productImportDefinition));
-            }
+            ArgumentNullException.ThrowIfNull(productImportDefinition);
+
             _productImportDefinition = productImportDefinition;
         }
 

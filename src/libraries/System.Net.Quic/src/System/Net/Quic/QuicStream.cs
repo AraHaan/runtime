@@ -4,6 +4,8 @@
 using System.Buffers;
 using System.IO;
 using System.Net.Quic.Implementations;
+using System.Net.Quic.Implementations.MsQuic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,12 +13,14 @@ namespace System.Net.Quic
 {
     public sealed class QuicStream : Stream
     {
-        private readonly QuicStreamProvider _provider;
+        private readonly MsQuicStream _provider;
 
-        internal QuicStream(QuicStreamProvider provider)
+        internal QuicStream(MsQuicStream provider)
         {
             _provider = provider;
         }
+
+        internal ValueTask StartAsync(CancellationToken cancellationToken) => _provider.StartAsync(cancellationToken);
 
         //
         // Boilerplate implementation stuff
@@ -46,6 +50,12 @@ namespace System.Net.Quic
             return Read(buffer.AsSpan(offset, count));
         }
 
+        public override int ReadByte()
+        {
+            byte b = 0;
+            return Read(new Span<byte>(ref b)) != 0 ? b : -1;
+        }
+
         public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
             ValidateBufferArguments(buffer, offset, count);
@@ -56,6 +66,11 @@ namespace System.Net.Quic
         {
             ValidateBufferArguments(buffer, offset, count);
             Write(buffer.AsSpan(offset, count));
+        }
+
+        public override void WriteByte(byte value)
+        {
+            Write(new ReadOnlySpan<byte>(in value));
         }
 
         public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
@@ -71,6 +86,8 @@ namespace System.Net.Quic
 
         public override bool CanRead => _provider.CanRead;
 
+        public bool ReadsCompleted => _provider.ReadsCompleted;
+
         public override int Read(Span<byte> buffer) => _provider.Read(buffer);
 
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => _provider.ReadAsync(buffer, cancellationToken);
@@ -78,6 +95,20 @@ namespace System.Net.Quic
         public override bool CanWrite => _provider.CanWrite;
 
         public override void Write(ReadOnlySpan<byte> buffer) => _provider.Write(buffer);
+
+        public override bool CanTimeout => _provider.CanTimeout;
+
+        public override int ReadTimeout
+        {
+            get => _provider.ReadTimeout;
+            set => _provider.ReadTimeout = value;
+        }
+
+        public override int WriteTimeout
+        {
+            get => _provider.WriteTimeout;
+            set => _provider.WriteTimeout = value;
+        }
 
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) => _provider.WriteAsync(buffer, cancellationToken);
 
@@ -95,11 +126,9 @@ namespace System.Net.Quic
 
         public ValueTask WriteAsync(ReadOnlySequence<byte> buffers, bool endStream, CancellationToken cancellationToken = default) => _provider.WriteAsync(buffers, endStream, cancellationToken);
 
-        public ValueTask WriteAsync(ReadOnlyMemory<ReadOnlyMemory<byte>> buffers, CancellationToken cancellationToken = default) => _provider.WriteAsync(buffers, cancellationToken);
+        public ValueTask ShutdownCompleted(CancellationToken cancellationToken = default) => _provider.ShutdownCompleted(cancellationToken);
 
-        public ValueTask WriteAsync(ReadOnlyMemory<ReadOnlyMemory<byte>> buffers, bool endStream, CancellationToken cancellationToken = default) => _provider.WriteAsync(buffers, endStream, cancellationToken);
-
-        public ValueTask ShutdownWriteCompleted(CancellationToken cancellationToken = default) => _provider.ShutdownWriteCompleted(cancellationToken);
+        public ValueTask WaitForWriteCompletionAsync(CancellationToken cancellationToken = default) => _provider.WaitForWriteCompletionAsync(cancellationToken);
 
         public void Shutdown() => _provider.Shutdown();
 

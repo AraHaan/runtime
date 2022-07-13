@@ -6,11 +6,10 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Xml.Xsl.Qil;
 using System.Xml.Xsl.XPath;
+using T = System.Xml.Xsl.XmlQueryTypeFactory;
 
 namespace System.Xml.Xsl.Xslt
 {
-    using T = XmlQueryTypeFactory;
-
     #region Comments
     /*  The MatcherBuilder class implements xsl:apply-templates/imports logic, grouping patterns
      *  first by node type, then by node name of their last StepPattern. For example, suppose that
@@ -86,7 +85,7 @@ namespace System.Xml.Xsl.Xslt
      */
     #endregion
 
-    internal class TemplateMatch
+    internal sealed class TemplateMatch
     {
         public static readonly TemplateMatchComparer Comparer = new TemplateMatchComparer();
 
@@ -186,7 +185,6 @@ namespace System.Xml.Xsl.Xslt
             }
 
             // Recognized pattern A, check for B
-            QilNode x = isType;
             _nodeKind = nodeKinds;
             QilBinary lastAnd = leftPath[idx & 3];
 
@@ -200,7 +198,6 @@ namespace System.Xml.Xsl.Xslt
                 )
                 {
                     // Recognized pattern B
-                    x = lastAnd;
                     _qname = (QilName?)((QilLiteral)eq.Right).Value;
                     idx--;
                 }
@@ -224,7 +221,7 @@ namespace System.Xml.Xsl.Xslt
             }
         }
 
-        internal class TemplateMatchComparer : IComparer<TemplateMatch>
+        internal sealed class TemplateMatchComparer : IComparer<TemplateMatch>
         {
             // TemplateMatch x is "greater" than TemplateMatch y iff
             // * x's priority is greater than y's priority, or
@@ -258,7 +255,7 @@ namespace System.Xml.Xsl.Xslt
         }
     }
 
-    internal class PatternBag
+    internal sealed class PatternBag
     {
         public Dictionary<QilName, List<Pattern>> FixedNamePatterns = new Dictionary<QilName, List<Pattern>>();
         public List<QilName> FixedNamePatternsNames = new List<QilName>();  // Needed only to guarantee a stable order
@@ -292,7 +289,7 @@ namespace System.Xml.Xsl.Xslt
         }
     }
 
-    internal class MatcherBuilder
+    internal sealed class MatcherBuilder
     {
         private readonly XPathQilFactory _f;
         private readonly ReferenceReplacer _refReplacer;
@@ -418,7 +415,7 @@ namespace System.Xml.Xsl.Xslt
             return _f.Conditional(_f.IsType(it, xt), MatchPatterns(it, patternList), otherwise);
         }
 
-        private bool IsNoMatch(QilNode matcher)
+        private static bool IsNoMatch(QilNode matcher)
         {
             if (matcher.NodeType == QilNodeType.LiteralInt32)
             {
@@ -569,7 +566,7 @@ namespace System.Xml.Xsl.Xslt
                         default                         : nodeType = null       ;  break;
                         }
 
-                        Debug.Assert(nodeType != null, "Unexpected nodeKind: " + nodeKind);
+                        Debug.Assert(nodeType != null, $"Unexpected nodeKind: {nodeKind}");
                         QilNode typeNameCheck = f.IsType(it, nodeType);
 
                         if (qname != null) {

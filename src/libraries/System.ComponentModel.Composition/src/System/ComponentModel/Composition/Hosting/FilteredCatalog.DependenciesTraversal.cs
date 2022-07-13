@@ -11,7 +11,7 @@ namespace System.ComponentModel.Composition.Hosting
 {
     public partial class FilteredCatalog
     {
-        internal class DependenciesTraversal : IComposablePartCatalogTraversal
+        internal sealed class DependenciesTraversal : IComposablePartCatalogTraversal
         {
             private readonly IEnumerable<ComposablePartDefinition> _parts;
             private readonly Func<ImportDefinition, bool> _importFilter;
@@ -19,15 +19,9 @@ namespace System.ComponentModel.Composition.Hosting
 
             public DependenciesTraversal(FilteredCatalog catalog, Func<ImportDefinition, bool> importFilter)
             {
-                if (catalog == null)
-                {
-                    throw new ArgumentNullException(nameof(catalog));
-                }
+                ArgumentNullException.ThrowIfNull(catalog);
+                ArgumentNullException.ThrowIfNull(importFilter);
 
-                if (importFilter == null)
-                {
-                    throw new ArgumentNullException(nameof(importFilter));
-                }
                 _parts = catalog._innerCatalog;
                 _importFilter = importFilter;
             }
@@ -81,10 +75,7 @@ namespace System.ComponentModel.Composition.Hosting
                                 {
                                     if (import.IsImportDependentOnPart(candidateReachablePart, export, part.IsGeneric() != candidateReachablePart.IsGeneric()))
                                     {
-                                        if (reachablePartList == null)
-                                        {
-                                            reachablePartList = new List<ComposablePartDefinition>();
-                                        }
+                                        reachablePartList ??= new List<ComposablePartDefinition>();
                                         reachablePartList.Add(candidateReachablePart);
                                     }
                                 }

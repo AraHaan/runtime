@@ -122,5 +122,21 @@ namespace System
         internal const int RO_E_CLOSED = unchecked((int)0x80000013);
         internal const int RPC_E_CHANGED_MODE = unchecked((int)0x80010106);
         internal const int TYPE_E_TYPEMISMATCH = unchecked((int)0x80028CA0);
+        internal const int STG_E_PATHNOTFOUND = unchecked((int)0x80030003);
+        internal const int CTL_E_PATHNOTFOUND = unchecked((int)0x800A004C);
+        internal const int CTL_E_FILENOTFOUND = unchecked((int)0x800A0035);
+        internal const int FUSION_E_CACHEFILE_FAILED = unchecked((int)0x80131052);
+        internal const int FUSION_E_INVALID_NAME = unchecked((int)0x80131047);
+        internal const int FUSION_E_PRIVATE_ASM_DISALLOWED = unchecked((int)0x80131044);
+        internal const int FUSION_E_REF_DEF_MISMATCH = unchecked((int)0x80131040);
+        internal const int ERROR_TOO_MANY_OPEN_FILES = unchecked((int)0x80070004);
+        internal const int ERROR_SHARING_VIOLATION = unchecked((int)0x80070020);
+        internal const int ERROR_LOCK_VIOLATION = unchecked((int)0x80070021);
+        internal const int ERROR_OPEN_FAILED = unchecked((int)0x8007006E);
+        internal const int ERROR_DISK_CORRUPT = unchecked((int)0x80070571);
+        internal const int ERROR_UNRECOGNIZED_VOLUME = unchecked((int)0x800703ED);
+        internal const int ERROR_DLL_INIT_FAILED = unchecked((int)0x8007045A);
+        internal const int MSEE_E_ASSEMBLYLOADINPROGRESS = unchecked((int)0x80131016);
+        internal const int ERROR_FILE_INVALID = unchecked((int)0x800703EE);
     }
 }

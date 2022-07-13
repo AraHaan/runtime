@@ -114,11 +114,13 @@ namespace System.Runtime.CompilerServices.Tests
             Assert.Equal((LoadHint)(-2), attr2.LoadHint);
         }
 
+#pragma warning disable SYSLIB0015 // Obsolete: DisablePrivateReflectionAttribute
         [Fact]
         public static void DisablePrivateReflectionAttributeTests()
         {
             new DisablePrivateReflectionAttribute();
         }
+#pragma warning restore SYSLIB0015 // Obsolete: DisablePrivateReflectionAttribute
 
         [Fact]
         public static void DiscardableAttributeTests()
@@ -231,11 +233,13 @@ namespace System.Runtime.CompilerServices.Tests
             new StringFreezingAttribute();
         }
 
+#pragma warning disable SYSLIB0025 // Obsolete: SuppressIldasmAttribute
         [Fact]
         public static void SuppressIldasmAttributeTests()
         {
             new SuppressIldasmAttribute();
         }
+#pragma warning restore SYSLIB0025 // Obsolete: SuppressIldasmAttribute
 
         [Fact]
         public static void TypeForwardedFromAttributeTests()
@@ -290,6 +294,49 @@ namespace System.Runtime.CompilerServices.Tests
         public static void EnumeratorCancellationAttributeTests()
         {
             new EnumeratorCancellationAttribute();
+        }
+
+        [Fact]
+        public static void InterpolatedStringHandlerAttributeTests()
+        {
+            new InterpolatedStringHandlerAttribute();
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("param1")]
+        public static void InterpolatedStringHandlerArgumentAttributeTests(string firstParameterName)
+        {
+            var attr1 = new InterpolatedStringHandlerArgumentAttribute(firstParameterName);
+            Assert.NotNull(attr1.Arguments);
+            Assert.Same(attr1.Arguments, attr1.Arguments);
+            Assert.Equal(1, attr1.Arguments.Length);
+            Assert.Equal(firstParameterName, attr1.Arguments[0]);
+
+            string[] arguments = new[] { firstParameterName, "param2" };
+            var attr2 = new InterpolatedStringHandlerArgumentAttribute(arguments);
+            Assert.NotNull(attr2.Arguments);
+            Assert.Same(arguments, attr2.Arguments);
+            Assert.Equal(firstParameterName, attr2.Arguments[0]);
+            Assert.Equal("param2", attr2.Arguments[1]);
+        }
+
+        [Fact]
+        public static void RequiredMemberAttributeTests()
+        {
+            new RequiredMemberAttribute();
+        }
+
+        [Fact]
+        public static void CompilerFeatureRequiredTests()
+        {
+            var attr1 = new CompilerFeatureRequiredAttribute("feature1");
+            Assert.Equal("feature1", attr1.FeatureName);
+            Assert.False(attr1.IsOptional);
+
+            var attr2 = new CompilerFeatureRequiredAttribute("feature2") { IsOptional = true };
+            Assert.Equal("feature2", attr2.FeatureName);
+            Assert.True(attr2.IsOptional);
         }
     }
 }

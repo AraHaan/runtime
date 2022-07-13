@@ -7,6 +7,7 @@ using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.ComponentModel;
@@ -31,7 +32,11 @@ namespace System.Diagnostics.Tests
         [Fact]
         public void TestEnvironmentProperty()
         {
-            Assert.NotEqual(0, new Process().StartInfo.Environment.Count);
+            // Whole list of environment variables can no longer be accessed on non-OSX apple platforms
+            if (!PlatformDetection.IsiOS && !PlatformDetection.IstvOS && !PlatformDetection.IsMacCatalyst)
+            {
+                Assert.NotEqual(0, new Process().StartInfo.Environment.Count);
+            }
 
             ProcessStartInfo psi = new ProcessStartInfo();
 
@@ -39,8 +44,11 @@ namespace System.Diagnostics.Tests
             // with current environmental variables.
 
             IDictionary<string, string> environment = psi.Environment;
-
-            Assert.NotEqual(0, environment.Count);
+            // Whole list of environment variables can no longer be accessed on non-OSX apple platforms
+            if (!PlatformDetection.IsiOS && !PlatformDetection.IstvOS && !PlatformDetection.IsMacCatalyst)
+            {
+                Assert.NotEqual(0, environment.Count);
+            }
 
             int countItems = environment.Count;
 
@@ -456,8 +464,8 @@ namespace System.Diagnostics.Tests
         [OuterLoop("Requires admin privileges")]
         public void TestUserCredentialsPropertiesOnWindows()
         {
-            // [SuppressMessage("Microsoft.Security", "CS002:SecretInNextLine", Justification="Unit test dummy credentials.")]
-            const string username = "testForDotnetRuntime", password = "PassWord123!!";
+            const string username = "testForDotnetRuntime";
+            string password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(33)) + "_-As@!%*(1)4#2";
 
             uint removalResult = Interop.NetUserDel(null, username);
             Assert.True(removalResult == Interop.ExitCodes.NERR_Success || removalResult == Interop.ExitCodes.NERR_UserNotFound);
@@ -467,22 +475,34 @@ namespace System.Diagnostics.Tests
             bool hasStarted = false;
             SafeProcessHandle handle = null;
             Process p = null;
+            string workingDirectory = null;
 
             try
             {
                 p = CreateProcessLong();
 
+                workingDirectory = string.IsNullOrEmpty(p.StartInfo.WorkingDirectory)
+                    ? Directory.GetCurrentDirectory()
+                    : p.StartInfo.WorkingDirectory;
+
                 if (PlatformDetection.IsNotWindowsServerCore) // for this particular Windows version it fails with Attempted to perform an unauthorized operation (#46619)
                 {
                     // ensure the new user can access the .exe (otherwise you get Access is denied exception)
-                    SetAccessControl(username, p.StartInfo.FileName, add: true);
+                    SetAccessControl(username, p.StartInfo.FileName, workingDirectory, add: true);
                 }
 
                 p.StartInfo.LoadUserProfile = true;
                 p.StartInfo.UserName = username;
                 p.StartInfo.PasswordInClearText = password;
 
-                hasStarted = p.Start();
+                try
+                {
+                    hasStarted = p.Start();
+                }
+                catch (Win32Exception ex) when (ex.NativeErrorCode == ERROR_SHARING_VIOLATION)
+                {
+                    throw new SkipTestException($"{p.StartInfo.FileName} has been locked by some other process");
+                }
 
                 if (Interop.OpenProcessToken(p.SafeHandle, 0x8u, out handle))
                 {
@@ -515,29 +535,38 @@ namespace System.Diagnostics.Tests
 
                 if (PlatformDetection.IsNotWindowsServerCore)
                 {
-                    SetAccessControl(username, p.StartInfo.FileName, add: false); // remove the access
+                    SetAccessControl(username, p.StartInfo.FileName, workingDirectory, add: false); // remove the access
                 }
 
                 Assert.Equal(Interop.ExitCodes.NERR_Success, Interop.NetUserDel(null, username));
             }
         }
 
-        private static void SetAccessControl(string userName, string filePath, bool add)
+        private static void SetAccessControl(string userName, string filePath, string directoryPath, bool add)
         {
             FileInfo fileInfo = new FileInfo(filePath);
-            FileSecurity accessControl = fileInfo.GetAccessControl();
-            FileSystemAccessRule fileSystemAccessRule = new FileSystemAccessRule(userName, FileSystemRights.ReadAndExecute, AccessControlType.Allow);
+            FileSecurity fileSecurity = fileInfo.GetAccessControl();
+            Apply(userName, fileSecurity, FileSystemRights.ReadAndExecute, add);
+            fileInfo.SetAccessControl(fileSecurity);
 
-            if (add)
-            {
-                accessControl.AddAccessRule(fileSystemAccessRule);
-            }
-            else
-            {
-                accessControl.RemoveAccessRule(fileSystemAccessRule);
-            }
+            DirectoryInfo directoryInfo = new DirectoryInfo(directoryPath);
+            DirectorySecurity directorySecurity = directoryInfo.GetAccessControl();
+            Apply(userName, directorySecurity, FileSystemRights.Read , add);
+            directoryInfo.SetAccessControl(directorySecurity);
 
-            fileInfo.SetAccessControl(accessControl);
+            static void Apply(string userName, FileSystemSecurity accessControl, FileSystemRights rights, bool add)
+            {
+                FileSystemAccessRule fileSystemAccessRule = new FileSystemAccessRule(userName, rights, AccessControlType.Allow);
+
+                if (add)
+                {
+                    accessControl.AddAccessRule(fileSystemAccessRule);
+                }
+                else
+                {
+                    accessControl.RemoveAccessRule(fileSystemAccessRule);
+                }
+            }
         }
 
         private static List<string> GetNamesOfUserProfiles()
@@ -780,7 +809,11 @@ namespace System.Diagnostics.Tests
 
             StringDictionary environmentVariables = psi.EnvironmentVariables;
 
-            Assert.NotEqual(0, environmentVariables.Count);
+            // Whole list of environment variables can no longer be accessed on non-OSX apple platforms
+            if (!PlatformDetection.IsiOS && !PlatformDetection.IstvOS && !PlatformDetection.IsMacCatalyst)
+            {
+                Assert.NotEqual(0, environmentVariables.Count);
+            }
 
             int CountItems = environmentVariables.Count;
 
@@ -1155,12 +1188,11 @@ namespace System.Diagnostics.Tests
             sb.AppendLine("------------------------------");
 
             string open = GetAssociationString(0, 1 /* ASSOCSTR_COMMAND */, ".txt", "open");
-            sb.AppendFormat("Open command: {0}", open);
-            sb.AppendLine();
+            sb.AppendLine($"Open command: {open}");
 
             string progId = GetAssociationString(0, 20 /* ASSOCSTR_PROGID */, ".txt", null);
-            sb.AppendFormat("ProgID: {0}", progId);
-            sb.AppendLine();
+            sb.AppendLine($"ProgID: {progId}");
+
             return sb.ToString();
         }
 
@@ -1199,6 +1231,7 @@ namespace System.Diagnostics.Tests
         private const int ERROR_SUCCESS = 0x0;
         private const int ERROR_FILE_NOT_FOUND = 0x2;
         private const int ERROR_BAD_EXE_FORMAT = 0xC1;
+        private const int ERROR_SHARING_VIOLATION = 0x20;
 
         [Theory]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/34685", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
@@ -1303,11 +1336,16 @@ namespace System.Diagnostics.Tests
                 return; // On Server Core, notepad exists but does not return a title
             }
 
+            if (PlatformDetection.IsWindows10Version22000OrGreater)
+            {
+                return; // On Windows 11, we aren't able to get the title for some reason; Windows 10 coverage should be sufficient
+            }
+
             // On some Windows versions, the file extension is not included in the title
             string expected = Path.GetFileNameWithoutExtension(filename);
 
             process.WaitForInputIdle(); // Give the file a chance to load
-            Assert.Equal("notepad", process.ProcessName);
+            Assert.Equal("notepad", process.ProcessName.ToLower());
 
             // Notepad calls CreateWindowEx with pWindowName of empty string, then calls SetWindowTextW
             // with "Untitled - Notepad" then finally if you're opening a file, calls SetWindowTextW

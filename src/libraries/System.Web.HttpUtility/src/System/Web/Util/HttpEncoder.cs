@@ -14,8 +14,7 @@ namespace System.Web.Util
     {
         private static void AppendCharAsUnicodeJavaScript(StringBuilder builder, char c)
         {
-            builder.Append("\\u");
-            builder.Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+            builder.Append($"\\u{(int)c:x4}");
         }
 
         private static bool CharRequiresJavaScriptEncoding(char c) =>
@@ -56,10 +55,8 @@ namespace System.Web.Util
             {
                 return;
             }
-            if (output == null)
-            {
-                throw new ArgumentNullException(nameof(output));
-            }
+
+            ArgumentNullException.ThrowIfNull(output);
 
             HtmlAttributeEncodeInternal(value, output);
         }
@@ -113,10 +110,7 @@ namespace System.Web.Util
 
         internal static void HtmlDecode(string? value, TextWriter output)
         {
-            if (output == null)
-            {
-                throw new ArgumentNullException(nameof(output));
-            }
+            ArgumentNullException.ThrowIfNull(output);
 
             output.Write(WebUtility.HtmlDecode(value));
         }
@@ -126,10 +120,7 @@ namespace System.Web.Util
 
         internal static void HtmlEncode(string? value, TextWriter output)
         {
-            if (output == null)
-            {
-                throw new ArgumentNullException(nameof(output));
-            }
+            ArgumentNullException.ThrowIfNull(output);
 
             output.Write(WebUtility.HtmlEncode(value));
         }
@@ -178,10 +169,7 @@ namespace System.Web.Util
                 // to the string builder when special characters are detected.
                 if (CharRequiresJavaScriptEncoding(c))
                 {
-                    if (b == null)
-                    {
-                        b = new StringBuilder(value.Length + 5);
-                    }
+                    b ??= new StringBuilder(value.Length + 5);
 
                     if (count > 0)
                     {
@@ -648,10 +636,7 @@ namespace System.Web.Util
                 return false;
             }
 
-            if (bytes == null)
-            {
-                throw new ArgumentNullException(nameof(bytes));
-            }
+            ArgumentNullException.ThrowIfNull(bytes);
             if (offset < 0 || offset > bytes.Length)
             {
                 throw new ArgumentOutOfRangeException(nameof(offset));
@@ -665,7 +650,7 @@ namespace System.Web.Util
         }
 
         // Internal class to facilitate URL decoding -- keeps char buffer and byte buffer, allows appending of either chars or bytes
-        private class UrlDecoder
+        private sealed class UrlDecoder
         {
             private readonly int _bufferSize;
 
@@ -720,10 +705,7 @@ namespace System.Web.Util
                                 else
                 */
                 {
-                    if (_byteBuffer == null)
-                    {
-                        _byteBuffer = new byte[_bufferSize];
-                    }
+                    _byteBuffer ??= new byte[_bufferSize];
 
                     _byteBuffer[_numBytes++] = b;
                 }

@@ -49,8 +49,10 @@ namespace System.Threading.Tasks.Dataflow
         /// <exception cref="System.ArgumentNullException">The <paramref name="dataflowBlockOptions"/> is null (Nothing in Visual Basic).</exception>
         public JoinBlock(GroupingDataflowBlockOptions dataflowBlockOptions)
         {
-            // Validate arguments
-            if (dataflowBlockOptions == null) throw new ArgumentNullException(nameof(dataflowBlockOptions));
+            if (dataflowBlockOptions is null)
+            {
+                throw new ArgumentNullException(nameof(dataflowBlockOptions));
+            }
 
             // Ensure we have options that can't be changed by the caller
             dataflowBlockOptions = dataflowBlockOptions.DefaultOrClone();
@@ -69,11 +71,11 @@ namespace System.Threading.Tasks.Dataflow
             _sharedResources = new JoinBlockTargetSharedResources(this, targets,
                 () =>
                 {
-                    _source.AddMessage(Tuple.Create(_target1.GetOneMessage(), _target2.GetOneMessage()));
+                    _source.AddMessage(Tuple.Create(_target1!.GetOneMessage(), _target2!.GetOneMessage()));
                 },
                 exception =>
                 {
-                    Volatile.Write(ref _sharedResources._hasExceptions, true);
+                    Volatile.Write(ref _sharedResources!._hasExceptions, true);
                     _source.AddException(exception);
                 },
                 dataflowBlockOptions);
@@ -100,13 +102,11 @@ namespace System.Threading.Tasks.Dataflow
             // Handle async cancellation requests by declining on the target
             Common.WireCancellationToComplete(
                 dataflowBlockOptions.CancellationToken, _source.Completion, state => ((JoinBlock<T1, T2>)state!)._sharedResources.CompleteEachTarget(), this);
-#if FEATURE_TRACING
             DataflowEtwProvider etwLog = DataflowEtwProvider.Log;
             if (etwLog.IsEnabled())
             {
                 etwLog.DataflowBlockCreated(this, dataflowBlockOptions);
             }
-#endif
         }
 
         /// <include file='XmlDocs/CommonXmlDocComments.xml' path='CommonXmlDocComments/Sources/Member[@name="LinkTo"]/*' />
@@ -143,7 +143,10 @@ namespace System.Threading.Tasks.Dataflow
         /// <include file='XmlDocs/CommonXmlDocComments.xml' path='CommonXmlDocComments/Blocks/Member[@name="Fault"]/*' />
         void IDataflowBlock.Fault(Exception exception)
         {
-            if (exception == null) throw new ArgumentNullException(nameof(exception));
+            if (exception is null)
+            {
+                throw new ArgumentNullException(nameof(exception));
+            }
 
             Debug.Assert(_sharedResources != null, "_sharedResources not initialized");
             Debug.Assert(_sharedResources._exceptionAction != null, "_sharedResources._exceptionAction not initialized");
@@ -187,15 +190,9 @@ namespace System.Threading.Tasks.Dataflow
         public override string ToString() { return Common.GetNameForDebugger(this, _source.DataflowBlockOptions); }
 
         /// <summary>The data to display in the debugger display attribute.</summary>
-        private object DebuggerDisplayContent
-        {
-            get
-            {
-                return string.Format("{0}, OutputCount={1}",
-                    Common.GetNameForDebugger(this, _source.DataflowBlockOptions),
-                    OutputCountForDebugger);
-            }
-        }
+        private object DebuggerDisplayContent =>
+            $"{Common.GetNameForDebugger(this, _source.DataflowBlockOptions)}, OutputCount={OutputCountForDebugger}";
+
         /// <summary>Gets the data to display in the debugger display attribute for this instance.</summary>
         object IDebuggerDisplay.Content { get { return DebuggerDisplayContent; } }
 
@@ -279,8 +276,10 @@ namespace System.Threading.Tasks.Dataflow
         /// <exception cref="System.ArgumentNullException">The <paramref name="dataflowBlockOptions"/> is null (Nothing in Visual Basic).</exception>
         public JoinBlock(GroupingDataflowBlockOptions dataflowBlockOptions)
         {
-            // Validate arguments
-            if (dataflowBlockOptions == null) throw new ArgumentNullException(nameof(dataflowBlockOptions));
+            if (dataflowBlockOptions is null)
+            {
+                throw new ArgumentNullException(nameof(dataflowBlockOptions));
+            }
 
             // Ensure we have options that can't be changed by the caller
             dataflowBlockOptions = dataflowBlockOptions.DefaultOrClone();
@@ -297,10 +296,10 @@ namespace System.Threading.Tasks.Dataflow
             // Configure the targets
             var targets = new JoinBlockTargetBase[3];
             _sharedResources = new JoinBlockTargetSharedResources(this, targets,
-                () => _source.AddMessage(Tuple.Create(_target1.GetOneMessage(), _target2.GetOneMessage(), _target3.GetOneMessage())),
+                () => _source.AddMessage(Tuple.Create(_target1!.GetOneMessage(), _target2!.GetOneMessage(), _target3!.GetOneMessage())),
                 exception =>
                 {
-                    Volatile.Write(ref _sharedResources._hasExceptions, true);
+                    Volatile.Write(ref _sharedResources!._hasExceptions, true);
                     _source.AddException(exception);
                 },
                 dataflowBlockOptions);
@@ -328,13 +327,11 @@ namespace System.Threading.Tasks.Dataflow
             // Handle async cancellation requests by declining on the target
             Common.WireCancellationToComplete(
                 dataflowBlockOptions.CancellationToken, _source.Completion, state => ((JoinBlock<T1, T2, T3>)state!)._sharedResources.CompleteEachTarget(), this);
-#if FEATURE_TRACING
             DataflowEtwProvider etwLog = DataflowEtwProvider.Log;
             if (etwLog.IsEnabled())
             {
                 etwLog.DataflowBlockCreated(this, dataflowBlockOptions);
             }
-#endif
         }
 
         /// <include file='XmlDocs/CommonXmlDocComments.xml' path='CommonXmlDocComments/Sources/Member[@name="LinkTo"]/*' />
@@ -373,7 +370,10 @@ namespace System.Threading.Tasks.Dataflow
         /// <include file='XmlDocs/CommonXmlDocComments.xml' path='CommonXmlDocComments/Blocks/Member[@name="Fault"]/*' />
         void IDataflowBlock.Fault(Exception exception)
         {
-            if (exception == null) throw new ArgumentNullException(nameof(exception));
+            if (exception is null)
+            {
+                throw new ArgumentNullException(nameof(exception));
+            }
 
             Debug.Assert(_sharedResources != null, "_sharedResources not initialized");
             Debug.Assert(_sharedResources._exceptionAction != null, "_sharedResources._exceptionAction not initialized");
@@ -420,15 +420,9 @@ namespace System.Threading.Tasks.Dataflow
         public override string ToString() { return Common.GetNameForDebugger(this, _source.DataflowBlockOptions); }
 
         /// <summary>The data to display in the debugger display attribute.</summary>
-        private object DebuggerDisplayContent
-        {
-            get
-            {
-                return string.Format("{0} OutputCount={1}",
-                    Common.GetNameForDebugger(this, _source.DataflowBlockOptions),
-                    OutputCountForDebugger);
-            }
-        }
+        private object DebuggerDisplayContent =>
+            $"{Common.GetNameForDebugger(this, _source.DataflowBlockOptions)} OutputCount={OutputCountForDebugger}";
+
         /// <summary>Gets the data to display in the debugger display attribute for this instance.</summary>
         object IDebuggerDisplay.Content { get { return DebuggerDisplayContent; } }
 
@@ -660,7 +654,7 @@ namespace System.Threading.Tasks.Dataflow.Internal
             Debug.Assert(_nonGreedy!.ReservedMessage.Key != null, "This target must have a reserved message");
 
             bool consumed;
-            T consumedValue = _nonGreedy.ReservedMessage.Key.ConsumeMessage(_nonGreedy.ReservedMessage.Value, this, out consumed);
+            T? consumedValue = _nonGreedy.ReservedMessage.Key.ConsumeMessage(_nonGreedy.ReservedMessage.Value, this, out consumed);
 
             // Null out our reservation
             _nonGreedy.ReservedMessage = default(KeyValuePair<ISourceBlock<T>, DataflowMessageHeader>);
@@ -721,7 +715,7 @@ namespace System.Threading.Tasks.Dataflow.Internal
 
                 // Try to consume the popped message
                 bool consumed;
-                T consumedValue = next.Key.ConsumeMessage(next.Value, this, out consumed);
+                T? consumedValue = next.Key.ConsumeMessage(next.Value, this, out consumed);
                 if (consumed)
                 {
                     lock (_sharedResources.IncomingLock)
@@ -801,7 +795,7 @@ namespace System.Threading.Tasks.Dataflow.Internal
             lock (_sharedResources.IncomingLock)
             {
                 _decliningPermanently = true;
-                if (_messages != null) _messages.Clear();
+                _messages?.Clear();
             }
 
             // Release any postponed messages
@@ -861,7 +855,7 @@ namespace System.Threading.Tasks.Dataflow.Internal
                         Debug.Assert(source != null, "We must have thrown if source == null && consumeToAccept == true.");
 
                         bool consumed;
-                        messageValue = source.ConsumeMessage(messageHeader, this, out consumed);
+                        messageValue = source.ConsumeMessage(messageHeader, this, out consumed)!;
                         if (!consumed) return DataflowMessageStatus.NotAvailable;
                     }
                     if (_sharedResources._boundingState != null && HasTheHighestNumberOfMessagesAvailable) _sharedResources._boundingState.CurrentCount += 1; // track this new item against our bound
@@ -942,7 +936,10 @@ namespace System.Threading.Tasks.Dataflow.Internal
         /// <include file='XmlDocs/CommonXmlDocComments.xml' path='CommonXmlDocComments/Blocks/Member[@name="Fault"]/*' />
         void IDataflowBlock.Fault(Exception exception)
         {
-            if (exception == null) throw new ArgumentNullException(nameof(exception));
+            if (exception is null)
+            {
+                throw new ArgumentNullException(nameof(exception));
+            }
 
             CompleteCore(exception, dropPendingMessages: true, releaseReservedMessages: false);
         }
@@ -961,10 +958,7 @@ namespace System.Threading.Tasks.Dataflow.Internal
             get
             {
                 var displayJoin = _sharedResources._ownerJoin as IDebuggerDisplay;
-                return string.Format("{0} InputCount={1}, Join=\"{2}\"",
-                    Common.GetNameForDebugger(this),
-                    InputCountForDebugger,
-                    displayJoin != null ? displayJoin.Content : _sharedResources._ownerJoin);
+                return $"{Common.GetNameForDebugger(this)} InputCount={InputCountForDebugger}, Join=\"{(displayJoin != null ? displayJoin.Content : _sharedResources._ownerJoin)}\"";
             }
         }
         /// <summary>Gets the data to display in the debugger display attribute for this instance.</summary>
@@ -1288,7 +1282,6 @@ namespace System.Threading.Tasks.Dataflow.Internal
             _taskForInputProcessing = new Task(thisSharedResources => ((JoinBlockTargetSharedResources)thisSharedResources!).ProcessMessagesLoopCore(), this,
                                                 Common.GetCreationOptionsForTask(isReplacementReplica));
 
-#if FEATURE_TRACING
             DataflowEtwProvider etwLog = DataflowEtwProvider.Log;
             if (etwLog.IsEnabled())
             {
@@ -1296,7 +1289,6 @@ namespace System.Threading.Tasks.Dataflow.Internal
                     _ownerJoin, _taskForInputProcessing, DataflowEtwProvider.TaskLaunchedReason.ProcessingInputMessages,
                     _targets.Max(t => t.NumberOfMessagesAvailableOrPostponed));
             }
-#endif
 
             // Start the task handling scheduling exceptions
             Exception? exception = Common.StartTaskSafe(_taskForInputProcessing, _dataflowBlockOptions.TaskScheduler);
@@ -1456,8 +1448,7 @@ namespace System.Threading.Tasks.Dataflow.Internal
             get
             {
                 var displayJoin = _ownerJoin as IDebuggerDisplay;
-                return string.Format("Block=\"{0}\"",
-                    displayJoin != null ? displayJoin.Content : _ownerJoin);
+                return $"Block=\"{(displayJoin != null ? displayJoin.Content : _ownerJoin)}\"";
             }
         }
     }

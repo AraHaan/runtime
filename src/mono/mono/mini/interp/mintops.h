@@ -23,7 +23,12 @@ typedef enum
 	MintOpFieldToken,
 	MintOpClassToken,
 	MintOpTwoShorts,
-	MintOpShortAndInt
+	MintOpTwoInts,
+	MintOpShortAndInt,
+	MintOpShortAndShortBranch,
+	MintOpPair2,
+	MintOpPair3,
+	MintOpPair4
 } MintOpArgType;
 
 #define OPDEF(a,b,c,d,e,f) a,
@@ -54,20 +59,29 @@ typedef enum {
 
 #define MINT_SWITCH_LEN(n) (4 + (n) * 2)
 
+#define MINT_IS_NOP(op) ((op) == MINT_NOP || (op) == MINT_DEF || (op) == MINT_DUMMY_USE || (op) == MINT_IL_SEQ_POINT)
 #define MINT_IS_MOV(op) ((op) >= MINT_MOV_I1 && (op) <= MINT_MOV_VT)
+#define MINT_IS_UNCONDITIONAL_BRANCH(op) ((op) >= MINT_BR && (op) <= MINT_CALL_HANDLER_S)
 #define MINT_IS_CONDITIONAL_BRANCH(op) ((op) >= MINT_BRFALSE_I4 && (op) <= MINT_BLT_UN_R8_S)
 #define MINT_IS_UNOP_CONDITIONAL_BRANCH(op) ((op) >= MINT_BRFALSE_I4 && (op) <= MINT_BRTRUE_R8_S)
 #define MINT_IS_BINOP_CONDITIONAL_BRANCH(op) ((op) >= MINT_BEQ_I4 && (op) <= MINT_BLT_UN_R8_S)
+#define MINT_IS_SUPER_BRANCH(op) ((op) >= MINT_BRFALSE_I4_SP && (op) <= MINT_BLT_UN_I8_IMM_SP)
 #define MINT_IS_CALL(op) ((op) >= MINT_CALL && (op) <= MINT_JIT_CALL)
 #define MINT_IS_PATCHABLE_CALL(op) ((op) >= MINT_CALL && (op) <= MINT_VCALL)
-#define MINT_IS_NEWOBJ(op) ((op) >= MINT_NEWOBJ && (op) <= MINT_NEWOBJ_MAGIC)
 #define MINT_IS_LDC_I4(op) ((op) >= MINT_LDC_I4_M1 && (op) <= MINT_LDC_I4)
+#define MINT_IS_LDC_I8(op) ((op) >= MINT_LDC_I8_0 && (op) <= MINT_LDC_I8)
 #define MINT_IS_UNOP(op) ((op) >= MINT_ADD1_I4 && (op) <= MINT_CEQ0_I4)
 #define MINT_IS_BINOP(op) ((op) >= MINT_ADD_I4 && (op) <= MINT_CLT_UN_R8)
+#define MINT_IS_BINOP_SHIFT(op) ((op) >= MINT_SHR_UN_I4 && (op) <= MINT_SHR_I8)
 #define MINT_IS_LDFLD(op) ((op) >= MINT_LDFLD_I1 && (op) <= MINT_LDFLD_O)
 #define MINT_IS_STFLD(op) ((op) >= MINT_STFLD_I1 && (op) <= MINT_STFLD_O)
+#define MINT_IS_LDIND_INT(op) ((op) >= MINT_LDIND_I1 && (op) <= MINT_LDIND_I8)
+#define MINT_IS_STIND_INT(op) ((op) >= MINT_STIND_I1 && (op) <= MINT_STIND_I8)
 
 #define MINT_CALL_ARGS 2
+#define MINT_CALL_ARGS_SREG -2
+
+#define MINT_MOV_PAIRS_MAX 4
 
 extern unsigned char const mono_interp_oplen[];
 extern int const mono_interp_op_dregs [];

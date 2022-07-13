@@ -4,15 +4,18 @@
 using System.IO;
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Kernel32
+    internal static partial class Kernel32
     {
         /// <summary>
         /// WARNING: This method does not implicitly handle long paths. Use SetFileAttributes.
         /// </summary>
-        [DllImport(Libraries.Kernel32, EntryPoint = "SetFileAttributesW", SetLastError = true, CharSet = CharSet.Unicode, BestFitMapping = false)]
-        private static extern bool SetFileAttributesPrivate(string name, int attr);
+        [LibraryImport(Libraries.Kernel32, EntryPoint = "SetFileAttributesW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool SetFileAttributesPrivate(
+            string name,
+            int attr);
 
         internal static bool SetFileAttributes(string name, int attr)
         {

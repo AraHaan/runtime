@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -83,7 +84,7 @@ namespace System.ComponentModel.DataAnnotations
         ///     <see cref="Method" />.
         /// </param>
         /// <param name="method">The name of the method to invoke in <paramref name="validatorType" />.</param>
-        public CustomValidationAttribute(Type validatorType, string method)
+        public CustomValidationAttribute([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type validatorType, string method)
             : base(() => SR.CustomValidationAttribute_ValidationError)
         {
             ValidatorType = validatorType;
@@ -98,23 +99,13 @@ namespace System.ComponentModel.DataAnnotations
         /// <summary>
         ///     Gets the type that contains the validation method identified by <see cref="Method" />.
         /// </summary>
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
         public Type ValidatorType { get; }
 
         /// <summary>
         /// Gets a unique identifier for this attribute.
         /// </summary>
-        public override object TypeId
-        {
-            get
-            {
-                if (_typeId is null)
-                {
-                    _typeId = new Tuple<string, Type>(Method, ValidatorType);
-                }
-
-                return _typeId;
-            }
-        }
+        public override object TypeId => _typeId ??= new Tuple<string, Type>(Method, ValidatorType);
 
         /// <summary>
         ///     Gets the name of the method in <see cref="ValidatorType" /> to invoke to perform validation.
@@ -250,9 +241,8 @@ namespace System.ComponentModel.DataAnnotations
             }
 
             // Named method must be public and static
-            var methodInfo = ValidatorType.GetRuntimeMethods()
-                .SingleOrDefault(m => string.Equals(m.Name, Method, StringComparison.Ordinal)
-                                    && m.IsPublic && m.IsStatic);
+            var methodInfo = ValidatorType.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .SingleOrDefault(m => string.Equals(m.Name, Method, StringComparison.Ordinal));
             if (methodInfo == null)
             {
                 return SR.Format(SR.CustomValidationAttribute_Method_Not_Found, Method, ValidatorType.Name);

@@ -17,33 +17,29 @@ namespace System.Diagnostics
     {
         private static readonly object s_createProcessLock = new object();
 
+        private string? _processName;
+
         /// <summary>
         /// Creates an array of <see cref="Process"/> components that are associated with process resources on a
         /// remote computer. These process resources share the specified process name.
         /// </summary>
+        [UnsupportedOSPlatform("ios")]
+        [UnsupportedOSPlatform("tvos")]
+        [SupportedOSPlatform("maccatalyst")]
         public static Process[] GetProcessesByName(string? processName, string machineName)
         {
-            if (processName == null)
+            bool isRemoteMachine = ProcessManager.IsRemoteMachine(machineName);
+
+            ProcessInfo[] processInfos = ProcessManager.GetProcessInfos(processName, machineName);
+            Process[] processes = new Process[processInfos.Length];
+
+            for (int i = 0; i < processInfos.Length; i++)
             {
-                processName = string.Empty;
+                ProcessInfo processInfo = processInfos[i];
+                processes[i] = new Process(machineName, isRemoteMachine, processInfo.ProcessId, processInfo);
             }
 
-            Process[] procs = GetProcesses(machineName);
-            var list = new List<Process>();
-
-            for (int i = 0; i < procs.Length; i++)
-            {
-                if (string.Equals(processName, procs[i].ProcessName, StringComparison.OrdinalIgnoreCase))
-                {
-                    list.Add(procs[i]);
-                }
-                else
-                {
-                    procs[i].Dispose();
-                }
-            }
-
-            return list.ToArray();
+            return processes;
         }
 
         [CLSCompliant(false)]
@@ -89,6 +85,9 @@ namespace System.Diagnostics
         }
 
         /// <summary>Terminates the associated process immediately.</summary>
+        [UnsupportedOSPlatform("ios")]
+        [UnsupportedOSPlatform("tvos")]
+        [SupportedOSPlatform("maccatalyst")]
         public void Kill()
         {
             using (SafeProcessHandle handle = GetProcessHandle(Interop.Advapi32.ProcessOptions.PROCESS_TERMINATE | Interop.Advapi32.ProcessOptions.PROCESS_QUERY_LIMITED_INFORMATION, throwIfExited: false))
@@ -121,13 +120,11 @@ namespace System.Diagnostics
             _haveMainWindow = false;
             _mainWindowTitle = null;
             _haveResponding = false;
+            _processName = null;
         }
 
         /// <summary>Additional logic invoked when the Process is closed.</summary>
-        private void CloseCore()
-        {
-            // Nop
-        }
+        partial void CloseCore();
 
         /// <devdoc>
         ///     Make sure we are watching for a process exit.
@@ -179,11 +176,11 @@ namespace System.Diagnostics
             finally
             {
                 // If we have a hard timeout, we cannot wait for the streams
-                if (_output != null && milliseconds == Timeout.Infinite)
-                    _output.WaitUntilEOF();
-
-                if (_error != null && milliseconds == Timeout.Infinite)
-                    _error.WaitUntilEOF();
+                if (milliseconds == Timeout.Infinite)
+                {
+                    _output?.EOF.GetAwaiter().GetResult();
+                    _error?.EOF.GetAwaiter().GetResult();
+                }
 
                 handle?.Dispose();
             }
@@ -211,46 +208,14 @@ namespace System.Diagnostics
                 if (handle.IsInvalid)
                 {
                     _exited = true;
+                    return;
                 }
-                else
-                {
-                    int localExitCode;
 
-                    // Although this is the wrong way to check whether the process has exited,
-                    // it was historically the way we checked for it, and a lot of code then took a dependency on
-                    // the fact that this would always be set before the pipes were closed, so they would read
-                    // the exit code out after calling ReadToEnd() or standard output or standard error. In order
-                    // to allow 259 to function as a valid exit code and to break as few people as possible that
-                    // took the ReadToEnd dependency, we check for an exit code before doing the more correct
-                    // check to see if we have been signaled.
-                    if (Interop.Kernel32.GetExitCodeProcess(handle, out localExitCode) && localExitCode != Interop.Kernel32.HandleOptions.STILL_ACTIVE)
-                    {
-                        _exitCode = localExitCode;
-                        _exited = true;
-                    }
-                    else
-                    {
-                        // The best check for exit is that the kernel process object handle is invalid,
-                        // or that it is valid and signaled.  Checking if the exit code != STILL_ACTIVE
-                        // does not guarantee the process is closed,
-                        // since some process could return an actual STILL_ACTIVE exit code (259).
-                        if (!_signaled) // if we just came from WaitForExit, don't repeat
-                        {
-                            using (var wh = new Interop.Kernel32.ProcessWaitHandle(handle))
-                            {
-                                _signaled = wh.WaitOne(0);
-                            }
-                        }
-                        if (_signaled)
-                        {
-                            if (!Interop.Kernel32.GetExitCodeProcess(handle, out localExitCode))
-                                throw new Win32Exception();
+                if (!ProcessManager.HasExited(handle, ref _signaled, out int localExitCode))
+                    return;
 
-                            _exitCode = localExitCode;
-                            _exited = true;
-                        }
-                    }
-                }
+                _exited = true;
+                _exitCode = localExitCode;
             }
         }
 
@@ -261,6 +226,8 @@ namespace System.Diagnostics
         }
 
         /// <summary>Gets the amount of time the process has spent running code inside the operating system core.</summary>
+        [UnsupportedOSPlatform("ios")]
+        [UnsupportedOSPlatform("tvos")]
         public TimeSpan PrivilegedProcessorTime
         {
             get { return GetProcessTimes().PrivilegedProcessorTime; }
@@ -277,6 +244,9 @@ namespace System.Diagnostics
         /// It is the sum of the <see cref='System.Diagnostics.Process.UserProcessorTime'/> and
         /// <see cref='System.Diagnostics.Process.PrivilegedProcessorTime'/>.
         /// </summary>
+        [UnsupportedOSPlatform("ios")]
+        [UnsupportedOSPlatform("tvos")]
+        [SupportedOSPlatform("maccatalyst")]
         public TimeSpan TotalProcessorTime
         {
             get { return GetProcessTimes().TotalProcessorTime; }
@@ -286,6 +256,9 @@ namespace System.Diagnostics
         /// Gets the amount of time the associated process has spent running code
         /// inside the application portion of the process (not the operating system core).
         /// </summary>
+        [UnsupportedOSPlatform("ios")]
+        [UnsupportedOSPlatform("tvos")]
+        [SupportedOSPlatform("maccatalyst")]
         public TimeSpan UserProcessorTime
         {
             get { return GetProcessTimes().UserProcessorTime; }
@@ -616,11 +589,11 @@ namespace System.Diagnostics
 
                     if (!retVal)
                     {
-                        if (errorCode == Interop.Errors.ERROR_BAD_EXE_FORMAT || errorCode == Interop.Errors.ERROR_EXE_MACHINE_TYPE_MISMATCH)
-                        {
-                            throw new Win32Exception(errorCode, SR.InvalidApplication);
-                        }
-                        throw new Win32Exception(errorCode);
+                        string nativeErrorMessage = errorCode == Interop.Errors.ERROR_BAD_EXE_FORMAT || errorCode == Interop.Errors.ERROR_EXE_MACHINE_TYPE_MISMATCH
+                            ? SR.InvalidApplication
+                            : GetErrorMessage(errorCode);
+
+                        throw CreateExceptionForErrorStartingProcess(nativeErrorMessage, errorCode, startInfo.FileName, workingDirectory);
                     }
                 }
                 finally
@@ -747,10 +720,7 @@ namespace System.Diagnostics
             }
             finally
             {
-                if (hToken != null)
-                {
-                    hToken.Dispose();
-                }
+                hToken?.Dispose();
             }
         }
 
@@ -816,7 +786,7 @@ namespace System.Diagnostics
         // methods such as WriteLine as well as native CRT functions like printf) which are making an
         // assumption that the console standard handles (obtained via GetStdHandle()) are opened
         // for synchronous I/O and hence they can work fine with ReadFile/WriteFile synchronously!
-        private void CreatePipe(out SafeFileHandle parentHandle, out SafeFileHandle childHandle, bool parentInputs)
+        private static void CreatePipe(out SafeFileHandle parentHandle, out SafeFileHandle childHandle, bool parentInputs)
         {
             Interop.Kernel32.SECURITY_ATTRIBUTES securityAttributesParent = default;
             securityAttributesParent.bInheritHandle = Interop.BOOL.TRUE;
@@ -863,30 +833,55 @@ namespace System.Diagnostics
 
         private static string GetEnvironmentVariablesBlock(IDictionary<string, string> sd)
         {
-            // get the keys
-            string[] keys = new string[sd.Count];
+            // https://docs.microsoft.com/en-us/windows/win32/procthread/changing-environment-variables
+            // "All strings in the environment block must be sorted alphabetically by name. The sort is
+            //  case-insensitive, Unicode order, without regard to locale. Because the equal sign is a
+            //  separator, it must not be used in the name of an environment variable."
+
+            var keys = new string[sd.Count];
             sd.Keys.CopyTo(keys, 0);
-
-            // sort both by the keys
-            // Windows 2000 requires the environment block to be sorted by the key
-            // It will first converting the case the strings and do ordinal comparison.
-
-            // We do not use Array.Sort(keys, values, IComparer) since it is only supported
-            // in System.Runtime contract from 4.20.0.0 and Test.Net depends on System.Runtime 4.0.10.0
-            // we workaround this by sorting only the keys and then lookup the values form the keys.
             Array.Sort(keys, StringComparer.OrdinalIgnoreCase);
 
-            // create a list of null terminated "key=val" strings
-            StringBuilder stringBuff = new StringBuilder();
-            for (int i = 0; i < sd.Count; ++i)
+            // Join the null-terminated "key=val\0" strings
+            var result = new StringBuilder(8 * keys.Length);
+            foreach (string key in keys)
             {
-                stringBuff.Append(keys[i]);
-                stringBuff.Append('=');
-                stringBuff.Append(sd[keys[i]]);
-                stringBuff.Append('\0');
+                result.Append(key).Append('=').Append(sd[key]).Append('\0');
             }
-            // an extra null at the end that indicates end of list will come from the string.
-            return stringBuff.ToString();
+
+            return result.ToString();
+        }
+
+        private static string GetErrorMessage(int error) => Interop.Kernel32.GetMessage(error);
+
+        /// <summary>Gets the friendly name of the process.</summary>
+        public string ProcessName
+        {
+            get
+            {
+                if (_processName == null)
+                {
+                    EnsureState(State.HaveNonExitedId);
+                    // If we already have the name via a populated ProcessInfo
+                    // then use that one.
+                    if (_processInfo?.ProcessName != null)
+                    {
+                        _processName = _processInfo!.ProcessName;
+                    }
+                    else
+                    {
+                        // If we don't have a populated ProcessInfo, then get and cache the process name.
+                        _processName = ProcessManager.GetProcessName(_processId, _machineName);
+
+                        if (_processName == null)
+                        {
+                            throw new InvalidOperationException(SR.NoProcessInfo);
+                        }
+                    }
+                }
+
+                return _processName;
+            }
         }
     }
 }

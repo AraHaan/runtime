@@ -15,7 +15,7 @@ using Internal.Win32.SafeHandles;
 // A minimal version of RegistryKey that supports just what CoreLib needs.
 //
 // Internal.Win32 namespace avoids confusion with the public standalone Microsoft.Win32.Registry implementation
-// that lives in https://github.com/dotnet/runtime/tree/master/src/libraries/Microsoft.Win32.Registry
+// that lives in https://github.com/dotnet/runtime/tree/main/src/libraries/Microsoft.Win32.Registry
 //
 namespace Internal.Win32
 {
@@ -37,10 +37,7 @@ namespace Internal.Win32
 
         void IDisposable.Dispose()
         {
-            if (_hkey != null)
-            {
-                _hkey.Dispose();
-            }
+            _hkey?.Dispose();
         }
 
         public void DeleteValue(string name, bool throwOnMissingValue)
@@ -67,7 +64,7 @@ namespace Internal.Win32
             }
             // We really should throw an exception here if errorCode was bad,
             // but we can't for compatibility reasons.
-            Debug.Assert(errorCode == 0, "RegDeleteValue failed.  Here's your error code: " + errorCode);
+            Debug.Assert(errorCode == 0, $"RegDeleteValue failed.  Here's your error code: {errorCode}");
         }
 
         internal static RegistryKey OpenBaseKey(IntPtr hKey)
@@ -252,7 +249,7 @@ namespace Internal.Win32
                 case Interop.Advapi32.RegistryValues.REG_BINARY:
                     {
                         byte[] blob = new byte[datasize];
-                        ret = Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, blob, ref datasize);
+                        Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, blob, ref datasize);
                         data = blob;
                     }
                     break;
@@ -266,7 +263,7 @@ namespace Internal.Win32
                         long blob = 0;
                         Debug.Assert(datasize == 8, "datasize==8");
                         // Here, datasize must be 8 when calling this
-                        ret = Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, ref blob, ref datasize);
+                        Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, ref blob, ref datasize);
 
                         data = blob;
                     }
@@ -281,7 +278,7 @@ namespace Internal.Win32
                         int blob = 0;
                         Debug.Assert(datasize == 4, "datasize==4");
                         // Here, datasize must be four when calling this
-                        ret = Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, ref blob, ref datasize);
+                        Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, ref blob, ref datasize);
 
                         data = blob;
                     }
@@ -303,7 +300,7 @@ namespace Internal.Win32
                         }
                         char[] blob = new char[datasize / 2];
 
-                        ret = Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, blob, ref datasize);
+                        Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, blob, ref datasize);
                         if (blob.Length > 0 && blob[^1] == (char)0)
                         {
                             data = new string(blob, 0, blob.Length - 1);
@@ -333,7 +330,7 @@ namespace Internal.Win32
                         }
                         char[] blob = new char[datasize / 2];
 
-                        ret = Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, blob, ref datasize);
+                        Interop.Advapi32.RegQueryValueEx(_hkey, name, null, ref type, blob, ref datasize);
 
                         if (blob.Length > 0 && blob[^1] == (char)0)
                         {
@@ -437,8 +434,7 @@ namespace Internal.Win32
         // so this is a cut-down version that supports on that.
         internal void SetValue(string name, string value)
         {
-            if (value == null)
-                throw new ArgumentNullException(nameof(value));
+            ArgumentNullException.ThrowIfNull(value);
 
             if (name != null && name.Length > MaxValueLength)
                 throw new ArgumentException(SR.Arg_RegValStrLenBug, nameof(name));

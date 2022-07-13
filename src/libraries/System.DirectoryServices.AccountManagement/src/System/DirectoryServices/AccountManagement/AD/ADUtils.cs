@@ -12,11 +12,8 @@ using System.Security.Principal;
 
 namespace System.DirectoryServices.AccountManagement
 {
-    internal class ADUtils
+    internal static class ADUtils
     {
-        // To stop the compiler from autogenerating a constructor for this class
-        private ADUtils() { }
-
         // We use this, rather than simply testing DirectoryEntry.SchemaClassName, because we don't
         // want to miss objects that are of a derived type.
         // Note that, since computer is a derived class of user in AD, if you don't want to confuse
@@ -470,7 +467,7 @@ namespace System.DirectoryServices.AccountManagement
             {
             }
 
-            // Since we were able to retrive the computer domain above we should be able to access the current forest here.
+            // Since we were able to retrieve the computer domain above we should be able to access the current forest here.
             Forest currentForest = Forest.GetCurrentForest();
 
             Domain targetdom = Domain.GetDomain(new DirectoryContext(DirectoryContextType.Domain, targetDomain, username, password));
@@ -491,7 +488,7 @@ namespace System.DirectoryServices.AccountManagement
             return false;
         }
 
-        internal static string RetriveWkDn(DirectoryEntry deBase, string defaultNamingContext, string serverName, byte[] wellKnownContainerGuid)
+        internal static string RetrieveWkDn(DirectoryEntry deBase, string defaultNamingContext, string serverName, byte[] wellKnownContainerGuid)
         {
             /*
                             bool w2k3Supported  = false;

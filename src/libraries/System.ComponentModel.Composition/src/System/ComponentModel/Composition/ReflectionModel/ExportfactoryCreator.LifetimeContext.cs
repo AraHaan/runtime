@@ -9,9 +9,9 @@ namespace System.ComponentModel.Composition.ReflectionModel
 {
     internal sealed partial class ExportFactoryCreator
     {
-        private class LifetimeContext
+        private sealed class LifetimeContext
         {
-            public Tuple<T, Action> GetExportLifetimeContextFromExport<T>(Export export)
+            public static Tuple<T, Action> GetExportLifetimeContextFromExport<T>(Export export)
             {
                 T exportedValue;
                 Action disposeAction;
@@ -47,7 +47,7 @@ namespace System.ComponentModel.Composition.ReflectionModel
 
                 if (disposable != null)
                 {
-                    disposeAction = () => disposable.Dispose();
+                    disposeAction = disposable.Dispose;
                 }
                 else
                 {

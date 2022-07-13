@@ -601,13 +601,11 @@ DebuggerJitInfo * FrameInfo::GetJitInfoFromFrame() const
 
     DebuggerJitInfo *ji = NULL;
 
-    // @todo - we shouldn't need both a MD and an IP here.
     EX_TRY
     {
         _ASSERTE(this->md != NULL);
         ji = g_pDebugger->GetJitInfo(this->md, (const BYTE*)GetControlPC(&(this->registers)));
-        _ASSERTE(ji != NULL);
-        _ASSERTE(ji->m_nativeCodeVersion.GetMethodDesc() == this->md);
+        _ASSERTE(ji == NULL || ji->m_nativeCodeVersion.GetMethodDesc() == this->md);
     }
     EX_CATCH
     {
@@ -1568,7 +1566,7 @@ StackWalkAction DebuggerWalkStackProc(CrawlFrame *pCF, void *data)
 #ifdef FEATURE_MULTICASTSTUB_AS_IL
         use |= dMD->IsMulticastStub();
 #endif
-        use |= dMD->GetILStubResolver()->GetStubType() == ILStubResolver::TailCallCallTargetStub;
+        use |= dMD->GetILStubType() == DynamicMethodDesc::StubTailCallCallTarget;
 
         if (use)
         {
@@ -1957,7 +1955,7 @@ bool ShouldSendUMLeafChain(Thread * pThread)
 
     // If we're tracing ourselves, we must be in managed code.
     // Native user code can't initiate a managed stackwalk.
-    if (pThread == GetThread())
+    if (pThread == GetThreadNULLOk())
     {
         return false;
     }
@@ -2008,7 +2006,7 @@ bool PrepareLeafUMChain(DebuggerFrameData * pData, CONTEXT * pCtxTemp)
 
         // We need to get thread's context (InitRegDisplay will do that under the covers).
         // If this is our thread, we're in bad shape. Fortunately that should never happen.
-        _ASSERTE(thread != GetThread());
+        _ASSERTE(thread != GetThreadNULLOk());
 
         Thread::SuspendThreadResult str = thread->SuspendThread();
         if (str != Thread::STR_Success)
@@ -2103,7 +2101,7 @@ StackWalkAction DebuggerWalkStack(Thread *thread,
 #endif
             memset((void *)&data, 0, sizeof(data));
 
-#if defined(TARGET_X86)
+#if !defined(FEATURE_EH_FUNCLETS)
             // @todo - this seems pointless. context->Eip will be 0; and when we copy it over to the DebuggerRD,
             // the context will be completely null.
             data.regDisplay.ControlPC = context->Eip;

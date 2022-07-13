@@ -206,7 +206,7 @@ CMiniMd::CommonEnumCustomAttributeByName(
 {
     HRESULT hr = S_OK;
     HRESULT hrRet = S_FALSE;    // Assume that we won't find any
-    ULONG   ridStart, ridEnd;   // Loop start and endpoints.
+    RID     ridStart, ridEnd;   // Loop start and endpoints.
 
     _ASSERTE(phEnum != NULL);
 
@@ -263,11 +263,6 @@ CMiniMd::vSearchTable(
     ULONG   val;            // Value from a row.
     int     lo, mid, hi;    // binary search indices.
 
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // If you change the rows touched while searching, please update
-    // CMiniMdRW::GetHotMetadataTokensSearchAware
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
     // Start with entire table.
     lo = 1;
     hi = GetCountRecs(ixTbl);
@@ -317,11 +312,6 @@ CMiniMd::vSearchTableNotGreater(
     ULONG  lo, mid = 0, hi;     // binary search indices.
 
     cRecs = GetCountRecs(ixTbl);
-
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // If you change the rows touched while searching, please update
-    // CMiniMdRW::GetHotMetadataTokensSearchAware
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     // Start with entire table.
     lo = 1;
@@ -405,7 +395,7 @@ CMiniMd::CommonGetCustomAttributeByNameEx(
     ULONG               cbData;
     CustomAttributeRec *pRec;
 
-    ULONG   ridStart, ridEnd;   // Loop start and endpoints.
+    RID   ridStart, ridEnd;   // Loop start and endpoints.
 
     // Get the list of custom values for the parent object.
 

@@ -8,9 +8,16 @@ using LightInject.Microsoft.DependencyInjection;
 
 namespace Microsoft.Extensions.DependencyInjection.Specification
 {
-    public class LightInjectDependencyInjectionSpecificationTests: DependencyInjectionSpecificationTests
+    public class LightInjectDependencyInjectionSpecificationTests : SkippableDependencyInjectionSpecificationTests
     {
-        protected override IServiceProvider CreateServiceProvider(IServiceCollection serviceCollection)
+        public override bool SupportsIServiceProviderIsService => false;
+
+        public override string[] SkippedTests => new string[]
+        {
+            "NonSingletonService_WithInjectedProvider_ResolvesScopeProvider"
+        };
+
+        protected override IServiceProvider CreateServiceProviderImpl(IServiceCollection serviceCollection)
         {
             var builder = new ContainerBuilder();
             builder.Populate(serviceCollection);

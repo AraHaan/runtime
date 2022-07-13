@@ -86,7 +86,7 @@ Crst ArgBasedStubCache
 End
 
 Crst AssemblyLoader
-    AcquiredBefore DeadlockDetection UniqueStack
+    AcquiredBefore DeadlockDetection UniqueStack DebuggerMutex
 End
 
 Crst AvailableClass
@@ -201,7 +201,12 @@ End
 Crst Exception
 End
 
+Crst ExecutableAllocatorLock
+    AcquiredAfter LoaderHeap ArgBasedStubCache UMEntryThunkFreeListLock
+End
+
 Crst ExecuteManRangeLock
+    AcquiredAfter NativeImageEagerFixups
 End
 
 Crst FCall
@@ -230,13 +235,6 @@ End
 
 Crst HandleTable
     SameLevelAs HandleTable
-End
-
-Crst HostAssemblyMap
-End
-
-Crst HostAssemblyMapAdd
-    AcquiredBefore HostAssemblyMap
 End
 
 Crst IbcProfile
@@ -377,6 +375,7 @@ End
 // between the thread executing DetachProfiler(), and the DetachThread
 // carrying out the evacuation order.
 Crst ProfilingAPIStatus
+    AcquiredBefore ThreadStore
 End
 
 Crst RCWCache
@@ -433,7 +432,7 @@ Crst SingleUseLock
 End
 
 Crst UnwindInfoTableLock
-	AcquiredAfter StubUnwindInfoHeapSegments SingleUseLock
+    AcquiredAfter StubUnwindInfoHeapSegments SingleUseLock
     AcquiredBefore StressLog
 End
 
@@ -492,9 +491,8 @@ End
 Crst ThreadStore
     AcquiredBefore AvailableParamTypes DeadlockDetection DebuggerController
                    DebuggerHeapLock DebuggerJitInfo DynamicIL ExecuteManRangeLock HandleTable IbcProfile
-                   JitGenericHandleCache JumpStubCache LoaderHeap ModuleLookupTable ProfilingAPIStatus
-                   ProfilerGCRefDataFreeList SingleUseLock SyncBlockCache SystemDomainDelayedUnloadList
-                   ThreadIdDispenser DebuggerMutex
+                   JitGenericHandleCache JumpStubCache LoaderHeap ModuleLookupTable ProfilerGCRefDataFreeList
+                   SingleUseLock SyncBlockCache SystemDomainDelayedUnloadList ThreadIdDispenser DebuggerMutex
 End
 
 Crst TypeIDMap
@@ -503,6 +501,9 @@ End
 
 Crst TypeEquivalenceMap
     AcquiredBefore LoaderHeap
+End
+
+Crst UMEntryThunkFreeListLock
 End
 
 Crst UniqueStack
@@ -543,7 +544,7 @@ Crst InlineTrackingMap
 End
 
 Crst JitInlineTrackingMap
-    AcquiredBefore CodeVersioning ThreadStore LoaderAllocator
+    AcquiredBefore CodeVersioning ThreadStore MethodDescBackpatchInfoTracker
 End
 
 Crst EventPipe
@@ -567,8 +568,8 @@ Crst COMCallWrapper
 End
 
 Crst MethodDescBackpatchInfoTracker
-    AcquiredBefore FuncPtrStubs ThreadStore SystemDomain
-    AcquiredAfter ReJITGlobalRequest
+    AcquiredBefore FuncPtrStubs
+    AcquiredAfter ReJITGlobalRequest ThreadStore SystemDomain
 End
 
 Crst NativeImageEagerFixups

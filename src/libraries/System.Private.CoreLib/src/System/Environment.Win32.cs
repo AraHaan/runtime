@@ -4,7 +4,6 @@
 using System.Collections;
 using System.Diagnostics;
 using System.IO;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using Internal.Win32;
@@ -55,8 +54,9 @@ namespace System
                 // send a WM_SETTINGCHANGE message to all windows
                 fixed (char* lParam = "Environment")
                 {
-                    IntPtr r = Interop.User32.SendMessageTimeout(new IntPtr(Interop.User32.HWND_BROADCAST), Interop.User32.WM_SETTINGCHANGE, IntPtr.Zero, (IntPtr)lParam, 0, 1000, out IntPtr _);
-                    Debug.Assert(r != IntPtr.Zero, "SetEnvironmentVariable failed: " + Marshal.GetLastWin32Error());
+                    IntPtr unused;
+                    IntPtr r = Interop.User32.SendMessageTimeout(new IntPtr(Interop.User32.HWND_BROADCAST), Interop.User32.WM_SETTINGCHANGE, IntPtr.Zero, (IntPtr)lParam, 0, 1000, &unused);
+                    Debug.Assert(r != IntPtr.Zero, $"SetEnvironmentVariable failed: {Marshal.GetLastPInvokeError()}");
                 }
             }
         }
@@ -122,7 +122,7 @@ namespace System
 
                 ReadOnlySpan<char> name = builder.AsSpan();
                 int index = name.IndexOf('\\');
-                if (index != -1)
+                if (index >= 0)
                 {
                     // In the form of DOMAIN\User, cut off DOMAIN\
                     name = name.Slice(index + 1);
@@ -139,7 +139,7 @@ namespace System
             uint size = 0;
             while (Interop.Secur32.GetUserNameExW(Interop.Secur32.NameSamCompatible, ref builder.GetPinnableReference(), ref size) == Interop.BOOLEAN.FALSE)
             {
-                if (Marshal.GetLastWin32Error() == Interop.Errors.ERROR_MORE_DATA)
+                if (Marshal.GetLastPInvokeError() == Interop.Errors.ERROR_MORE_DATA)
                 {
                     builder.EnsureCapacity(checked((int)size));
                 }
@@ -163,7 +163,7 @@ namespace System
 
                 ReadOnlySpan<char> name = builder.AsSpan();
                 int index = name.IndexOf('\\');
-                if (index != -1)
+                if (index >= 0)
                 {
                     // In the form of DOMAIN\User, cut off \User and return
                     builder.Length = index;
@@ -186,12 +186,12 @@ namespace System
                 while (!Interop.Advapi32.LookupAccountNameW(null, ref builder.GetPinnableReference(), ref MemoryMarshal.GetReference(sid),
                     ref sidLength, ref domainBuilder.GetPinnableReference(), ref length, out _))
                 {
-                    int error = Marshal.GetLastWin32Error();
+                    int error = Marshal.GetLastPInvokeError();
 
                     // The docs don't call this out clearly, but experimenting shows that the error returned is the following.
                     if (error != Interop.Errors.ERROR_INSUFFICIENT_BUFFER)
                     {
-                        throw new InvalidOperationException(Win32Marshal.GetMessage(error));
+                        throw new InvalidOperationException(Marshal.GetPInvokeErrorMessage(error));
                     }
 
                     domainBuilder.EnsureCapacity((int)length);
@@ -378,34 +378,12 @@ namespace System
             return path;
         }
 
-        // Seperate type so a .cctor is not created for Enviroment which then would be triggered during startup
+        // Separate type so a .cctor is not created for Environment which then would be triggered during startup
         private static class WindowsVersion
         {
             // Cache the value in static readonly that can be optimized out by the JIT
-            internal static readonly bool IsWindows8OrAbove = GetIsWindows8OrAbove();
-
-            private static bool GetIsWindows8OrAbove()
-            {
-                ulong conditionMask = Interop.Kernel32.VerSetConditionMask(0, Interop.Kernel32.VER_MAJORVERSION, Interop.Kernel32.VER_GREATER_EQUAL);
-                conditionMask = Interop.Kernel32.VerSetConditionMask(conditionMask, Interop.Kernel32.VER_MINORVERSION, Interop.Kernel32.VER_GREATER_EQUAL);
-                conditionMask = Interop.Kernel32.VerSetConditionMask(conditionMask, Interop.Kernel32.VER_SERVICEPACKMAJOR, Interop.Kernel32.VER_GREATER_EQUAL);
-                conditionMask = Interop.Kernel32.VerSetConditionMask(conditionMask, Interop.Kernel32.VER_SERVICEPACKMINOR, Interop.Kernel32.VER_GREATER_EQUAL);
-
-                // Windows 8 version is 6.2
-                Interop.Kernel32.OSVERSIONINFOEX version = default;
-                unsafe
-                {
-                    version.dwOSVersionInfoSize = sizeof(Interop.Kernel32.OSVERSIONINFOEX);
-                }
-                version.dwMajorVersion = 6;
-                version.dwMinorVersion = 2;
-                version.wServicePackMajor = 0;
-                version.wServicePackMinor = 0;
-
-                return Interop.Kernel32.VerifyVersionInfoW(ref version,
-                    Interop.Kernel32.VER_MAJORVERSION | Interop.Kernel32.VER_MINORVERSION | Interop.Kernel32.VER_SERVICEPACKMAJOR | Interop.Kernel32.VER_SERVICEPACKMINOR,
-                    conditionMask);
-            }
+            // Windows 8 version is 6.2
+            internal static readonly bool IsWindows8OrAbove = OperatingSystem.IsWindowsVersionAtLeast(6, 2);
         }
     }
 }

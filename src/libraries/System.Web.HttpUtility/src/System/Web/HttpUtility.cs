@@ -3,7 +3,7 @@
 
 // Authors:
 //   Patrik Torstensson (Patrik.Torstensson@labs2.com)
-//   Wictor Wilén (decode/encode functions) (wictor@ibizkit.se)
+//   Wictor WilÃ©n (decode/encode functions) (wictor@ibizkit.se)
 //   Tim Coleman (tim@timcoleman.com)
 //   Gonzalo Paniagua Javier (gonzalo@ximian.com)
 //
@@ -59,24 +59,22 @@ namespace System.Web
                 string?[] keys = AllKeys;
                 for (int i = 0; i < count; i++)
                 {
-                    string[]? values = GetValues(keys[i]);
+                    string? key = keys[i];
+                    string[]? values = GetValues(key);
                     if (values != null)
                     {
                         foreach (string value in values)
                         {
-                            if (string.IsNullOrEmpty(keys[i]))
+                            if (!string.IsNullOrEmpty(key))
                             {
-                                sb.AppendFormat("{0}&", UrlEncode(value));
+                                sb.Append(key).Append('=');
                             }
-                            else
-                            {
-                                sb.AppendFormat("{0}={1}&", keys[i], UrlEncode(value));
-                            }
+                            sb.Append(UrlEncode(value)).Append('&');
                         }
                     }
                 }
 
-                return sb.ToString(0, sb.Length - 1);
+                return sb.Length > 0 ? sb.ToString(0, sb.Length - 1) : "";
             }
         }
 
@@ -84,19 +82,12 @@ namespace System.Web
 
         public static NameValueCollection ParseQueryString(string query, Encoding encoding)
         {
-            if (query == null)
-            {
-                throw new ArgumentNullException(nameof(query));
-            }
-
-            if (encoding == null)
-            {
-                throw new ArgumentNullException(nameof(encoding));
-            }
+            ArgumentNullException.ThrowIfNull(query);
+            ArgumentNullException.ThrowIfNull(encoding);
 
             HttpQSCollection result = new HttpQSCollection();
             int queryLength = query.Length;
-            int namePos = queryLength > 0 && query[0] == '?' ? 1 : 0;
+            int namePos = query.StartsWith('?') ? 1 : 0;
             if (queryLength == namePos)
             {
                 return result;
@@ -183,9 +174,7 @@ namespace System.Web
         [return: NotNullIfNotNull("bytes")]
         public static byte[]? UrlEncodeToBytes(byte[]? bytes) => bytes == null ? null : UrlEncodeToBytes(bytes, 0, bytes.Length);
 
-        [Obsolete(
-             "This method produces non-standards-compliant output and has interoperability issues. The preferred alternative is UrlEncodeToBytes(String)."
-         )]
+        [Obsolete("This method produces non-standards-compliant output and has interoperability issues. The preferred alternative is UrlEncodeToBytes(String).")]
         [return: NotNullIfNotNull("str")]
         public static byte[]? UrlEncodeUnicodeToBytes(string? str) => str == null ? null : Encoding.ASCII.GetBytes(UrlEncodeUnicode(str));
 
@@ -219,10 +208,7 @@ namespace System.Web
         [return: NotNullIfNotNull("bytes")]
         public static byte[]? UrlEncodeToBytes(byte[]? bytes, int offset, int count) => HttpEncoder.UrlEncode(bytes, offset, count, alwaysCreateNewReturnValue: true);
 
-        [Obsolete(
-             "This method produces non-standards-compliant output and has interoperability issues. The preferred alternative is UrlEncode(String)."
-         )]
-
+        [Obsolete("This method produces non-standards-compliant output and has interoperability issues. The preferred alternative is UrlEncode(String).")]
         [return: NotNullIfNotNull("str")]
         public static string? UrlEncodeUnicode(string? str) => HttpEncoder.UrlEncodeUnicode(str);
 

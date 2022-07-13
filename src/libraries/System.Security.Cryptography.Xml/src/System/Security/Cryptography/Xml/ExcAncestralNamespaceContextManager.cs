@@ -8,7 +8,7 @@ namespace System.Security.Cryptography.Xml
 {
     // the stack of currently active NamespaceFrame contexts. this
     // object also maintains the inclusive prefix list in a tokenized form.
-    internal class ExcAncestralNamespaceContextManager : AncestralNamespaceContextManager
+    internal sealed class ExcAncestralNamespaceContextManager : AncestralNamespaceContextManager
     {
         private readonly Hashtable _inclusivePrefixSet;
 
@@ -19,10 +19,9 @@ namespace System.Security.Cryptography.Xml
 
         private bool HasNonRedundantInclusivePrefix(XmlAttribute attr)
         {
-            int tmp;
             string nsPrefix = Utils.GetNamespacePrefix(attr);
             return _inclusivePrefixSet.ContainsKey(nsPrefix) &&
-                Utils.IsNonRedundantNamespaceDecl(attr, GetNearestRenderedNamespaceWithMatchingPrefix(nsPrefix, out tmp));
+                Utils.IsNonRedundantNamespaceDecl(attr, GetNearestRenderedNamespaceWithMatchingPrefix(nsPrefix, out _));
         }
 
         private void GatherNamespaceToRender(string nsPrefix, SortedList nsListToRender, Hashtable nsLocallyDeclared)

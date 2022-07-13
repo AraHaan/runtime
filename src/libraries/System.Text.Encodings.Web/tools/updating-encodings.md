@@ -1,10 +1,12 @@
 ### Introduction
 
+*Note: For full instructions on how to update the Unicode version consumed by the whole repo (as opposed to just System.Text.Encondings.Web) please follow the steps on [this guide](../../System.Private.CoreLib/Tools/GenUnicodeProp/Updating-Unicode-Versions.md) instead.*
+
 This folder contains tools which allow updating the Unicode data within the __System.Text.Encodings.Web__ package. These data files come from the Unicode Consortium's web site (see https://www.unicode.org/Public/UCD/latest/) and are used to generate the `UnicodeRanges` class and the internal "defined characters" bitmap against which charaters to be escaped are checked.
 
 ### Current implementation
 
-The current version of the Unicode data checked in is __13.0.0__. The archived files can be found at https://unicode.org/Public/13.0.0/.
+The current version of the Unicode data checked in is __14.0.0__. The archived files can be found at https://unicode.org/Public/14.0.0/.
 
 ### Updating the implementation
 
@@ -28,7 +30,7 @@ dotnet run --framework netcoreapp3.1 -- "path_to_UnicodeData.txt" ../../src/Syst
 dotnet run --framework netcoreapp3.1 -- "path_to_Blocks.txt" ../../src/System/Text/Unicode/UnicodeRanges.generated.cs ../../tests/UnicodeRangesTests.generated.cs
 ```
 
-5. Update the __ref__ APIs to reflect any new `UnicodeRanges` static properties which were added in the previous step, otherwise the unit test project will not be able to reference them. See https://github.com/dotnet/runtime/blob/master/docs/coding-guidelines/updating-ref-source.md for instructions on how to update the reference assemblies.
+5. Update the __ref__ APIs to reflect any new `UnicodeRanges` static properties which were added in the previous step, otherwise the unit test project will not be able to reference them. See https://github.com/dotnet/runtime/blob/main/docs/coding-guidelines/updating-ref-source.md for instructions on how to update the reference assemblies.
 
 6. Update the __src/libraries/System.Text.Encodings.Web/tests/System.Text.Encodings.Web.Tests.csproj__ file to reference the new __UnicodeData.txt__ file that was added to the [runtime-assets](https://github.com/dotnet/runtime-assets) repo in step (1). Open the .csproj file in a text editor and replace the `<UnicodeUcdVersion>` property value near the top of the file to reference the new UCD version being consumed.
 

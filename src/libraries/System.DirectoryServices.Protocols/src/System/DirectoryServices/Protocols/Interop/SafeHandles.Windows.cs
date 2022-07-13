@@ -16,7 +16,7 @@ namespace System.DirectoryServices.Protocols
             }
         }
 
-        internal SafeBerHandle(berval value) : base(true)
+        internal SafeBerHandle(BerVal value) : base(true)
         {
             SetHandle(Interop.Ldap.ber_init(value));
             if (handle == IntPtr.Zero)
@@ -43,7 +43,7 @@ namespace System.DirectoryServices.Protocols
             if (handle == IntPtr.Zero)
             {
                 int error = Interop.Ldap.LdapGetLastError();
-                if (Utility.IsLdapError((LdapError)error))
+                if (LdapErrorMappings.IsLdapError(error))
                 {
                     string errorMessage = LdapErrorMappings.MapResultCode(error);
                     throw new LdapException(error, errorMessage);
@@ -61,7 +61,7 @@ namespace System.DirectoryServices.Protocols
             if (value == IntPtr.Zero)
             {
                 int error = Interop.Ldap.LdapGetLastError();
-                if (Utility.IsLdapError((LdapError)error))
+                if (LdapErrorMappings.IsLdapError(error))
                 {
                     string errorMessage = LdapErrorMappings.MapResultCode(error);
                     throw new LdapException(error, errorMessage);

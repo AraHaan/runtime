@@ -36,7 +36,7 @@ namespace System.Net
         private ResponseDescription? _currentResponseDescription;
         protected string? _abortReason;
 
-        internal CommandStream(TcpClient client)
+        internal CommandStream(NetworkStream client)
             : base(client)
         {
             _decoder = _encoding.GetDecoder();
@@ -130,7 +130,7 @@ namespace System.Net
             return null;
         }
 
-        protected Exception GenerateException(string message, WebExceptionStatus status, Exception? innerException)
+        protected static Exception GenerateException(string message, WebExceptionStatus status, Exception? innerException)
         {
             return new WebException(
                             message,
@@ -139,7 +139,7 @@ namespace System.Net
                             null /* no response */ );
         }
 
-        protected Exception GenerateException(FtpStatusCode code, string? statusDescription, Exception? innerException)
+        protected static Exception GenerateException(FtpStatusCode code, string? statusDescription, Exception? innerException)
         {
             return new WebException(SR.Format(SR.net_ftp_servererror, NetRes.GetWebStatusCodeString(code, statusDescription)),
                                     innerException, WebExceptionStatus.ProtocolError, null);
@@ -373,7 +373,7 @@ namespace System.Net
             DontLogParameter = 0x8
         }
 
-        internal class PipelineEntry
+        internal sealed class PipelineEntry
         {
             internal PipelineEntry(string command)
             {
@@ -678,7 +678,7 @@ namespace System.Net
     /// <summary>
     /// Contains the parsed status line from the server
     /// </summary>
-    internal class ResponseDescription
+    internal sealed class ResponseDescription
     {
         internal const int NoStatus = -1;
         internal bool Multiline;
@@ -699,7 +699,7 @@ namespace System.Net
     /// <summary>
     /// State information that is used during ReceiveCommandResponse()'s async operations
     /// </summary>
-    internal class ReceiveState
+    internal sealed class ReceiveState
     {
         private const int bufferSize = 1024;
 

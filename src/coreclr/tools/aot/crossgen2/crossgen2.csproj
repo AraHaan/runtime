@@ -1,134 +1,62 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <AssemblyName>crossgen2</AssemblyName>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>$(NetCoreAppToolCurrent)</TargetFramework>
-    <NoWarn>8002,NU1701</NoWarn>
-    <Platforms>x64;x86;arm64;arm</Platforms>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <AppendTargetFrameworkToOutputPath Condition="'$(BuildingInsideVisualStudio)' == 'true'">true</AppendTargetFrameworkToOutputPath>
-    <OutputPath>$(RuntimeBinDir)/crossgen2</OutputPath>
-    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
-    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
-    <RuntimeIdentifiers>linux-x64;linux-musl-x64;osx-x64;win-x64</RuntimeIdentifiers>
-    <Configurations>Debug;Release;Checked</Configurations>
-    <ServerGarbageCollection>true</ServerGarbageCollection>
-    <!-- The default value for macOS is false -->
-    <UseAppHost>true</UseAppHost>
-  </PropertyGroup>
+<Project>
 
-  <ItemGroup Label="Embedded Resources">
-    <EmbeddedResource Include="Properties\Resources.resx">
-      <GenerateSource>true</GenerateSource>
-      <ClassName>System.SR</ClassName>
-    </EmbeddedResource>
-
-    <EmbeddedResource Include="..\..\Common\CommandLine\Resources\Strings.resx">
-      <GenerateSource>true</GenerateSource>
-      <ClassName>Internal.CommandLine.Strings</ClassName>
-    </EmbeddedResource>
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\ILCompiler.DependencyAnalysisFramework\ILCompiler.DependencyAnalysisFramework.csproj" />
-    <ProjectReference Include="..\ILCompiler.TypeSystem.ReadyToRun\ILCompiler.TypeSystem.ReadyToRun.csproj" />
-    <ProjectReference Include="..\ILCompiler.ReadyToRun\ILCompiler.ReadyToRun.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="..\..\Common\CommandLine\Argument.cs" />
-    <Compile Include="..\..\Common\CommandLine\Argument_1.cs" />
-    <Compile Include="..\..\Common\CommandLine\ArgumentCommand.cs" />
-    <Compile Include="..\..\Common\CommandLine\ArgumentCommand_1.cs" />
-    <Compile Include="..\..\Common\CommandLine\ArgumentLexer.cs" />
-    <Compile Include="..\..\Common\CommandLine\ArgumentList_1.cs" />
-    <Compile Include="..\..\Common\CommandLine\ArgumentParser.cs" />
-    <Compile Include="..\..\Common\CommandLine\ArgumentSyntax.cs" />
-    <Compile Include="..\..\Common\CommandLine\ArgumentSyntax_Definers.cs" />
-    <Compile Include="..\..\Common\CommandLine\ArgumentSyntaxException.cs" />
-    <Compile Include="..\..\Common\CommandLine\ArgumentToken.cs" />
-    <Compile Include="..\..\Common\CommandLine\CommandLineException.cs" />
-    <Compile Include="..\..\Common\CommandLine\CommandLineHelpers.cs" />
-    <Compile Include="..\..\Common\CommandLine\Enumerable.cs" />
-    <Compile Include="..\..\Common\CommandLine\HelpTextGenerator.cs" />
-  </ItemGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
 
   <PropertyGroup>
-    <CrossHostArch></CrossHostArch>
-    <CrossHostArch Condition="'$(TargetArchitecture)' != 'x64' and '$(BuildArchitecture)' == 'x64'">x64</CrossHostArch>
-
-    <TargetOSComponent>unix</TargetOSComponent>
-    <TargetOSComponent Condition="'$(TargetOS)' == 'windows'">win</TargetOSComponent>
-    <TargetSpec>$(TargetOSComponent)_$(TargetArchitecture)_$(TargetArchitecture)</TargetSpec>
-    <CrossTargetSpec>$(TargetOSComponent)_$(TargetArchitecture)_$(CrossHostArch)</CrossTargetSpec>
-
-    <JitInterfaceLibraryName>$(LibPrefix)jitinterface_$(TargetArchitecture)$(LibSuffix)</JitInterfaceLibraryName>
+    <OutputPath>$(RuntimeBinDir)crossgen2</OutputPath>
+    <!-- Can't use NativeAOT in source build yet https://github.com/dotnet/runtime/issues/66859 and we
+         don't want to ship using NativeAOT on MacOS -->
+    <NativeAotSupported Condition="'$(DotNetBuildFromSource)' == 'true' or '$(TargetOS)' == 'osx'">false</NativeAotSupported>
+    <!-- Trimming is not currently working, but set the appropriate feature flags for NativeAOT -->
+    <PublishTrimmed Condition="'$(NativeAotSupported)' == 'true'">true</PublishTrimmed>
+    <RuntimeIdentifiers Condition="'$(RunningPublish)' != 'true' and '$(DotNetBuildFromSource)' != 'true'">linux-x64;linux-musl-x64;linux-arm;linux-musl-arm;linux-arm64;linux-musl-arm64;freebsd-x64;osx-x64;osx-arm64;win-x64;win-x86;win-arm64;win-arm</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(DotNetBuildFromSource)' == 'true'">$(PackageRID)</RuntimeIdentifiers>
+    <SelfContained>false</SelfContained>
+    <SelfContained Condition="'$(RunningPublish)' == 'true'">true</SelfContained>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Content Include="$(RuntimeBinDir)$(JitInterfaceLibraryName)"
-      CopyToOutputDirectory="PreserveNewest"
-      CopyToPublishDirectory="PreserveNewest"
-      Link="%(FileName)%(Extension)"
-     />
+  <Import Project="crossgen2.props" />
 
-    <Content Include="$(RuntimeBinDir)$(NativeArchFolder)$(LibPrefix)clrjit_*_$(TargetArchitecture)$(LibSuffix)"
-      CopyToOutputDirectory="PreserveNewest"
-      CopyToPublishDirectory="PreserveNewest"
-      Link="%(FileName)%(Extension)"
-     />
-  </ItemGroup>
+  <PropertyGroup Condition="'$(NativeAotSupported)' != 'true'">
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <!-- Disable crossgen on NetBSD, illumos and Solaris for now. This can be revisited when we have full support. -->
+    <PublishReadyToRun Condition="'$(TargetOS)'=='NetBSD' Or '$(TargetOS)'=='illumos' Or '$(TargetOS)'=='Solaris'">false</PublishReadyToRun>
+    <!-- Disable crossgen on FreeBSD when cross building from Linux. -->
+    <PublishReadyToRun Condition="'$(TargetOS)'=='FreeBSD' and '$(CrossBuild)'=='true'">false</PublishReadyToRun>
+    <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
+  </PropertyGroup>
 
-  <!-- On windows we can re-use the clrjit.dll produced in the build for aot compilation. On Linux
-       this works at runtime, but makes it difficult to debug the jit.-->
-  <ItemGroup Condition="'$(TargetOS)' == 'windows'">
-    <Content Remove="$(RuntimeBinDir)$(LibPrefix)clrjit_$(TargetSpec)$(LibSuffix)" />
-    <Content Include="$(RuntimeBinDir)$(NativeArchFolder)$(LibPrefix)clrjit$(LibSuffix)"
-      CopyToOutputDirectory="PreserveNewest"
-      CopyToPublishDirectory="PreserveNewest"
-      Link="$(LibPrefix)clrjit_$(TargetSpec)$(LibSuffix)"
-     />
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 
-    <Content Include="$(RuntimeBinDir)/pgort*.dll"
-      CopyToOutputDirectory="PreserveNewest"
-      CopyToPublishDirectory="PreserveNewest"
-      Link="%(FileName)%(Extension)"
-      />
-  </ItemGroup>
+  <PropertyGroup Condition="'$(NativeAotSupported)' == 'true'">
+    <IlcToolsPath>$(CoreCLRILCompilerDir)</IlcToolsPath>
+    <IlcToolsPath Condition="'$(TargetArchitecture)' != '$(BuildArchitecture)'">$(CoreCLRCrossILCompilerDir)</IlcToolsPath>
+    <CppCompilerAndLinker Condition="'$(TargetArchitecture)' != '$(BuildArchitecture)' and '$(HostOS)' != 'windows'">clang-9</CppCompilerAndLinker>
+    <SysRoot Condition="'$(TargetArchitecture)' != '$(BuildArchitecture)' and '$(HostOS)' != 'windows'">$(ROOTFS_DIR)</SysRoot>
+    <IlcBuildTasksPath>$(CoreCLRILCompilerDir)netstandard/ILCompiler.Build.Tasks.dll</IlcBuildTasksPath>
+    <IlcSdkPath>$(CoreCLRAotSdkDir)</IlcSdkPath>
+    <IlcFrameworkPath>$(MicrosoftNetCoreAppRuntimePackRidLibTfmDir)</IlcFrameworkPath>
+    <IlcFrameworkNativePath>$(MicrosoftNetCoreAppRuntimePackNativeDir)</IlcFrameworkNativePath>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+  </PropertyGroup>
 
-  <Target Name="CreateCrossTargetingPackage" AfterTargets="Build" Condition="'$(CrossHostArch)' != ''">
+  <Import Project="$(R2ROverridePath)" Condition="'$(R2ROverridePath)' != ''" />
+  <Import Project="$(CoreCLRBuildIntegrationDir)Microsoft.DotNet.ILCompiler.targets"
+          Condition="'$(NativeAotSupported)' == 'true' and '$(RunningPublish)' == 'true'" />
 
-    <PropertyGroup>
-      <CrossPackageFolder>$(RuntimeBinDir)$(CrossHostArch)\crossgen2</CrossPackageFolder>
-    </PropertyGroup>
+  <Target Name="RewriteRuntimePackDir"
+          Condition="'$(RunningPublish)' == 'true'"
+          DependsOnTargets="ResolveRuntimeFilesFromLocalBuild"
+          BeforeTargets="ResolveRuntimePackAssets">
+      <ItemGroup>
+        <!-- Remove AspNetCore runtime pack since we don't build it locally -->
+        <ResolvedRuntimePack Remove="Microsoft.AspNetCore.App.Runtime.$(RuntimeIdentifier)" />
 
-    <ItemGroup>
-      <PackageFile Include="$(RuntimeBinDir)crossgen2\*"
-        Exclude="$(RuntimeBinDir)crossgen2\$(JitInterfaceLibraryName);$(RuntimeBinDir)crossgen2\$(LibPrefix)clrjit_*$(LibSuffix)" />
-      <PackageFile Include="$(RuntimeBinDir)$(CrossHostArch)\$(LibPrefix)jitinterface_$(CrossHostArch)$(LibSuffix)" />
-    </ItemGroup>
-
-    <MakeDir Directories="$(CrossPackageFolder)" />
-    <Copy
-      SourceFiles="@(PackageFile)"
-      DestinationFiles="@(PackageFile->'$(CrossPackageFolder)\%(FileName)%(Extension)')"
-      UseHardLinksIfPossible="true"
-      />
-
-    <Copy
-      Condition="'$(TargetOS)' != 'windows'"
-      SourceFiles="$(RuntimeBinDir)$(CrossHostArch)\$(LibPrefix)clrjit_$(CrossTargetSpec)$(LibSuffix)"
-      DestinationFolder="$(CrossPackageFolder)"
-      UseHardLinksIfPossible="true"
-      />
-    <Copy
-      Condition="'$(TargetOS)' == 'windows'"
-      SourceFiles="$(RuntimeBinDir)$(CrossHostArch)\$(LibPrefix)clrjit$(LibSuffix)"
-      DestinationFiles="$(CrossPackageFolder)\$(LibPrefix)clrjit_$(CrossTargetSpec)$(LibSuffix)"
-      UseHardLinksIfPossible="true"
-      />
-
+        <ResolvedRuntimePack Update="Microsoft.NETCore.App.Runtime.$(RuntimeIdentifier)">
+          <PackageDirectory>$(MicrosoftNetCoreAppRuntimePackDir)</PackageDirectory>
+        </ResolvedRuntimePack>
+      </ItemGroup>
   </Target>
+
 </Project>

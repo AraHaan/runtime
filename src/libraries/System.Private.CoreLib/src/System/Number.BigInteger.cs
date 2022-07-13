@@ -4,7 +4,7 @@
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using Internal.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 
 namespace System
 {
@@ -430,7 +430,7 @@ namespace System
             public static void DivRem(ref BigInteger lhs, ref BigInteger rhs, out BigInteger quo, out BigInteger rem)
             {
                 // This is modified from the libraries BigIntegerCalculator.DivRem.cs implementation:
-                // https://github.com/dotnet/runtime/blob/master/src/libraries/System.Runtime.Numerics/src/System/Numerics/BigIntegerCalculator.DivRem.cs
+                // https://github.com/dotnet/runtime/blob/main/src/libraries/System.Runtime.Numerics/src/System/Numerics/BigIntegerCalculator.DivRem.cs
 
                 Debug.Assert(!rhs.IsZero());
 
@@ -1222,7 +1222,7 @@ namespace System
             }
 
             private void Clear(uint length) =>
-                Buffer.ZeroMemory(
+                NativeMemory.Clear(
                     (byte*)Unsafe.AsPointer(ref _blocks[0]), // This is safe to do since we are a ref struct
                     length * sizeof(uint));
 

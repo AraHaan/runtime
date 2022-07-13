@@ -16,7 +16,7 @@ Copyright (c) .NET Foundation. All rights reserved.
     <DefaultLanguageSourceExtension>.il</DefaultLanguageSourceExtension>
     <Language>IL</Language>
     <TargetRuntime>Managed</TargetRuntime>
-    <DefaultProjectTypeGuid Condition="'$(DefaultProjectTypeGuid)' == ''">{F571AB99-FB84-49F4-A0DF-F27AA55F3F3F}</DefaultProjectTypeGuid>
+    <DefaultProjectTypeGuid Condition="'$(DefaultProjectTypeGuid)' == ''">{9A19103F-16F7-4668-BE54-9A1E7A4F7556}</DefaultProjectTypeGuid>
     <AppDesignerFolder Condition="'$(AppDesignerFolder)' == ''">Properties</AppDesignerFolder>
     <AlwaysUseNumericalSuffixInItemNames>true</AlwaysUseNumericalSuffixInItemNames>
   </PropertyGroup>
@@ -27,16 +27,7 @@ Copyright (c) .NET Foundation. All rights reserved.
   </ItemGroup>
 
   <PropertyGroup>
-    <_OSPlatform Condition="$([MSBuild]::IsOSPlatform('windows'))">win</_OSPlatform>
-    <_OSPlatform Condition="$([MSBuild]::IsOSPlatform('linux'))">linux</_OSPlatform>
-    <_OSPlatform Condition="$([MSBuild]::IsOSPlatform('osx'))">osx</_OSPlatform>
-    <_OSPlatform Condition="$([MSBuild]::IsOSPlatform('freebsd'))">freebsd</_OSPlatform>
-    <_OSPlatform Condition="$([MSBuild]::IsOSPlatform('netbsd'))">netbsd</_OSPlatform>
-    <_OSPlatform Condition="$([MSBuild]::IsOSPlatform('illumos'))">illumos</_OSPlatform>
-    <_OSPlatform Condition="$([MSBuild]::IsOSPlatform('solaris'))">solaris</_OSPlatform>
-    <_OSArchitecture>$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</_OSArchitecture>
-
-    <MicrosoftNetCoreIlasmPackageRuntimeId Condition="'$(MicrosoftNetCoreIlasmPackageRuntimeId)' == ''">$(_OSPlatform)-$(_OSArchitecture.ToLower())</MicrosoftNetCoreIlasmPackageRuntimeId>
+    <MicrosoftNetCoreIlasmPackageRuntimeId Condition="'$(MicrosoftNetCoreIlasmPackageRuntimeId)' == ''">$(NETCoreSdkPortableRuntimeIdentifier)</MicrosoftNetCoreIlasmPackageRuntimeId>
     <MicrosoftNETCoreILAsmVersion Condition="'$(MicrosoftNETCoreILAsmVersion)' == ''">6.0.0</MicrosoftNETCoreILAsmVersion>
     <MicrosoftNetCoreIlasmPackageName>runtime.$(MicrosoftNetCoreIlasmPackageRuntimeId).microsoft.netcore.ilasm</MicrosoftNetCoreIlasmPackageName>
     <MicrosoftNetCoreIldasmPackageName>runtime.$(MicrosoftNetCoreIlasmPackageRuntimeId).microsoft.netcore.ildasm</MicrosoftNetCoreIldasmPackageName>

@@ -1,5 +1,8 @@
 # Building
 
+These are instructions for building the common form of CoreCLR on common platforms. For instructions on particular form factors, see also [Build NativeAOT](nativeaot.md), [Build CoreCLR on Linux](linux-instructions.md), [Build CoreCLR on OS X](osx-instructions.md), [Build CoreCLR on FreeBSD](freebsd-instructions.md),
+[Cross Compilation for ARM on Windows](cross-building.md), [Cross Compilation for Android on Linux](android.md).
+
 To build just CoreCLR, use the `-subset` flag to the `build.sh` (or `build.cmd`) script at the repo root:
 
 For Linux:
@@ -11,6 +14,7 @@ For Windows:
 ```
 build.cmd -subset clr
 ```
+Specifying `-subset` explicitly is not necessary if it is the first argument: `./build -subset clr` and `./build clr` are equivalent.
 
 By default, build generates a 'debug' build type, that includes asserts and is easier for some people to debug. If you want to make performance measurements, or just want tests to execute more quickly, you can also build the 'release' version (which does not have these checks) by adding the flag `-configuration release` (or `-c release`), for example:
 ```
@@ -22,10 +26,12 @@ CoreCLR also supports a 'checked' build type which has asserts enabled like 'deb
 ./build.sh -subset clr -configuration checked
 ```
 
-If you want to use Ninja to drive the native build instead of Visual Studio MSBuild (on Windows) or Make (on non-Windows), you can pass the `-ninja` flag to the build script as follows:
+If you want to use Ninja to drive the native build instead of Make on non-Windows platforms, you can pass the `-ninja` flag to the build script as follows:
 ```
 ./build.cmd -subset clr -ninja
 ```
+
+If you want to use Visual Studio's MSBuild to drive the native build on Windows, you can pass the `-msbuild` flag to the build script similarly to the `-ninja` flag.
 
 We recommend using Ninja for building the project on Windows since it more efficiently uses the build machine's resources for the native runtime build in comparison to Visual Studio's MSBuild.
 
@@ -47,5 +53,4 @@ Use `build -?` to learn about the options to this script.
 
 See [Running Tests](../../testing/coreclr/testing.md) for instructions on running the tests.
 
-See also [Build CoreCLR on Linux](linux-instructions.md), [Build CoreCLR on OS X](osx-instructions.md), [Build CoreCLR on FreeBSD](freebsd-instructions.md),
-[Cross Compilation for ARM on Windows](cross-building.md), [Cross Compilation for Android on Linux](android.md).
+

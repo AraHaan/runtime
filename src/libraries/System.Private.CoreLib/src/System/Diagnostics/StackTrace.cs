@@ -30,6 +30,7 @@ namespace System.Diagnostics
         /// <summary>
         /// Constructs a stack trace from the current location.
         /// </summary>
+        [MethodImplAttribute(MethodImplOptions.NoInlining)]
         public StackTrace()
         {
             InitializeForCurrentThread(METHODS_TO_SKIP, false);
@@ -38,6 +39,7 @@ namespace System.Diagnostics
         /// <summary>
         /// Constructs a stack trace from the current location.
         /// </summary>
+        [MethodImplAttribute(MethodImplOptions.NoInlining)]
         public StackTrace(bool fNeedFileInfo)
         {
             InitializeForCurrentThread(METHODS_TO_SKIP, fNeedFileInfo);
@@ -47,6 +49,7 @@ namespace System.Diagnostics
         /// Constructs a stack trace from the current location, in a caller's
         /// frame
         /// </summary>
+        [MethodImplAttribute(MethodImplOptions.NoInlining)]
         public StackTrace(int skipFrames)
         {
             if (skipFrames < 0)
@@ -60,6 +63,7 @@ namespace System.Diagnostics
         /// Constructs a stack trace from the current location, in a caller's
         /// frame
         /// </summary>
+        [MethodImplAttribute(MethodImplOptions.NoInlining)]
         public StackTrace(int skipFrames, bool fNeedFileInfo)
         {
             if (skipFrames < 0)
@@ -74,8 +78,7 @@ namespace System.Diagnostics
         /// </summary>
         public StackTrace(Exception e)
         {
-            if (e == null)
-                throw new ArgumentNullException(nameof(e));
+            ArgumentNullException.ThrowIfNull(e);
 
             InitializeForException(e, METHODS_TO_SKIP, false);
         }
@@ -85,8 +88,7 @@ namespace System.Diagnostics
         /// </summary>
         public StackTrace(Exception e, bool fNeedFileInfo)
         {
-            if (e == null)
-                throw new ArgumentNullException(nameof(e));
+            ArgumentNullException.ThrowIfNull(e);
 
             InitializeForException(e, METHODS_TO_SKIP, fNeedFileInfo);
         }
@@ -97,8 +99,7 @@ namespace System.Diagnostics
         /// </summary>
         public StackTrace(Exception e, int skipFrames)
         {
-            if (e == null)
-                throw new ArgumentNullException(nameof(e));
+            ArgumentNullException.ThrowIfNull(e);
 
             if (skipFrames < 0)
                 throw new ArgumentOutOfRangeException(nameof(skipFrames),
@@ -113,8 +114,7 @@ namespace System.Diagnostics
         /// </summary>
         public StackTrace(Exception e, int skipFrames, bool fNeedFileInfo)
         {
-            if (e == null)
-                throw new ArgumentNullException(nameof(e));
+            ArgumentNullException.ThrowIfNull(e);
 
             if (skipFrames < 0)
                 throw new ArgumentOutOfRangeException(nameof(skipFrames),
@@ -187,7 +187,6 @@ namespace System.Diagnostics
             TrailingNewLine,        // include a trailing new line character
         }
 
-#if !CORERT
         /// <summary>
         /// Builds a readable representation of the stack trace, specifying
         /// the format for backwards compatibility.
@@ -199,6 +198,9 @@ namespace System.Diagnostics
             return sb.ToString();
         }
 
+#if !NATIVEAOT
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode",
+            Justification = "ToString is best effort when it comes to available information.")]
         internal void ToString(TraceFormat traceFormat, StringBuilder sb)
         {
             // Passing a default string for "at" in case SR.UsingResourceKeys() is true
@@ -206,6 +208,7 @@ namespace System.Diagnostics
             string word_At = SR.GetResourceString(nameof(SR.Word_At), defaultString: "at");
             // We also want to pass in a default for inFileLineNumber.
             string inFileLineNum = SR.GetResourceString(nameof(SR.StackTrace_InFileLineNumber), defaultString: "in {0}:line {1}");
+            string inFileILOffset = SR.GetResourceString(nameof(SR.StackTrace_InFileILOffset), defaultString: "in {0}:token 0x{1:x}+0x{2:x}");
             bool fFirstFrame = true;
             for (int iFrameIndex = 0; iFrameIndex < _numOfFrames; iFrameIndex++)
             {
@@ -220,7 +223,7 @@ namespace System.Diagnostics
                     else
                         sb.AppendLine();
 
-                    sb.AppendFormat(CultureInfo.InvariantCulture, "   {0} ", word_At);
+                    sb.Append("   ").Append(word_At).Append(' ');
 
                     bool isAsync = false;
                     Type? declaringType = mb.DeclaringType;
@@ -296,8 +299,12 @@ namespace System.Diagnostics
                             if (pi[j].ParameterType != null)
                                 typeName = pi[j].ParameterType.Name;
                             sb.Append(typeName);
-                            sb.Append(' ');
-                            sb.Append(pi[j].Name);
+                            string? parameterName = pi[j].Name;
+                            if (parameterName != null)
+                            {
+                                sb.Append(' ');
+                                sb.Append(parameterName);
+                            }
                         }
                         sb.Append(')');
                     }
@@ -323,6 +330,17 @@ namespace System.Diagnostics
                             sb.Append(' ');
                             sb.AppendFormat(CultureInfo.InvariantCulture, inFileLineNum, fileName, sf.GetFileLineNumber());
                         }
+                        else if (LocalAppContextSwitches.ShowILOffsets && mb.ReflectedType != null)
+                        {
+                            string assemblyName = mb.ReflectedType.Module.ScopeName;
+                            try
+                            {
+                                int token = mb.MetadataToken;
+                                sb.Append(' ');
+                                sb.AppendFormat(CultureInfo.InvariantCulture, inFileILOffset, assemblyName, token, sf.GetILOffset());
+                            }
+                            catch (System.InvalidOperationException) {}
+                        }
                     }
 
                     // Skip EDI boundary for async
@@ -339,7 +357,7 @@ namespace System.Diagnostics
             if (traceFormat == TraceFormat.TrailingNewLine)
                 sb.AppendLine();
         }
-#endif // !CORERT
+#endif // !NATIVEAOT
 
         private static bool ShowInStackTrace(MethodBase mb)
         {
@@ -354,19 +372,28 @@ namespace System.Diagnostics
                 return false;
             }
 
-            if (mb.IsDefined(typeof(StackTraceHiddenAttribute), inherit: false))
+            try
             {
-                // Don't show where StackTraceHidden is applied to the method.
-                return false;
-            }
+                if (mb.IsDefined(typeof(StackTraceHiddenAttribute), inherit: false))
+                {
+                    // Don't show where StackTraceHidden is applied to the method.
+                    return false;
+                }
 
-            Type? declaringType = mb.DeclaringType;
-            // Methods don't always have containing types, for example dynamic RefEmit generated methods.
-            if (declaringType != null &&
-                declaringType.IsDefined(typeof(StackTraceHiddenAttribute), inherit: false))
+                Type? declaringType = mb.DeclaringType;
+                // Methods don't always have containing types, for example dynamic RefEmit generated methods.
+                if (declaringType != null &&
+                    declaringType.IsDefined(typeof(StackTraceHiddenAttribute), inherit: false))
+                {
+                    // Don't show where StackTraceHidden is applied to the containing Type of the method.
+                    return false;
+                }
+            }
+            catch
             {
-                // Don't show where StackTraceHidden is applied to the containing Type of the method.
-                return false;
+                // Getting the StackTraceHiddenAttribute has failed, behave as if it was not present.
+                // One of the reasons can be that the method mb or its declaring type use attributes
+                // defined in an assembly that is missing.
             }
 
             return true;
@@ -399,7 +426,7 @@ namespace System.Diagnostics
 
             foreach (MethodInfo candidateMethod in methods)
             {
-                IEnumerable<StateMachineAttribute>? attributes = candidateMethod.GetCustomAttributes<StateMachineAttribute>(inherit: false);
+                StateMachineAttribute[]? attributes = (StateMachineAttribute[])Attribute.GetCustomAttributes(candidateMethod, typeof(StateMachineAttribute), inherit: false);
                 if (attributes == null)
                 {
                     continue;

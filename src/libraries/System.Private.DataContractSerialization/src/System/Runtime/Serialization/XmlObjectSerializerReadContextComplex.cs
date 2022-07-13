@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
 namespace System.Runtime.Serialization
@@ -30,6 +31,7 @@ namespace System.Runtime.Serialization
             get { return _mode; }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override object? InternalDeserialize(XmlReaderDelegator xmlReader, int declaredTypeID, RuntimeTypeHandle declaredTypeHandle, string name, string ns)
         {
             if (_mode == SerializationMode.SharedContract)
@@ -37,14 +39,15 @@ namespace System.Runtime.Serialization
                 if (_serializationSurrogateProvider == null)
                     return base.InternalDeserialize(xmlReader, declaredTypeID, declaredTypeHandle, name, ns);
                 else
-                    return InternalDeserializeWithSurrogate(xmlReader, Type.GetTypeFromHandle(declaredTypeHandle), null /*surrogateDataContract*/, name, ns);
+                    return InternalDeserializeWithSurrogate(xmlReader, Type.GetTypeFromHandle(declaredTypeHandle)!, null /*surrogateDataContract*/, name, ns);
             }
             else
             {
-                return InternalDeserializeInSharedTypeMode(xmlReader, declaredTypeID, Type.GetTypeFromHandle(declaredTypeHandle), name, ns);
+                return InternalDeserializeInSharedTypeMode(xmlReader, declaredTypeID, Type.GetTypeFromHandle(declaredTypeHandle)!, name, ns);
             }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override object? InternalDeserialize(XmlReaderDelegator xmlReader, Type declaredType, string name, string ns)
         {
             if (_mode == SerializationMode.SharedContract)
@@ -60,6 +63,7 @@ namespace System.Runtime.Serialization
             }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override object? InternalDeserialize(XmlReaderDelegator xmlReader, Type declaredType, DataContract? dataContract, string? name, string? ns)
         {
             if (_mode == SerializationMode.SharedContract)
@@ -75,6 +79,7 @@ namespace System.Runtime.Serialization
             }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private object? InternalDeserializeInSharedTypeMode(XmlReaderDelegator xmlReader, int declaredTypeID, Type declaredType, string? name, string? ns)
         {
             Debug.Assert(attributes != null);
@@ -89,8 +94,7 @@ namespace System.Runtime.Serialization
             if (assemblyName != null && typeName != null)
             {
                 Assembly assembly;
-                Type type;
-                DataContract? tempDataContract = ResolveDataContractInSharedTypeMode(assemblyName, typeName, out assembly, out type);
+                DataContract? tempDataContract = ResolveDataContractInSharedTypeMode(assemblyName, typeName, out assembly, out _);
                 if (tempDataContract == null)
                 {
                     if (assembly == null)
@@ -117,6 +121,7 @@ namespace System.Runtime.Serialization
             return ReadDataContractValue(dataContract, xmlReader);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private object? InternalDeserializeWithSurrogate(XmlReaderDelegator xmlReader, Type declaredType, DataContract? surrogateDataContract, string? name, string? ns)
         {
             Debug.Assert(_serializationSurrogateProvider != null);
@@ -136,13 +141,14 @@ namespace System.Runtime.Serialization
             return obj;
         }
 
-        private Type ResolveDataContractTypeInSharedTypeMode(string assemblyName, string typeName, out Assembly assembly)
+        private static Type ResolveDataContractTypeInSharedTypeMode(string assemblyName, string typeName, out Assembly assembly)
         {
             // The method is used only when _mode == SerializationMode.SharedType.
             // _mode is set to SerializationMode.SharedType only when the context is for NetDataContractSerializer.
             throw new PlatformNotSupportedException(SR.PlatformNotSupported_NetDataContractSerializer);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         private DataContract? ResolveDataContractInSharedTypeMode(string assemblyName, string typeName, out Assembly assembly, out Type type)
         {
             type = ResolveDataContractTypeInSharedTypeMode(assemblyName, typeName, out assembly);
@@ -154,6 +160,7 @@ namespace System.Runtime.Serialization
             return null;
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         protected override DataContract? ResolveDataContractFromTypeName()
         {
             Debug.Assert(attributes != null);
@@ -166,14 +173,13 @@ namespace System.Runtime.Serialization
             {
                 if (attributes.ClrAssembly != null && attributes.ClrType != null)
                 {
-                    Assembly assembly;
-                    Type type;
-                    return ResolveDataContractInSharedTypeMode(attributes.ClrAssembly, attributes.ClrType, out assembly, out type);
+                    return ResolveDataContractInSharedTypeMode(attributes.ClrAssembly, attributes.ClrType, out _, out _);
                 }
             }
             return null;
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override void CheckIfTypeSerializable(Type memberType, bool isMemberTypeSerializable)
         {
             if (_serializationSurrogateProvider != null)
@@ -189,6 +195,7 @@ namespace System.Runtime.Serialization
             base.CheckIfTypeSerializable(memberType, isMemberTypeSerializable);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override Type GetSurrogatedType(Type type)
         {
             if (_serializationSurrogateProvider == null)

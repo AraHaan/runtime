@@ -17,7 +17,7 @@ using System.Threading;
 
 namespace System.Net.Mail
 {
-    internal partial class SmtpConnection
+    internal sealed partial class SmtpConnection
     {
         private static readonly ContextCallback s_AuthenticateCallback = new ContextCallback(AuthenticateCallback);
 
@@ -303,7 +303,7 @@ namespace System.Net.Mail
 #endif
                 try
                 {
-                    ExecutionContext? x = context == null ? null : context.ContextCopy;
+                    ExecutionContext? x = context?.ContextCopy;
                     if (x != null)
                     {
                         AuthenticateCallbackContext authenticationContext =
@@ -333,7 +333,7 @@ namespace System.Net.Mail
             context._result = context._module.Authenticate(null, context._credential, context._thisPtr, context._spn, context._token);
         }
 
-        private class AuthenticateCallbackContext
+        private sealed class AuthenticateCallbackContext
         {
             internal AuthenticateCallbackContext(SmtpConnection thisPtr, ISmtpAuthenticationModule module, NetworkCredential credential, string? spn, ChannelBinding? Token)
             {
@@ -355,7 +355,7 @@ namespace System.Net.Mail
             internal Authorization? _result;
         }
 
-        internal void EndGetConnection(IAsyncResult result)
+        internal static void EndGetConnection(IAsyncResult result)
         {
             ConnectAndHandshakeAsyncResult.End(result);
         }
@@ -374,7 +374,7 @@ namespace System.Net.Mail
             DataStopCommand.Send(this);
         }
 
-        private class ConnectAndHandshakeAsyncResult : LazyAsyncResult
+        private sealed class ConnectAndHandshakeAsyncResult : LazyAsyncResult
         {
             private string? _authResponse;
             private readonly SmtpConnection _connection;
@@ -469,7 +469,7 @@ namespace System.Net.Mail
                     return;
                 }
 
-                LineInfo info = reader.EndReadLine(result);
+                LineInfo info = SmtpReplyReader.EndReadLine(result);
 
                 if (info.StatusCode != SmtpStatusCode.ServiceReady)
                 {
@@ -500,7 +500,7 @@ namespace System.Net.Mail
                     {
                         try
                         {
-                            LineInfo info = thisPtr._connection.Reader!.CurrentReader!.EndReadLine(result);
+                            LineInfo info = SmtpReplyReader.EndReadLine(result);
                             if (info.StatusCode != SmtpStatusCode.ServiceReady)
                             {
                                 thisPtr.InvokeCallback(new SmtpException(info.StatusCode, info.Line, true));

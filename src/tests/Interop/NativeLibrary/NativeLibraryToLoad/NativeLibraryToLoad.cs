@@ -13,14 +13,19 @@ public class NativeLibraryToLoad
 
     public static string GetFileName()
     {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return $"{Name}.dll";
+        return GetLibraryFileName(Name);
+    }
 
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            return $"lib{Name}.so";
+    public static string GetLibraryFileName(string name)
+    {
+        if (OperatingSystem.IsWindows())
+            return $"{name}.dll";
 
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            return $"lib{Name}.dylib";
+        if (OperatingSystem.IsLinux())
+            return $"lib{name}.so";
+
+        if (OperatingSystem.IsMacOS())
+            return $"lib{name}.dylib";
 
         throw new PlatformNotSupportedException();
     }

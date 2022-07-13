@@ -24,10 +24,7 @@ namespace System.ComponentModel.Composition.ReflectionModel
             ICompositionElement? origin)
             : base(contractName, requiredTypeIdentity, requiredMetadata, cardinality, isRecomposable, isPrerequisite, requiredCreationPolicy, metadata, origin)
         {
-            if (contractName == null)
-            {
-                throw new ArgumentNullException(nameof(contractName));
-            }
+            ArgumentNullException.ThrowIfNull(contractName);
 
             _importingLazyMember = importingLazyMember;
         }
@@ -43,13 +40,7 @@ namespace System.ComponentModel.Composition.ReflectionModel
             get { return _importingLazyMember; }
         }
 
-        protected override string GetDisplayName()
-        {
-            return string.Format(
-                CultureInfo.CurrentCulture,
-                "{0} (ContractName=\"{1}\")",    // NOLOC
-                ImportingLazyMember.ToReflectionMember().GetDisplayName(),
-                ContractName);
-        }
+        protected override string GetDisplayName() =>
+            $"{ImportingLazyMember.ToReflectionMember().GetDisplayName()} (ContractName=\"{ContractName}\")";    // NOLOC
     }
 }

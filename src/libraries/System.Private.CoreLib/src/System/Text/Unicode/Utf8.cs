@@ -6,10 +6,6 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-#if SYSTEM_PRIVATE_CORELIB
-using Internal.Runtime.CompilerServices;
-#endif
-
 namespace System.Text.Unicode
 {
 #if SYSTEM_PRIVATE_CORELIB
@@ -102,7 +98,7 @@ namespace System.Text.Unicode
 
                     destination = destination.Slice((int)(pOutputBufferRemaining - (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination))));
 
-                    if (2 >= (uint)destination.Length)
+                    if (destination.Length <= 2)
                     {
                         operationStatus = OperationStatus.DestinationTooSmall;
                         break;

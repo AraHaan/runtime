@@ -44,6 +44,7 @@ namespace System.Net.Http.Functional.Tests
         private static string GetCookieHeaderValue(string cookieName, string cookieValue) => $"{cookieName}={cookieValue}";
 
         [Fact]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_DefaultCoookieContainer_NoCookieSent()
         {
             await LoopbackServerFactory.CreateClientAndServerAsync(
@@ -63,6 +64,8 @@ namespace System.Net.Http.Functional.Tests
 
         [Theory]
         [MemberData(nameof(CookieNamesValuesAndUseCookies))]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_SetCookieContainer_CookieSent(string cookieName, string cookieValue, bool useCookies)
         {
             await LoopbackServerFactory.CreateClientAndServerAsync(
@@ -92,6 +95,8 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_SetCookieContainerMultipleCookies_CookiesSent()
         {
             var cookies = new Cookie[]
@@ -126,6 +131,7 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_AddCookieHeader_CookieHeaderSent()
         {
             await LoopbackServerFactory.CreateClientAndServerAsync(
@@ -147,6 +153,7 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_AddMultipleCookieHeaders_CookiesSent()
         {
             await LoopbackServerFactory.CreateClientAndServerAsync(
@@ -166,12 +173,16 @@ namespace System.Net.Http.Functional.Tests
                 {
                     HttpRequestData requestData = await server.HandleRequestAsync();
 
-                    // Multiple Cookie header values are treated as any other header values and are
-                    // concatenated using ", " as the separator.
+                    // Multiple Cookie header values are concatenated using "; " as the separator.
 
                     string cookieHeaderValue = requestData.GetSingleHeaderValue("Cookie");
 
-                    var cookieValues = cookieHeaderValue.Split(new string[] { ", " }, StringSplitOptions.None);
+#if NETFRAMEWORK
+                    var separator = ", ";
+#else
+                    var separator = "; ";
+#endif
+                    var cookieValues = cookieHeaderValue.Split(new string[] { separator }, StringSplitOptions.None);
                     Assert.Contains("A=1", cookieValues);
                     Assert.Contains("B=2", cookieValues);
                     Assert.Contains("C=3", cookieValues);
@@ -211,6 +222,8 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_SetCookieContainerAndCookieHeader_BothCookiesSent()
         {
             await LoopbackServerFactory.CreateServerAsync(async (server, url) =>
@@ -238,6 +251,8 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_SetCookieContainerAndMultipleCookieHeaders_BothCookiesSent()
         {
             await LoopbackServerFactory.CreateServerAsync(async (server, url) =>
@@ -258,39 +273,35 @@ namespace System.Net.Http.Functional.Tests
                     HttpRequestData requestData = await serverTask;
                     string cookieHeaderValue = GetCookieValue(requestData);
 
-                    // Multiple Cookie header values are treated as any other header values and are
+#if NETFRAMEWORK
+                    // On .NET Framework multiple Cookie header values are treated as any other header values and are
                     // concatenated using ", " as the separator.  The container cookie is concatenated to
                     // one of these values using the "; " cookie separator.
 
-                    var cookieValues = cookieHeaderValue.Split(new string[] { ", " }, StringSplitOptions.None);
-                    Assert.Equal(2, cookieValues.Count());
-
-                    // Find container cookie and remove it so we can validate the rest of the cookie header values
-                    bool sawContainerCookie = false;
-                    for (int i = 0; i < cookieValues.Length; i++)
-                    {
-                        if (cookieValues[i].Contains(';'))
-                        {
-                            Assert.False(sawContainerCookie);
-
-                            var cookies = cookieValues[i].Split(new string[] { "; " }, StringSplitOptions.None);
-                            Assert.Equal(2, cookies.Count());
-                            Assert.Contains(s_expectedCookieHeaderValue, cookies);
-
-                            sawContainerCookie = true;
-                            cookieValues[i] = cookies.Where(c => c != s_expectedCookieHeaderValue).Single();
-                        }
-                    }
-
+                    var separators = new string[] { "; ", ", " };
+#else
+                    var separators = new string[] { "; " };
+#endif
+                    var cookieValues = cookieHeaderValue.Split(separators, StringSplitOptions.None);
+                    Assert.Contains(s_expectedCookieHeaderValue, cookieValues);
                     Assert.Contains("A=1", cookieValues);
                     Assert.Contains("B=2", cookieValues);
+                    Assert.Equal(3, cookieValues.Count());
                 }
             });
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsyncWithRedirect_SetCookieContainer_CorrectCookiesSent()
         {
+            if (UseVersion == HttpVersion30)
+            {
+                // [ActiveIssue("https://github.com/dotnet/runtime/issues/56870")]
+                return;
+            }
+
             const string path1 = "/foo";
             const string path2 = "/bar";
             const string unusedPath = "/unused";
@@ -310,7 +321,7 @@ namespace System.Net.Http.Functional.Tests
                 using (HttpClient client = CreateHttpClient(handler))
                 {
                     client.DefaultRequestHeaders.ConnectionClose = true; // to avoid issues with connection pooling
-                    await client.GetAsync(url1);
+                        await client.GetAsync(url1);
                 }
             },
             async server =>
@@ -329,6 +340,8 @@ namespace System.Net.Http.Functional.Tests
 
         [Theory]
         [MemberData(nameof(CookieNamesValuesAndUseCookies))]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_ReceiveSetCookieHeader_CookieAdded(string cookieName, string cookieValue, bool useCookies)
         {
             await LoopbackServerFactory.CreateServerAsync(async (server, url) =>
@@ -360,6 +373,8 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_ReceiveMultipleSetCookieHeaders_CookieAdded()
         {
             await LoopbackServerFactory.CreateServerAsync(async (server, url) =>
@@ -399,6 +414,8 @@ namespace System.Net.Http.Functional.Tests
         // the cookie should be added with Path=/path.
         // ConditionalFact: CookieContainer does not follow RFC6265 on .NET Framework, therefore the (WinHttpHandler) test is expected to fail
         [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsNotNetFramework))]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_NoPathDefined_CookieAddedWithDefaultPath()
         {
             await LoopbackServerFactory.CreateServerAsync(async (server, serverUrl) =>
@@ -428,6 +445,8 @@ namespace System.Net.Http.Functional.Tests
         // these cookies should be accepted by the client.
         // ConditionalFact: CookieContainer does not follow RFC6265 on .NET Framework, therefore the (WinHttpHandler) test is expected to fail
         [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsNotNetFramework))]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_CookiePathDoesNotMatchRequestPath_CookieAccepted()
         {
             await LoopbackServerFactory.CreateServerAsync(async (server, serverUrl) =>
@@ -459,8 +478,16 @@ namespace System.Net.Http.Functional.Tests
         // https://github.com/dotnet/runtime/issues/26141#issuecomment-612097147
         // ConditionalFact: CookieContainer does not follow RFC6265 on .NET Framework, therefore the (WinHttpHandler) test is expected to fail
         [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsNotNetFramework))]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_Redirect_CookiesArePreserved()
         {
+            if (UseVersion == HttpVersion30)
+            {
+                // [ActiveIssue("https://github.com/dotnet/runtime/issues/56870")]
+                return;
+            }
+
             HttpClientHandler handler = CreateHttpClientHandler();
 
             string loginPath = "/login/user";
@@ -501,6 +528,8 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_ReceiveSetCookieHeader_CookieUpdated()
         {
             const string newCookieValue = "789";
@@ -528,6 +557,8 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_ReceiveSetCookieHeader_CookieRemoved()
         {
             await LoopbackServerFactory.CreateServerAsync(async (server, url) =>
@@ -551,6 +582,8 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_ReceiveInvalidSetCookieHeader_ValidCookiesAdded()
         {
             await LoopbackServerFactory.CreateServerAsync(async (server, url) =>
@@ -585,8 +618,16 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsyncWithRedirect_ReceiveSetCookie_CookieSent()
         {
+            if (UseVersion == HttpVersion30)
+            {
+                // [ActiveIssue("https://github.com/dotnet/runtime/issues/56870")]
+                return;
+            }
+
             const string path1 = "/foo";
             const string path2 = "/bar";
 
@@ -638,8 +679,16 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsyncWithBasicAuth_ReceiveSetCookie_CookieSent()
         {
+            if (UseVersion == HttpVersion30)
+            {
+                // [ActiveIssue("https://github.com/dotnet/runtime/issues/56870")]
+                return;
+            }
+
             if (IsWinHttpHandler)
             {
                 // Issue https://github.com/dotnet/runtime/issues/24979
@@ -757,6 +806,7 @@ namespace System.Net.Http.Functional.Tests
         public HttpClientHandlerTest_Cookies_Http11(ITestOutputHelper output) : base(output) { }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.Browser, "CookieContainer is not supported on Browser")]
         public async Task GetAsync_ReceiveMultipleSetCookieHeaders_CookieAdded()
         {
             await LoopbackServer.CreateServerAsync(async (server, url) =>

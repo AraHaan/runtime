@@ -4,7 +4,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
     [StructLayout(LayoutKind.Explicit)]
     internal struct CLAIM_SECURITY_ATTRIBUTE_INFORMATION_V1
@@ -78,9 +78,8 @@ internal partial class Interop
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     internal struct CLAIM_SECURITY_ATTRIBUTE_V1
     {
-        // PWSTR->WCHAR*
-        [MarshalAs(UnmanagedType.LPWStr)]
-        public string Name;
+        // PWSTR
+        public IntPtr Name;
 
         // WORD->unsigned short
         public ClaimSecurityAttributeType ValueType;

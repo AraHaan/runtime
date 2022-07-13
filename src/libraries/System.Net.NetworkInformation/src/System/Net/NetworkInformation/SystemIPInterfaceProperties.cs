@@ -9,7 +9,7 @@ namespace System.Net.NetworkInformation
     // Note: Provides information specific to a network interface. A network interface can have more
     // than one IPAddress associated with it. We call the native GetAdaptersAddresses API to
     // pre-populate all of the interface instances and most of their associated information.
-    internal class SystemIPInterfaceProperties : IPInterfaceProperties
+    internal sealed class SystemIPInterfaceProperties : IPInterfaceProperties
     {
         // These are valid for all interfaces.
         private readonly bool _dnsEnabled;
@@ -26,11 +26,11 @@ namespace System.Net.NetworkInformation
         private readonly GatewayIPAddressInformationCollection _gatewayAddresses;
         private readonly InternalIPAddressCollection _dhcpServers;
 
-        internal SystemIPInterfaceProperties(in Interop.IpHlpApi.FIXED_INFO fixedInfo, in Interop.IpHlpApi.IpAdapterAddresses ipAdapterAddresses)
+        internal SystemIPInterfaceProperties(in Interop.IpHlpApi.IpAdapterAddresses ipAdapterAddresses)
         {
             _adapterFlags = ipAdapterAddresses.flags;
-            _dnsSuffix = ipAdapterAddresses.dnsSuffix;
-            _dnsEnabled = fixedInfo.enableDns;
+            _dnsSuffix = ipAdapterAddresses.DnsSuffix;
+            _dnsEnabled = HostInformationPal.GetEnableDns();
             _dynamicDnsEnabled = ((ipAdapterAddresses.flags & Interop.IpHlpApi.AdapterFlags.DnsEnabled) > 0);
 
             _multicastAddresses = SystemMulticastIPAddressInformation.ToMulticastIpAddressInformationCollection(
@@ -58,13 +58,13 @@ namespace System.Net.NetworkInformation
 
             if ((_adapterFlags & Interop.IpHlpApi.AdapterFlags.IPv4Enabled) != 0)
             {
-                _ipv4Properties = new SystemIPv4InterfaceProperties(fixedInfo, ipAdapterAddresses);
+                _ipv4Properties = new SystemIPv4InterfaceProperties(ipAdapterAddresses);
             }
 
             if ((_adapterFlags & Interop.IpHlpApi.AdapterFlags.IPv6Enabled) != 0)
             {
                 _ipv6Properties = new SystemIPv6InterfaceProperties(ipAdapterAddresses.ipv6Index,
-                    ipAdapterAddresses.mtu, ipAdapterAddresses.zoneIndices);
+                    ipAdapterAddresses.mtu, ipAdapterAddresses.ZoneIndices);
             }
         }
 

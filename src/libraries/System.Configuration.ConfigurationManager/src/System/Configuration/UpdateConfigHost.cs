@@ -10,7 +10,7 @@ namespace System.Configuration
 {
     // Configuration host that intercepts calls to filename functions
     // to support SaveAs to an alternate file stream.
-    internal class UpdateConfigHost : DelegatingConfigHost
+    internal sealed class UpdateConfigHost : DelegatingConfigHost
     {
         private HybridDictionary _streams; // oldStreamname -> StreamUpdate
 
@@ -36,7 +36,7 @@ namespace System.Configuration
 
             if (!alwaysIntercept && StringUtil.EqualsIgnoreCase(oldStreamname, newStreamname)) return;
 
-            if (_streams == null) _streams = new HybridDictionary(true);
+            _streams ??= new HybridDictionary(true);
 
             _streams[oldStreamname] = new StreamUpdate(newStreamname);
         }

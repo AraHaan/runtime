@@ -74,7 +74,6 @@ namespace System.Net.Sockets
         private Socket? _currentSocket;
         private bool _userSocket; // if false when performing Connect, _currentSocket should be disposed
         private bool _disposeCalled;
-        private protected bool _disableTelemetry;
 
         // Controls thread safety via Interlocked.
         private const int Configuring = -1;
@@ -154,7 +153,7 @@ namespace System.Net.Sockets
                         if (!_buffer.Equals(default))
                         {
                             // Can't have both set
-                            throw new ArgumentException(SR.Format(SR.net_ambiguousbuffers, nameof(Buffer)));
+                            throw new ArgumentException(SR.net_ambiguousbuffers);
                         }
 
                         // Copy the user-provided list into our internal buffer list,
@@ -202,7 +201,11 @@ namespace System.Net.Sockets
 
         private void OnCompletedInternal()
         {
-            if (SocketsTelemetry.Log.IsEnabled() && !_disableTelemetry) AfterConnectAcceptTelemetry();
+            // The following check checks if the operation was Accept (1) or Connect (2)
+            if (LastOperation <= SocketAsyncOperation.Connect)
+            {
+                AfterConnectAcceptTelemetry();
+            }
 
             OnCompleted(this);
         }
@@ -222,6 +225,10 @@ namespace System.Net.Sockets
 
                 case SocketAsyncOperation.Connect:
                     SocketsTelemetry.Log.AfterConnect(SocketError);
+                    break;
+
+                default:
+                    Debug.Fail($"Callers should guard against calling this method for '{LastOperation}'");
                     break;
             }
         }
@@ -359,7 +366,7 @@ namespace System.Net.Sockets
                     // Can't have both Buffer and BufferList.
                     if (_bufferList != null)
                     {
-                        throw new ArgumentException(SR.Format(SR.net_ambiguousbuffers, nameof(BufferList)));
+                        throw new ArgumentException(SR.net_ambiguousbuffers);
                     }
 
                     // Offset and count can't be negative and the
@@ -392,7 +399,7 @@ namespace System.Net.Sockets
             {
                 if (buffer.Length != 0 && _bufferList != null)
                 {
-                    throw new ArgumentException(SR.Format(SR.net_ambiguousbuffers, nameof(BufferList)));
+                    throw new ArgumentException(SR.net_ambiguousbuffers);
                 }
 
                 _buffer = buffer;
@@ -511,9 +518,8 @@ namespace System.Net.Sockets
         private void ThrowForNonFreeStatus(int status)
         {
             Debug.Assert(status == InProgress || status == Configuring || status == Disposed, $"Unexpected status: {status}");
-            throw status == Disposed ?
-                new ObjectDisposedException(GetType().FullName) :
-                new InvalidOperationException(SR.net_socketopinprogress);
+            ObjectDisposedException.ThrowIf(status == Disposed, this);
+            throw new InvalidOperationException(SR.net_socketopinprogress);
         }
 
         // Prepares for a native async socket call.
@@ -560,7 +566,7 @@ namespace System.Net.Sockets
                 // Caller specified a buffer - see if it is large enough
                 if (_count < _acceptAddressBufferCount)
                 {
-                    throw new ArgumentException(SR.Format(SR.net_buffercounttoosmall, nameof(Count)));
+                    throw new ArgumentException(SR.net_buffercounttoosmall, nameof(Count));
                 }
             }
             else
@@ -711,6 +717,11 @@ namespace System.Net.Sockets
                             if (address.AddressFamily == AddressFamily.InterNetworkV6)
                             {
                                 attemptSocket = tempSocketIPv6 ??= (Socket.OSSupportsIPv6 ? new Socket(AddressFamily.InterNetworkV6, socketType, protocolType) : null);
+                                if (attemptSocket is not null && address.IsIPv4MappedToIPv6)
+                                {
+                                    // We need a DualMode socket to connect to an IPv6-mapped IPv4 address.
+                                    attemptSocket.DualMode = true;
+                                }
                             }
                             else if (address.AddressFamily == AddressFamily.InterNetwork)
                             {
@@ -813,11 +824,8 @@ namespace System.Net.Sockets
                     }
 
                     // Complete the operation.
-                    if (SocketsTelemetry.Log.IsEnabled() && !_disableTelemetry)
-                    {
-                        LogBytesTransferEvents(_connectSocket?.SocketType, SocketAsyncOperation.Connect, internalArgs.BytesTransferred);
-                        AfterConnectAcceptTelemetry();
-                    }
+                    if (SocketsTelemetry.Log.IsEnabled()) LogBytesTransferEvents(_connectSocket?.SocketType, SocketAsyncOperation.Connect, internalArgs.BytesTransferred);
+
                     Complete();
 
                     // Clean up after our temporary arguments.
@@ -842,12 +850,7 @@ namespace System.Net.Sockets
             private ManualResetValueTaskSourceCore<bool> _mrvtsc;
             private int _isCompleted;
 
-            public MultiConnectSocketAsyncEventArgs() : base(unsafeSuppressExecutionContextFlow: false)
-            {
-                // Instances of this type are an implementation detail of an overarching connect operation.
-                // We don't want to emit telemetry specific to operations on this inner instance.
-                _disableTelemetry = true;
-            }
+            public MultiConnectSocketAsyncEventArgs() : base(unsafeSuppressExecutionContextFlow: false) { }
 
             public void GetResult(short token) => _mrvtsc.GetResult(token);
             public ValueTaskSourceStatus GetStatus(short token) => _mrvtsc.GetStatus(token);
@@ -870,7 +873,7 @@ namespace System.Net.Sockets
                 LogBuffer(bytesTransferred);
             }
 
-            SocketError socketError = SocketError.Success;
+            SocketError socketError;
             switch (_completedOperation)
             {
                 case SocketAsyncOperation.Accept:
@@ -968,7 +971,7 @@ namespace System.Net.Sockets
                     break;
             }
 
-            if (SocketsTelemetry.Log.IsEnabled() && !_disableTelemetry) LogBytesTransferEvents(_currentSocket?.SocketType, _completedOperation, bytesTransferred);
+            if (SocketsTelemetry.Log.IsEnabled()) LogBytesTransferEvents(_currentSocket?.SocketType, _completedOperation, bytesTransferred);
 
             Complete();
         }
@@ -1003,7 +1006,11 @@ namespace System.Net.Sockets
                 FinishOperationSyncFailure(socketError, bytesTransferred, flags);
             }
 
-            if (SocketsTelemetry.Log.IsEnabled() && !_disableTelemetry) AfterConnectAcceptTelemetry();
+            // The following check checks if the operation was Accept (1) or Connect (2)
+            if (LastOperation <= SocketAsyncOperation.Connect)
+            {
+                AfterConnectAcceptTelemetry();
+            }
         }
 
         private static void LogBytesTransferEvents(SocketType? socketType, SocketAsyncOperation operation, int bytesTransferred)

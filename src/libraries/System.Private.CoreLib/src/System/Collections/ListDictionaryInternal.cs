@@ -33,10 +33,8 @@ namespace System.Collections
         {
             get
             {
-                if (key == null)
-                {
-                    throw new ArgumentNullException(nameof(key), SR.ArgumentNull_Key);
-                }
+                ArgumentNullException.ThrowIfNull(key);
+
                 DictionaryNode? node = head;
 
                 while (node != null)
@@ -51,10 +49,7 @@ namespace System.Collections
             }
             set
             {
-                if (key == null)
-                {
-                    throw new ArgumentNullException(nameof(key), SR.ArgumentNull_Key);
-                }
+                ArgumentNullException.ThrowIfNull(key);
 
                 version++;
                 DictionaryNode? last = null;
@@ -105,15 +100,11 @@ namespace System.Collections
 
         public void Add(object key, object? value)
         {
-            if (key == null)
-            {
-                throw new ArgumentNullException(nameof(key), SR.ArgumentNull_Key);
-            }
+            ArgumentNullException.ThrowIfNull(key);
 
             version++;
             DictionaryNode? last = null;
-            DictionaryNode? node;
-            for (node = head; node != null; node = node.next)
+            for (DictionaryNode? node = head; node != null; node = node.next)
             {
                 if (node.key.Equals(key))
                 {
@@ -121,12 +112,7 @@ namespace System.Collections
                 }
                 last = node;
             }
-            if (node != null)
-            {
-                // Found it
-                node.value = value;
-                return;
-            }
+
             // Not found, so add a new one
             DictionaryNode newNode = new DictionaryNode();
             newNode.key = key;
@@ -151,10 +137,8 @@ namespace System.Collections
 
         public bool Contains(object key)
         {
-            if (key == null)
-            {
-                throw new ArgumentNullException(nameof(key), SR.ArgumentNull_Key);
-            }
+            ArgumentNullException.ThrowIfNull(key);
+
             for (DictionaryNode? node = head; node != null; node = node.next)
             {
                 if (node.key.Equals(key))
@@ -167,8 +151,7 @@ namespace System.Collections
 
         public void CopyTo(Array array, int index)
         {
-            if (array == null)
-                throw new ArgumentNullException(nameof(array));
+            ArgumentNullException.ThrowIfNull(array);
 
             if (array.Rank != 1)
                 throw new ArgumentException(SR.Arg_RankMultiDimNotSupported);
@@ -177,7 +160,7 @@ namespace System.Collections
                 throw new ArgumentOutOfRangeException(nameof(index), SR.ArgumentOutOfRange_NeedNonNegNum);
 
             if (array.Length - index < this.Count)
-                throw new ArgumentException(SR.ArgumentOutOfRange_Index, nameof(index));
+                throw new ArgumentException(SR.ArgumentOutOfRange_IndexMustBeLessOrEqual, nameof(index));
 
             for (DictionaryNode? node = head; node != null; node = node.next)
             {
@@ -198,10 +181,8 @@ namespace System.Collections
 
         public void Remove(object key)
         {
-            if (key == null)
-            {
-                throw new ArgumentNullException(nameof(key), SR.ArgumentNull_Key);
-            }
+            ArgumentNullException.ThrowIfNull(key);
+
             version++;
             DictionaryNode? last = null;
             DictionaryNode? node;
@@ -228,7 +209,7 @@ namespace System.Collections
             count--;
         }
 
-        private class NodeEnumerator : IDictionaryEnumerator
+        private sealed class NodeEnumerator : IDictionaryEnumerator
         {
             private readonly ListDictionaryInternal list;
             private DictionaryNode? current;
@@ -313,7 +294,7 @@ namespace System.Collections
             }
         }
 
-        private class NodeKeyValueCollection : ICollection
+        private sealed class NodeKeyValueCollection : ICollection
         {
             private readonly ListDictionaryInternal list;
             private readonly bool isKeys;
@@ -326,14 +307,14 @@ namespace System.Collections
 
             void ICollection.CopyTo(Array array, int index)
             {
-                if (array == null)
-                    throw new ArgumentNullException(nameof(array));
+                ArgumentNullException.ThrowIfNull(array);
+
                 if (array.Rank != 1)
                     throw new ArgumentException(SR.Arg_RankMultiDimNotSupported);
                 if (index < 0)
                     throw new ArgumentOutOfRangeException(nameof(index), SR.ArgumentOutOfRange_NeedNonNegNum);
                 if (array.Length - index < list.Count)
-                    throw new ArgumentException(SR.ArgumentOutOfRange_Index, nameof(index));
+                    throw new ArgumentException(SR.ArgumentOutOfRange_IndexMustBeLessOrEqual, nameof(index));
                 for (DictionaryNode? node = list.head; node != null; node = node.next)
                 {
                     array.SetValue(isKeys ? node.key : node.value, index);
@@ -363,7 +344,7 @@ namespace System.Collections
                 return new NodeKeyValueEnumerator(list, isKeys);
             }
 
-            private class NodeKeyValueEnumerator : IEnumerator
+            private sealed class NodeKeyValueEnumerator : IEnumerator
             {
                 private readonly ListDictionaryInternal list;
                 private DictionaryNode? current;
@@ -426,7 +407,7 @@ namespace System.Collections
         }
 
         [Serializable]
-        private class DictionaryNode
+        private sealed class DictionaryNode
         {
             public object key = null!;
             public object? value;

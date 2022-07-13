@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Security;
@@ -89,10 +90,7 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
         {
             Debug.Assert(atsOuter == null || atsOuter.OwningAggregate == agg.Parent, "");
 
-            if (typeArgs == null)
-            {
-                typeArgs = TypeArray.Empty;
-            }
+            typeArgs ??= TypeArray.Empty;
 
             Debug.Assert(agg.GetTypeVars().Count == typeArgs.Count);
             AggregateType pAggregate = TypeTable.LookupAggregate(agg, atsOuter, typeArgs);
@@ -178,6 +176,7 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
             return pParamModifier;
         }
 
+        [RequiresUnreferencedCode(Binder.TrimmerWarning)]
         public static AggregateSymbol GetNullable() => GetPredefAgg(PredefinedType.PT_G_OPTIONAL);
 
         private static CType SubstType(CType typeSrc, TypeArray typeArgsCls, TypeArray typeArgsMeth, bool denormMeth)
@@ -544,6 +543,7 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
             }
         }
 
+        [RequiresUnreferencedCode(Binder.TrimmerWarning)]
         public static AggregateSymbol GetPredefAgg(PredefinedType pt) => PredefinedTypes.GetPredefinedAggregate(pt);
 
         public static AggregateType SubstType(AggregateType typeSrc, SubstContext ctx) =>
@@ -583,6 +583,7 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
         // RUNTIME BINDER ONLY CHANGE
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+        [RequiresUnreferencedCode(Binder.TrimmerWarning)]
         internal static CType GetBestAccessibleType(AggregateSymbol context, CType typeSrc)
         {
             // This method implements the "best accessible type" algorithm for determining the type
@@ -659,6 +660,7 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
             return GetPredefAgg(PredefinedType.PT_VALUE).getThisType();
         }
 
+        [RequiresUnreferencedCode(Binder.TrimmerWarning)]
         private static bool TryVarianceAdjustmentToGetAccessibleType(AggregateSymbol context, AggregateType typeSrc, out CType typeDst)
         {
             Debug.Assert(typeSrc != null);
@@ -719,6 +721,7 @@ namespace Microsoft.CSharp.RuntimeBinder.Semantics
             return true;
         }
 
+        [RequiresUnreferencedCode(Binder.TrimmerWarning)]
         private static bool TryArrayVarianceAdjustmentToGetAccessibleType(AggregateSymbol context, ArrayType typeSrc, out CType typeDst)
         {
             Debug.Assert(typeSrc != null);

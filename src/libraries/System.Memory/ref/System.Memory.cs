@@ -40,6 +40,10 @@ namespace System
         public static int BinarySearch<T, TComparable>(this System.ReadOnlySpan<T> span, TComparable comparable) where TComparable : System.IComparable<T> { throw null; }
         public static int BinarySearch<T, TComparer>(this System.Span<T> span, T value, TComparer comparer) where TComparer : System.Collections.Generic.IComparer<T> { throw null; }
         public static int BinarySearch<T, TComparable>(this System.Span<T> span, TComparable comparable) where TComparable : System.IComparable<T> { throw null; }
+        public static int CommonPrefixLength<T>(this System.Span<T> span, System.ReadOnlySpan<T> other) { throw null; }
+        public static int CommonPrefixLength<T>(this System.Span<T> span, System.ReadOnlySpan<T> other, System.Collections.Generic.IEqualityComparer<T>? comparer) { throw null; }
+        public static int CommonPrefixLength<T>(this System.ReadOnlySpan<T> span, System.ReadOnlySpan<T> other) { throw null; }
+        public static int CommonPrefixLength<T>(this System.ReadOnlySpan<T> span, System.ReadOnlySpan<T> other, System.Collections.Generic.IEqualityComparer<T>? comparer) { throw null; }
         public static int CompareTo(this System.ReadOnlySpan<char> span, System.ReadOnlySpan<char> other, System.StringComparison comparisonType) { throw null; }
         public static bool Contains(this System.ReadOnlySpan<char> span, System.ReadOnlySpan<char> value, System.StringComparison comparisonType) { throw null; }
         public static bool Contains<T>(this System.ReadOnlySpan<T> span, T value) where T : System.IEquatable<T> { throw null; }
@@ -49,6 +53,8 @@ namespace System
         public static bool EndsWith(this System.ReadOnlySpan<char> span, System.ReadOnlySpan<char> value, System.StringComparison comparisonType) { throw null; }
         public static bool EndsWith<T>(this System.ReadOnlySpan<T> span, System.ReadOnlySpan<T> value) where T : System.IEquatable<T> { throw null; }
         public static bool EndsWith<T>(this System.Span<T> span, System.ReadOnlySpan<T> value) where T : System.IEquatable<T> { throw null; }
+        public static System.Text.SpanLineEnumerator EnumerateLines(this System.ReadOnlySpan<char> span) { throw null; }
+        public static System.Text.SpanLineEnumerator EnumerateLines(this System.Span<char> span) { throw null; }
         public static System.Text.SpanRuneEnumerator EnumerateRunes(this System.ReadOnlySpan<char> span) { throw null; }
         public static System.Text.SpanRuneEnumerator EnumerateRunes(this System.Span<char> span) { throw null; }
         public static bool Equals(this System.ReadOnlySpan<char> span, System.ReadOnlySpan<char> other, System.StringComparison comparisonType) { throw null; }
@@ -59,6 +65,14 @@ namespace System
         public static int IndexOfAny<T>(this System.Span<T> span, System.ReadOnlySpan<T> values) where T : System.IEquatable<T> { throw null; }
         public static int IndexOfAny<T>(this System.Span<T> span, T value0, T value1) where T : System.IEquatable<T> { throw null; }
         public static int IndexOfAny<T>(this System.Span<T> span, T value0, T value1, T value2) where T : System.IEquatable<T> { throw null; }
+        public static int IndexOfAnyExcept<T>(this System.Span<T> span, T value) where T : System.IEquatable<T> { throw null; }
+        public static int IndexOfAnyExcept<T>(this System.Span<T> span, T value0, T value1) where T : System.IEquatable<T> { throw null; }
+        public static int IndexOfAnyExcept<T>(this System.Span<T> span, T value0, T value1, T value2) where T : System.IEquatable<T> { throw null; }
+        public static int IndexOfAnyExcept<T>(this System.Span<T> span, System.ReadOnlySpan<T> values) where T : System.IEquatable<T> { throw null; }
+        public static int IndexOfAnyExcept<T>(this System.ReadOnlySpan<T> span, T value) where T : System.IEquatable<T> { throw null; }
+        public static int IndexOfAnyExcept<T>(this System.ReadOnlySpan<T> span, T value0, T value1) where T : System.IEquatable<T> { throw null; }
+        public static int IndexOfAnyExcept<T>(this System.ReadOnlySpan<T> span, T value0, T value1, T value2) where T : System.IEquatable<T> { throw null; }
+        public static int IndexOfAnyExcept<T>(this System.ReadOnlySpan<T> span, System.ReadOnlySpan<T> values) where T : System.IEquatable<T> { throw null; }
         public static int IndexOf<T>(this System.ReadOnlySpan<T> span, System.ReadOnlySpan<T> value) where T : System.IEquatable<T> { throw null; }
         public static int IndexOf<T>(this System.ReadOnlySpan<T> span, T value) where T : System.IEquatable<T> { throw null; }
         public static int IndexOf<T>(this System.Span<T> span, System.ReadOnlySpan<T> value) where T : System.IEquatable<T> { throw null; }
@@ -71,6 +85,14 @@ namespace System
         public static int LastIndexOfAny<T>(this System.Span<T> span, System.ReadOnlySpan<T> values) where T : System.IEquatable<T> { throw null; }
         public static int LastIndexOfAny<T>(this System.Span<T> span, T value0, T value1) where T : System.IEquatable<T> { throw null; }
         public static int LastIndexOfAny<T>(this System.Span<T> span, T value0, T value1, T value2) where T : System.IEquatable<T> { throw null; }
+        public static int LastIndexOfAnyExcept<T>(this System.Span<T> span, T value) where T : System.IEquatable<T> { throw null; }
+        public static int LastIndexOfAnyExcept<T>(this System.Span<T> span, T value0, T value1) where T : System.IEquatable<T> { throw null; }
+        public static int LastIndexOfAnyExcept<T>(this System.Span<T> span, T value0, T value1, T value2) where T : System.IEquatable<T> { throw null; }
+        public static int LastIndexOfAnyExcept<T>(this System.Span<T> span, System.ReadOnlySpan<T> values) where T : System.IEquatable<T> { throw null; }
+        public static int LastIndexOfAnyExcept<T>(this System.ReadOnlySpan<T> span, T value) where T : System.IEquatable<T> { throw null; }
+        public static int LastIndexOfAnyExcept<T>(this System.ReadOnlySpan<T> span, T value0, T value1) where T : System.IEquatable<T> { throw null; }
+        public static int LastIndexOfAnyExcept<T>(this System.ReadOnlySpan<T> span, T value0, T value1, T value2) where T : System.IEquatable<T> { throw null; }
+        public static int LastIndexOfAnyExcept<T>(this System.ReadOnlySpan<T> span, System.ReadOnlySpan<T> values) where T : System.IEquatable<T> { throw null; }
         public static int LastIndexOf<T>(this System.ReadOnlySpan<T> span, System.ReadOnlySpan<T> value) where T : System.IEquatable<T> { throw null; }
         public static int LastIndexOf<T>(this System.ReadOnlySpan<T> span, T value) where T : System.IEquatable<T> { throw null; }
         public static int LastIndexOf<T>(this System.Span<T> span, System.ReadOnlySpan<T> value) where T : System.IEquatable<T> { throw null; }
@@ -84,6 +106,8 @@ namespace System
         public static int SequenceCompareTo<T>(this System.Span<T> span, System.ReadOnlySpan<T> other) where T : System.IComparable<T> { throw null; }
         public static bool SequenceEqual<T>(this System.ReadOnlySpan<T> span, System.ReadOnlySpan<T> other) where T : System.IEquatable<T> { throw null; }
         public static bool SequenceEqual<T>(this System.Span<T> span, System.ReadOnlySpan<T> other) where T : System.IEquatable<T> { throw null; }
+        public static bool SequenceEqual<T>(this System.ReadOnlySpan<T> span, System.ReadOnlySpan<T> other, System.Collections.Generic.IEqualityComparer<T>? comparer = null) { throw null; }
+        public static bool SequenceEqual<T>(this System.Span<T> span, System.ReadOnlySpan<T> other, System.Collections.Generic.IEqualityComparer<T>? comparer = null) { throw null; }
         public static void Sort<T>(this System.Span<T> span) { }
         public static void Sort<T>(this System.Span<T> span, System.Comparison<T> comparison) { }
         public static void Sort<TKey, TValue>(this System.Span<TKey> keys, System.Span<TValue> items) { }
@@ -139,6 +163,27 @@ namespace System
         public static System.ReadOnlySpan<T> Trim<T>(this System.ReadOnlySpan<T> span, T trimElement) where T : System.IEquatable<T> { throw null; }
         public static System.Span<T> Trim<T>(this System.Span<T> span, System.ReadOnlySpan<T> trimElements) where T : System.IEquatable<T> { throw null; }
         public static System.Span<T> Trim<T>(this System.Span<T> span, T trimElement) where T : System.IEquatable<T> { throw null; }
+        public static bool TryWrite(this System.Span<char> destination, [System.Runtime.CompilerServices.InterpolatedStringHandlerArgumentAttribute("destination")] ref System.MemoryExtensions.TryWriteInterpolatedStringHandler handler, out int charsWritten) { throw null; }
+        public static bool TryWrite(this System.Span<char> destination, IFormatProvider? provider, [System.Runtime.CompilerServices.InterpolatedStringHandlerArgumentAttribute("destination", "provider")] ref System.MemoryExtensions.TryWriteInterpolatedStringHandler handler, out int charsWritten) { throw null; }
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+        [System.Runtime.CompilerServices.InterpolatedStringHandlerAttribute]
+        public ref struct TryWriteInterpolatedStringHandler
+        {
+            private readonly object _dummy;
+            private readonly int _dummyPrimitive;
+            public TryWriteInterpolatedStringHandler(int literalLength, int formattedCount, System.Span<char> destination, out bool shouldAppend) { throw null; }
+            public TryWriteInterpolatedStringHandler(int literalLength, int formattedCount, System.Span<char> destination, IFormatProvider? provider, out bool shouldAppend) { throw null; }
+            public bool AppendLiteral(string value) { throw null; }
+            public bool AppendFormatted(System.ReadOnlySpan<char> value) { throw null; }
+            public bool AppendFormatted(System.ReadOnlySpan<char> value, int alignment = 0, string? format = null) { throw null; }
+            public bool AppendFormatted<T>(T value) { throw null; }
+            public bool AppendFormatted<T>(T value, string? format) { throw null; }
+            public bool AppendFormatted<T>(T value, int alignment) { throw null; }
+            public bool AppendFormatted<T>(T value, int alignment, string? format) { throw null; }
+            public bool AppendFormatted(object? value, int alignment = 0, string? format = null) { throw null; }
+            public bool AppendFormatted(string? value) { throw null; }
+            public bool AppendFormatted(string? value, int alignment = 0, string? format = null) { throw null; }
+        }
     }
     public readonly partial struct SequencePosition : System.IEquatable<System.SequencePosition>
     {
@@ -267,28 +312,29 @@ namespace System.Buffers
         public readonly System.ReadOnlySpan<T> UnreadSpan { get { throw null; } }
         public void Advance(long count) { }
         public long AdvancePast(T value) { throw null; }
-        public long AdvancePastAny(System.ReadOnlySpan<T> values) { throw null; }
+        public long AdvancePastAny(scoped System.ReadOnlySpan<T> values) { throw null; }
         public long AdvancePastAny(T value0, T value1) { throw null; }
         public long AdvancePastAny(T value0, T value1, T value2) { throw null; }
         public long AdvancePastAny(T value0, T value1, T value2, T value3) { throw null; }
         public void AdvanceToEnd() { throw null; }
-        public bool IsNext(System.ReadOnlySpan<T> next, bool advancePast = false) { throw null; }
+        public bool IsNext(scoped System.ReadOnlySpan<T> next, bool advancePast = false) { throw null; }
         public bool IsNext(T next, bool advancePast = false) { throw null; }
         public void Rewind(long count) { }
         public bool TryAdvanceTo(T delimiter, bool advancePastDelimiter = true) { throw null; }
-        public bool TryAdvanceToAny(System.ReadOnlySpan<T> delimiters, bool advancePastDelimiter = true) { throw null; }
+        public bool TryAdvanceToAny(scoped System.ReadOnlySpan<T> delimiters, bool advancePastDelimiter = true) { throw null; }
         public readonly bool TryCopyTo(System.Span<T> destination) { throw null; }
         public readonly bool TryPeek(out T value) { throw null; }
         public readonly bool TryPeek(long offset, out T value) { throw null; }
         public bool TryRead(out T value) { throw null; }
-        public bool TryReadTo(out System.Buffers.ReadOnlySequence<T> sequence, System.ReadOnlySpan<T> delimiter, bool advancePastDelimiter = true) { throw null; }
+        public bool TryReadTo(out System.Buffers.ReadOnlySequence<T> sequence, scoped System.ReadOnlySpan<T> delimiter, bool advancePastDelimiter = true) { throw null; }
         public bool TryReadTo(out System.Buffers.ReadOnlySequence<T> sequence, T delimiter, bool advancePastDelimiter = true) { throw null; }
         public bool TryReadTo(out System.Buffers.ReadOnlySequence<T> sequence, T delimiter, T delimiterEscape, bool advancePastDelimiter = true) { throw null; }
-        public bool TryReadTo(out System.ReadOnlySpan<T> span, System.ReadOnlySpan<T> delimiter, bool advancePastDelimiter = true) { throw null; }
+        public bool TryReadTo(out System.ReadOnlySpan<T> span, scoped System.ReadOnlySpan<T> delimiter, bool advancePastDelimiter = true) { throw null; }
         public bool TryReadTo(out System.ReadOnlySpan<T> span, T delimiter, bool advancePastDelimiter = true) { throw null; }
         public bool TryReadTo(out System.ReadOnlySpan<T> span, T delimiter, T delimiterEscape, bool advancePastDelimiter = true) { throw null; }
-        public bool TryReadToAny(out System.Buffers.ReadOnlySequence<T> sequence, System.ReadOnlySpan<T> delimiters, bool advancePastDelimiter = true) { throw null; }
-        public bool TryReadToAny(out System.ReadOnlySpan<T> span, System.ReadOnlySpan<T> delimiters, bool advancePastDelimiter = true) { throw null; }
+        public bool TryReadToAny(out System.Buffers.ReadOnlySequence<T> sequence, scoped System.ReadOnlySpan<T> delimiters, bool advancePastDelimiter = true) { throw null; }
+        public bool TryReadToAny(out System.ReadOnlySpan<T> span, scoped System.ReadOnlySpan<T> delimiters, bool advancePastDelimiter = true) { throw null; }
+        public bool TryReadExact(int count, out System.Buffers.ReadOnlySequence<T> sequence) { throw null; }
     }
     public readonly partial struct StandardFormat : System.IEquatable<System.Buffers.StandardFormat>
     {
@@ -306,10 +352,10 @@ namespace System.Buffers
         public static bool operator ==(System.Buffers.StandardFormat left, System.Buffers.StandardFormat right) { throw null; }
         public static implicit operator System.Buffers.StandardFormat (char symbol) { throw null; }
         public static bool operator !=(System.Buffers.StandardFormat left, System.Buffers.StandardFormat right) { throw null; }
-        public static System.Buffers.StandardFormat Parse(System.ReadOnlySpan<char> format) { throw null; }
-        public static System.Buffers.StandardFormat Parse(string? format) { throw null; }
+        public static System.Buffers.StandardFormat Parse([System.Diagnostics.CodeAnalysis.StringSyntaxAttribute("NumericFormat")] System.ReadOnlySpan<char> format) { throw null; }
+        public static System.Buffers.StandardFormat Parse([System.Diagnostics.CodeAnalysis.StringSyntaxAttribute("NumericFormat")] string? format) { throw null; }
         public override string ToString() { throw null; }
-        public static bool TryParse(System.ReadOnlySpan<char> format, out System.Buffers.StandardFormat result) { throw null; }
+        public static bool TryParse([System.Diagnostics.CodeAnalysis.StringSyntaxAttribute("NumericFormat")] System.ReadOnlySpan<char> format, out System.Buffers.StandardFormat result) { throw null; }
     }
 }
 namespace System.Buffers.Binary
@@ -428,15 +474,6 @@ namespace System.Buffers.Binary
 }
 namespace System.Buffers.Text
 {
-    public static partial class Base64
-    {
-        public static System.Buffers.OperationStatus DecodeFromUtf8(System.ReadOnlySpan<byte> utf8, System.Span<byte> bytes, out int bytesConsumed, out int bytesWritten, bool isFinalBlock = true) { throw null; }
-        public static System.Buffers.OperationStatus DecodeFromUtf8InPlace(System.Span<byte> buffer, out int bytesWritten) { throw null; }
-        public static System.Buffers.OperationStatus EncodeToUtf8(System.ReadOnlySpan<byte> bytes, System.Span<byte> utf8, out int bytesConsumed, out int bytesWritten, bool isFinalBlock = true) { throw null; }
-        public static System.Buffers.OperationStatus EncodeToUtf8InPlace(System.Span<byte> buffer, int dataLength, out int bytesWritten) { throw null; }
-        public static int GetMaxDecodedFromUtf8Length(int length) { throw null; }
-        public static int GetMaxEncodedToUtf8Length(int length) { throw null; }
-    }
     public static partial class Utf8Formatter
     {
         public static bool TryFormat(bool value, System.Span<byte> destination, out int bytesWritten, System.Buffers.StandardFormat format = default(System.Buffers.StandardFormat)) { throw null; }
@@ -484,6 +521,7 @@ namespace System.Buffers.Text
         public static bool TryParse(System.ReadOnlySpan<byte> source, out ulong value, out int bytesConsumed, char standardFormat = '\0') { throw null; }
     }
 }
+
 namespace System.Runtime.InteropServices
 {
     public static partial class MemoryMarshal
@@ -496,13 +534,14 @@ namespace System.Runtime.InteropServices
         public static System.ReadOnlySpan<TTo> Cast<TFrom, TTo>(System.ReadOnlySpan<TFrom> span) where TFrom : struct where TTo : struct { throw null; }
         public static System.Span<TTo> Cast<TFrom, TTo>(System.Span<TFrom> span) where TFrom : struct where TTo : struct { throw null; }
         public static System.Memory<T> CreateFromPinnedArray<T>(T[]? array, int start, int length) { throw null; }
-        public static System.ReadOnlySpan<T> CreateReadOnlySpan<T>(ref T reference, int length) { throw null; }
+        public static System.ReadOnlySpan<T> CreateReadOnlySpan<T>(scoped ref T reference, int length) { throw null; }
         [System.CLSCompliant(false)]
         public static unsafe ReadOnlySpan<byte> CreateReadOnlySpanFromNullTerminated(byte* value) { throw null; }
         [System.CLSCompliant(false)]
         public static unsafe ReadOnlySpan<char> CreateReadOnlySpanFromNullTerminated(char* value) { throw null; }
-        public static System.Span<T> CreateSpan<T>(ref T reference, int length) { throw null; }
+        public static System.Span<T> CreateSpan<T>(scoped ref T reference, int length) { throw null; }
         public static ref T GetArrayDataReference<T>(T[] array) { throw null; }
+        public static ref byte GetArrayDataReference(System.Array array) { throw null; }
         public static ref T GetReference<T>(System.ReadOnlySpan<T> span) { throw null; }
         public static ref T GetReference<T>(System.Span<T> span) { throw null; }
         public static T Read<T>(System.ReadOnlySpan<byte> source) where T : struct { throw null; }
@@ -539,6 +578,14 @@ namespace System.Text
         public static int GetChars(this System.Text.Encoding encoding, in System.Buffers.ReadOnlySequence<byte> bytes, System.Span<char> chars) { throw null; }
         public static long GetChars(this System.Text.Encoding encoding, System.ReadOnlySpan<byte> bytes, System.Buffers.IBufferWriter<char> writer) { throw null; }
         public static string GetString(this System.Text.Encoding encoding, in System.Buffers.ReadOnlySequence<byte> bytes) { throw null; }
+    }
+    public ref partial struct SpanLineEnumerator
+    {
+        private object _dummy;
+        private int _dummyPrimitive;
+        public System.ReadOnlySpan<char> Current { get { throw null; } }
+        public System.Text.SpanLineEnumerator GetEnumerator() { throw null; }
+        public bool MoveNext() { throw null; }
     }
     public ref partial struct SpanRuneEnumerator
     {

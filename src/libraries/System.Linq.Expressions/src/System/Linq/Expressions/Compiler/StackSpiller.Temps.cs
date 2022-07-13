@@ -7,7 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace System.Linq.Expressions.Compiler
 {
-    internal partial class StackSpiller
+    internal sealed partial class StackSpiller
     {
         /// <summary>
         /// The source of temporary variables introduced during stack spilling.
@@ -143,10 +143,7 @@ namespace System.Linq.Expressions.Compiler
                 Debug.Assert(_freeTemps == null || !_freeTemps.Contains(temp));
                 Debug.Assert(_usedTemps == null || !_usedTemps.Contains(temp));
 
-                if (_usedTemps == null)
-                {
-                    _usedTemps = new Stack<ParameterExpression>();
-                }
+                _usedTemps ??= new Stack<ParameterExpression>();
 
                 _usedTemps.Push(temp);
 
@@ -162,10 +159,7 @@ namespace System.Linq.Expressions.Compiler
             {
                 Debug.Assert(_freeTemps == null || !_freeTemps.Contains(temp));
 
-                if (_freeTemps == null)
-                {
-                    _freeTemps = new List<ParameterExpression>();
-                }
+                _freeTemps ??= new List<ParameterExpression>();
 
                 _freeTemps.Add(temp);
             }

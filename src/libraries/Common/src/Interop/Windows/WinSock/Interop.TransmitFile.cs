@@ -10,10 +10,11 @@ internal static partial class Interop
 {
     internal static partial class Mswsock
     {
-        [DllImport(Interop.Libraries.Mswsock, SetLastError = true)]
-        internal static extern unsafe bool TransmitFile(
+        [LibraryImport(Interop.Libraries.Mswsock, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static unsafe partial bool TransmitFile(
             SafeHandle socket,
-            SafeHandle? fileHandle,
+            IntPtr fileHandle,
             int numberOfBytesToWrite,
             int numberOfBytesPerSend,
             NativeOverlapped* overlapped,

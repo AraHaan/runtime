@@ -2,15 +2,14 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
+using System.Xml;
+using System;
+using System.Collections;
+using System.Collections.Generic;
 
 namespace System.Xml.Serialization
 {
-    using System.Xml;
-    using System;
-    using System.Collections;
-    using System.Collections.Generic;
-
-    internal class NameKey
+    internal sealed class NameKey
     {
         private readonly string? _ns;
         private readonly string? _name;
@@ -37,7 +36,7 @@ namespace System.Xml.Serialization
     {
         object? this[string? name, string? ns] { get; set; }
     }
-    internal class NameTable : INameScope
+    internal sealed class NameTable : INameScope
     {
         private readonly Dictionary<NameKey, object?> _table = new Dictionary<NameKey, object?>();
 

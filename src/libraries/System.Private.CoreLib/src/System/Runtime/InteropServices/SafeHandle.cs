@@ -64,7 +64,7 @@ namespace System.Runtime.InteropServices
             _fullyInitialized = true;
         }
 
-#if !CORERT // CoreRT doesn't correctly support CriticalFinalizerObject
+#if !NATIVEAOT // NativeAOT doesn't correctly support CriticalFinalizerObject
         ~SafeHandle()
         {
             if (_fullyInitialized)
@@ -73,6 +73,8 @@ namespace System.Runtime.InteropServices
             }
         }
 #endif
+
+        internal bool OwnsHandle => _ownsHandle;
 
         protected internal void SetHandle(IntPtr handle) => this.handle = handle;
 
@@ -161,6 +163,13 @@ namespace System.Runtime.InteropServices
             success = true;
         }
 
+        // Used by internal callers to avoid declaring a bool to pass by ref
+        internal void DangerousAddRef()
+        {
+            bool success = false;
+            DangerousAddRef(ref success);
+        }
+
         public void DangerousRelease() => InternalRelease(disposeOrFinalizeOperation: false);
 
         private void InternalRelease(bool disposeOrFinalizeOperation)
@@ -236,9 +245,9 @@ namespace System.Runtime.InteropServices
                 // Save last error from P/Invoke in case the implementation of ReleaseHandle
                 // trashes it (important because this ReleaseHandle could occur implicitly
                 // as part of unmarshaling another P/Invoke).
-                int lastError = Marshal.GetLastWin32Error();
+                int lastError = Marshal.GetLastPInvokeError();
                 ReleaseHandle();
-                Marshal.SetLastWin32Error(lastError);
+                Marshal.SetLastPInvokeError(lastError);
             }
         }
     }

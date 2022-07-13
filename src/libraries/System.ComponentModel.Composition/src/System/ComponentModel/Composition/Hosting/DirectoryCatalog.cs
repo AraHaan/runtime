@@ -22,10 +22,10 @@ namespace System.ComponentModel.Composition.Hosting
     public partial class DirectoryCatalog : ComposablePartCatalog, INotifyComposablePartCatalogChanged, ICompositionElement
     {
         private static bool IsWindows =>
-#if NETSTANDARD || NETCOREAPP2_0
-            RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-#else
+#if NETCOREAPP_5_0_OR_GREATER
             OperatingSystem.IsWindows();
+#else
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 #endif
 
         private readonly Lock _thisLock = new Lock();
@@ -479,10 +479,7 @@ namespace System.ComponentModel.Composition.Hosting
                         }
                         finally
                         {
-                            if (catalogs != null)
-                            {
-                                catalogs.Dispose();
-                            }
+                            catalogs?.Dispose();
 
                             if (disposeLock)
                             {
@@ -539,11 +536,7 @@ namespace System.ComponentModel.Composition.Hosting
         /// </param>
         protected virtual void OnChanged(ComposablePartCatalogChangeEventArgs e)
         {
-            EventHandler<ComposablePartCatalogChangeEventArgs>? changedEvent = Changed;
-            if (changedEvent != null)
-            {
-                changedEvent(this, e);
-            }
+            Changed?.Invoke(this, e);
         }
 
         /// <summary>
@@ -554,11 +547,7 @@ namespace System.ComponentModel.Composition.Hosting
         /// </param>
         protected virtual void OnChanging(ComposablePartCatalogChangeEventArgs e)
         {
-            EventHandler<ComposablePartCatalogChangeEventArgs>? changingEvent = Changing;
-            if (changingEvent != null)
-            {
-                changingEvent(this, e);
-            }
+            Changing?.Invoke(this, e);
         }
 
         /// <summary>
@@ -671,7 +660,7 @@ namespace System.ComponentModel.Composition.Hosting
 
         private AssemblyCatalog? CreateAssemblyCatalogGuarded(string assemblyFilePath)
         {
-            Exception? exception = null;
+            Exception? exception;
 
             try
             {
@@ -732,13 +721,8 @@ namespace System.ComponentModel.Composition.Hosting
             }
         }
 
-        private string GetDisplayName()
-        {
-            return string.Format(CultureInfo.CurrentCulture,
-                                "{0} (Path=\"{1}\")",   // NOLOC
-                                GetType().Name,
-                                _path);
-        }
+        private string GetDisplayName() =>
+            $"{GetType().Name} (Path=\"{_path}\")";   // NOLOC
 
         private string[] GetFiles()
         {

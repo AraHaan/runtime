@@ -48,6 +48,9 @@ namespace System.Diagnostics.Tracing
         /// <param name="types">
         /// The types of the fields in the event. This value must not be null.
         /// </param>
+#if !ES_BUILD_STANDALONE
+        [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("EventSource WriteEvent will serialize the whole object graph. Trimmer will not safely handle this case because properties may be trimmed. This can be suppressed if the object is a primitive type")]
+#endif
         internal TraceLoggingEventTypes(
             string name,
             EventTags tags,
@@ -82,12 +85,15 @@ namespace System.Diagnostics.Tracing
         {
         }
 
+#if !ES_BUILD_STANDALONE
+        [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("EventSource WriteEvent will serialize the whole object graph. Trimmer will not safely handle this case because properties may be trimmed. This can be suppressed if the object is a primitive type")]
+#endif
         internal TraceLoggingEventTypes(
             string name,
             EventTags tags,
             System.Reflection.ParameterInfo[] paramInfos)
         {
-            if (name == null)
+            if (name is null)
             {
                 throw new ArgumentNullException(nameof(name));
             }
@@ -126,7 +132,7 @@ namespace System.Diagnostics.Tracing
             string defaultName,
             TraceLoggingTypeInfo[] typeInfos)
         {
-            if (defaultName == null)
+            if (defaultName is null)
             {
                 throw new ArgumentNullException(nameof(defaultName));
             }
@@ -180,9 +186,12 @@ namespace System.Diagnostics.Tracing
             this.nameInfos.TryGet(new KeyValuePair<string, EventTags>(name, tags)) ??
                 this.nameInfos.GetOrAdd(new NameInfo(name, tags, this.typeMetadata.Length));
 
+#if !ES_BUILD_STANDALONE
+        [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("EventSource WriteEvent will serialize the whole object graph. Trimmer will not safely handle this case because properties may be trimmed. This can be suppressed if the object is a primitive type")]
+#endif
         private static TraceLoggingTypeInfo[] MakeArray(System.Reflection.ParameterInfo[] paramInfos)
         {
-            if (paramInfos == null)
+            if (paramInfos is null)
             {
                 throw new ArgumentNullException(nameof(paramInfos));
             }
@@ -197,9 +206,12 @@ namespace System.Diagnostics.Tracing
             return result;
         }
 
+#if !ES_BUILD_STANDALONE
+        [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("EventSource WriteEvent will serialize the whole object graph. Trimmer will not safely handle this case because properties may be trimmed. This can be suppressed if the object is a primitive type")]
+#endif
         private static TraceLoggingTypeInfo[] MakeArray(Type[] types)
         {
-            if (types == null)
+            if (types is null)
             {
                 throw new ArgumentNullException(nameof(types));
             }
@@ -217,7 +229,7 @@ namespace System.Diagnostics.Tracing
         private static TraceLoggingTypeInfo[] MakeArray(
             TraceLoggingTypeInfo[] typeInfos)
         {
-            if (typeInfos == null)
+            if (typeInfos is null)
             {
                 throw new ArgumentNullException(nameof(typeInfos));
             }

@@ -9,22 +9,15 @@ using Microsoft.Extensions.Options;
 namespace Microsoft.Extensions.Http
 {
     // Internal so we can change the requirements without breaking changes.
-    internal class LoggingHttpMessageHandlerBuilderFilter : IHttpMessageHandlerBuilderFilter
+    internal sealed class LoggingHttpMessageHandlerBuilderFilter : IHttpMessageHandlerBuilderFilter
     {
         private readonly ILoggerFactory _loggerFactory;
         private readonly IOptionsMonitor<HttpClientFactoryOptions> _optionsMonitor;
 
         public LoggingHttpMessageHandlerBuilderFilter(ILoggerFactory loggerFactory, IOptionsMonitor<HttpClientFactoryOptions> optionsMonitor)
         {
-            if (loggerFactory == null)
-            {
-                throw new ArgumentNullException(nameof(loggerFactory));
-            }
-
-            if (optionsMonitor == null)
-            {
-                throw new ArgumentNullException(nameof(optionsMonitor));
-            }
+            ThrowHelper.ThrowIfNull(loggerFactory);
+            ThrowHelper.ThrowIfNull(optionsMonitor);
 
             _loggerFactory = loggerFactory;
             _optionsMonitor = optionsMonitor;
@@ -32,10 +25,7 @@ namespace Microsoft.Extensions.Http
 
         public Action<HttpMessageHandlerBuilder> Configure(Action<HttpMessageHandlerBuilder> next)
         {
-            if (next == null)
-            {
-                throw new ArgumentNullException(nameof(next));
-            }
+            ThrowHelper.ThrowIfNull(next);
 
             return (builder) =>
             {

@@ -85,7 +85,10 @@ namespace System.Reflection.Metadata.Ecma335
             _labels = ImmutableArray.CreateBuilder<int>();
         }
 
-        internal void Clear()
+        /// <summary>
+        /// Clears the object's internal state, allowing the same instance to be reused.
+        /// </summary>
+        public void Clear()
         {
             _branches.Clear();
             _labels.Clear();
@@ -212,10 +215,7 @@ namespace System.Reflection.Metadata.Ecma335
             ValidateLabel(handlerStart, nameof(handlerStart));
             ValidateLabel(handlerEnd, nameof(handlerEnd));
 
-            if (_lazyExceptionHandlers == null)
-            {
-                _lazyExceptionHandlers = ImmutableArray.CreateBuilder<ExceptionHandlerInfo>();
-            }
+            _lazyExceptionHandlers ??= ImmutableArray.CreateBuilder<ExceptionHandlerInfo>();
 
             _lazyExceptionHandlers.Add(new ExceptionHandlerInfo(kind, tryStart, tryEnd, handlerStart, handlerEnd, filterStart, catchType));
         }

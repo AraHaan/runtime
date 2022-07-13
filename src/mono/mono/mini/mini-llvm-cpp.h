@@ -16,18 +16,13 @@
 #include "llvm-c/Core.h"
 #include "llvm-c/ExecutionEngine.h"
 
+#include "llvm-intrinsics-types.h"
+
 #ifdef HAVE_UNWIND_H
 #include <unwind.h>
 #endif
 
 G_BEGIN_DECLS
-
-typedef enum {
-#define INTRINS(id, llvm_id) INTRINS_ ## id,
-#define INTRINS_OVR(id, llvm_id) INTRINS_ ## id,
-#include "llvm-intrinsics.h"
-	INTRINS_NUM
-} IntrinsicId;
 
 /*
  * Keep in sync with the enum in utils/mono-memory-model.h.
@@ -68,29 +63,25 @@ void
 mono_llvm_dump_type (LLVMTypeRef type);
 
 LLVMValueRef
-mono_llvm_build_alloca (LLVMBuilderRef builder, LLVMTypeRef Ty, 
+mono_llvm_build_alloca (LLVMBuilderRef builder, LLVMTypeRef Ty,
 						LLVMValueRef ArraySize,
 						int alignment, const char *Name);
 
-LLVMValueRef 
-mono_llvm_build_load (LLVMBuilderRef builder, LLVMValueRef PointerVal,
-					  const char *Name, gboolean is_volatile);
-
-LLVMValueRef 
-mono_llvm_build_atomic_load (LLVMBuilderRef builder, LLVMValueRef PointerVal,
+LLVMValueRef
+mono_llvm_build_atomic_load (LLVMBuilderRef builder, LLVMTypeRef Type, LLVMValueRef PointerVal,
 							 const char *Name, gboolean is_volatile, int alignment, BarrierKind barrier);
 
 LLVMValueRef
-mono_llvm_build_aligned_load (LLVMBuilderRef builder, LLVMValueRef PointerVal,
+mono_llvm_build_aligned_load (LLVMBuilderRef builder, LLVMTypeRef Type, LLVMValueRef PointerVal,
 							  const char *Name, gboolean is_volatile, int alignment);
 
-LLVMValueRef 
-mono_llvm_build_store (LLVMBuilderRef builder, LLVMValueRef Val, LLVMValueRef PointerVal,
-					   gboolean is_volatile, BarrierKind kind);
-
-LLVMValueRef 
+LLVMValueRef
 mono_llvm_build_aligned_store (LLVMBuilderRef builder, LLVMValueRef Val, LLVMValueRef PointerVal,
 							   gboolean is_volatile, int alignment);
+
+LLVMValueRef
+mono_llvm_build_atomic_store (LLVMBuilderRef builder, LLVMValueRef Val, LLVMValueRef PointerVal,
+							  BarrierKind barrier, int alignment);
 
 LLVMValueRef
 mono_llvm_build_atomic_rmw (LLVMBuilderRef builder, AtomicRMWOp op, LLVMValueRef ptr, LLVMValueRef val);
@@ -162,7 +153,19 @@ void
 mono_llvm_add_param_attr (LLVMValueRef param, AttrKind kind);
 
 void
+mono_llvm_add_param_attr_with_type (LLVMValueRef param, AttrKind kind, LLVMTypeRef type);
+
+void
+mono_llvm_add_param_byval_attr (LLVMValueRef param, LLVMTypeRef type);
+
+void
 mono_llvm_add_instr_attr (LLVMValueRef val, int index, AttrKind kind);
+
+void
+mono_llvm_add_instr_attr_with_type (LLVMValueRef val, int index, AttrKind kind, LLVMTypeRef type);
+
+void
+mono_llvm_add_instr_byval_attr (LLVMValueRef val, int index, LLVMTypeRef type);
 
 #if defined(ENABLE_LLVM) && defined(HAVE_UNWIND_H)
 G_EXTERN_C _Unwind_Reason_Code mono_debug_personality (int a, _Unwind_Action b,
@@ -216,6 +219,23 @@ mono_llvm_register_intrinsic (LLVMModuleRef module, IntrinsicId id);
 LLVMValueRef
 mono_llvm_register_overloaded_intrinsic (LLVMModuleRef module, IntrinsicId id, LLVMTypeRef *types, int ntypes);
 
+unsigned int
+mono_llvm_get_prim_size_bits (LLVMTypeRef type);
+
+typedef enum {
+	LLVM_ASM_SIDE_EFFECT = 1 << 0,
+	LLVM_ASM_ALIGN_STACK = 1 << 1,
+} MonoLLVMAsmFlags;
+
+LLVMValueRef
+mono_llvm_inline_asm (LLVMBuilderRef builder, LLVMTypeRef type,
+	const char *asmstr, const char *constraints,
+	MonoLLVMAsmFlags flags, LLVMValueRef *args, unsigned num_args,
+	const char *name);
+
+LLVMTypeRef
+mono_llvm_get_ptr_type (void);
+
 G_END_DECLS
 
-#endif /* __MONO_MINI_LLVM_CPP_H__ */  
+#endif /* __MONO_MINI_LLVM_CPP_H__ */

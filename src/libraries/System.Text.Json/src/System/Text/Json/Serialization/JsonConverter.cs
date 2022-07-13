@@ -1,7 +1,11 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Text.Json.Serialization.Converters;
+using System.Text.Json.Serialization.Metadata;
 
 namespace System.Text.Json.Serialization
 {
@@ -19,7 +23,7 @@ namespace System.Text.Json.Serialization
         /// <returns>True if the type can be converted, false otherwise.</returns>
         public abstract bool CanConvert(Type typeToConvert);
 
-        internal abstract ClassType ClassType { get; }
+        internal abstract ConverterStrategy ConverterStrategy { get; }
 
         /// <summary>
         /// Can direct Read or Write methods be called (for performance).
@@ -27,17 +31,51 @@ namespace System.Text.Json.Serialization
         internal bool CanUseDirectReadOrWrite { get; set; }
 
         /// <summary>
-        /// Can the converter have $id metadata.
+        /// The converter supports writing and reading metadata.
         /// </summary>
-        internal virtual bool CanHaveIdMetadata => true;
+        internal virtual bool CanHaveMetadata => false;
 
+        /// <summary>
+        /// The converter supports polymorphic writes; only reserved for System.Object types.
+        /// </summary>
         internal bool CanBePolymorphic { get; set; }
 
-        internal abstract JsonPropertyInfo CreateJsonPropertyInfo();
+        /// <summary>
+        /// The serializer must read ahead all contents of the next JSON value
+        /// before calling into the converter for deserialization.
+        /// </summary>
+        internal bool RequiresReadAhead { get; set; }
+
+        /// <summary>
+        /// Used to support JsonObject as an extension property in a loosely-typed, trimmable manner.
+        /// </summary>
+        internal virtual object CreateObject(JsonSerializerOptions options)
+        {
+            throw new InvalidOperationException(SR.NodeJsonObjectCustomConverterNotAllowedOnExtensionProperty);
+        }
+
+        /// <summary>
+        /// Used to support JsonObject as an extension property in a loosely-typed, trimmable manner.
+        /// </summary>
+        internal virtual void ReadElementAndSetProperty(
+            object obj,
+            string propertyName,
+            ref Utf8JsonReader reader,
+            JsonSerializerOptions options,
+            ref ReadStack state)
+        {
+            throw new InvalidOperationException(SR.NodeJsonObjectCustomConverterNotAllowedOnExtensionProperty);
+        }
+
+        internal abstract JsonPropertyInfo CreateJsonPropertyInfo(JsonTypeInfo declaringTypeInfo, JsonSerializerOptions options);
 
         internal abstract JsonParameterInfo CreateJsonParameterInfo();
 
+        internal abstract JsonConverter<TTarget> CreateCastingConverter<TTarget>();
+
         internal abstract Type? ElementType { get; }
+
+        internal abstract Type? KeyType { get; }
 
         /// <summary>
         /// Cached value of TypeToConvert.IsValueType, which is an expensive call.
@@ -59,10 +97,8 @@ namespace System.Text.Json.Serialization
         /// </summary>
         internal abstract object? ReadCoreAsObject(ref Utf8JsonReader reader, JsonSerializerOptions options, ref ReadStack state);
 
-        // For polymorphic cases, the concrete type to create.
-        internal virtual Type RuntimeType => TypeToConvert;
 
-        internal bool ShouldFlush(Utf8JsonWriter writer, ref WriteStack state)
+        internal static bool ShouldFlush(Utf8JsonWriter writer, ref WriteStack state)
         {
             // If surpassed flush threshold then return false which will flush stream.
             return (state.FlushThreshold > 0 && writer.BytesPending > state.FlushThreshold);
@@ -71,6 +107,7 @@ namespace System.Text.Json.Serialization
         // This is used internally to quickly determine the type being converted for JsonConverter<T>.
         internal abstract Type TypeToConvert { get; }
 
+        internal abstract bool OnTryReadAsObject(ref Utf8JsonReader reader, JsonSerializerOptions options, ref ReadStack state, out object? value);
         internal abstract bool TryReadAsObject(ref Utf8JsonReader reader, JsonSerializerOptions options, ref ReadStack state, out object? value);
 
         internal abstract bool TryWriteAsObject(Utf8JsonWriter writer, object? value, JsonSerializerOptions options, ref WriteStack state);
@@ -81,20 +118,38 @@ namespace System.Text.Json.Serialization
         internal abstract bool WriteCoreAsObject(Utf8JsonWriter writer, object? value, JsonSerializerOptions options, ref WriteStack state);
 
         /// <summary>
-        /// Loosely-typed WriteWithQuotes() that forwards to strongly-typed WriteWithQuotes().
+        /// Loosely-typed WriteToPropertyName() that forwards to strongly-typed WriteToPropertyName().
         /// </summary>
-        internal abstract void WriteWithQuotesAsObject(Utf8JsonWriter writer, object value, JsonSerializerOptions options, ref WriteStack state);
+        internal abstract void WriteAsPropertyNameCoreAsObject(Utf8JsonWriter writer, object value, JsonSerializerOptions options, bool isWritingExtensionDataProperty);
 
-        // Whether a type (ClassType.Object) is deserialized using a parameterized constructor.
+        // Whether a type (ConverterStrategy.Object) is deserialized using a parameterized constructor.
         internal virtual bool ConstructorIsParameterized { get; }
+
+        /// <summary>
+        ///  For reflection-based metadata generation, indicates whether the
+        ///  converter avails of default constructors when deserializing types.
+        /// </summary>
+        internal bool UsesDefaultConstructor =>
+            ConverterStrategy switch
+            {
+                ConverterStrategy.Object => !ConstructorIsParameterized && this is not ObjectConverter,
+                ConverterStrategy.Enumerable or
+                ConverterStrategy.Dictionary => true,
+                _ => false
+            };
 
         internal ConstructorInfo? ConstructorInfo { get; set; }
 
-        internal virtual void Initialize(JsonSerializerOptions options) { }
+        /// <summary>
+        /// Used for hooking custom configuration to a newly created associated JsonTypeInfo instance.
+        /// </summary>
+        internal virtual void ConfigureJsonTypeInfo(JsonTypeInfo jsonTypeInfo, JsonSerializerOptions options) { }
 
         /// <summary>
-        /// Creates the instance and assigns it to state.Current.ReturnValue.
+        /// Additional reflection-specific configuration required by certain collection converters.
         /// </summary>
-        internal virtual void CreateInstanceForReferenceResolver(ref Utf8JsonReader reader, ref ReadStack state, JsonSerializerOptions options) { }
+        [RequiresUnreferencedCode(JsonSerializer.SerializationUnreferencedCodeMessage)]
+        [RequiresDynamicCode(JsonSerializer.SerializationRequiresDynamicCodeMessage)]
+        internal virtual void ConfigureJsonTypeInfoUsingReflection(JsonTypeInfo jsonTypeInfo, JsonSerializerOptions options) { }
     }
 }

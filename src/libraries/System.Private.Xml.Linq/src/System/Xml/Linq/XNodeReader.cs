@@ -5,7 +5,7 @@ using Debug = System.Diagnostics.Debug;
 
 namespace System.Xml.Linq
 {
-    internal class XNodeReader : XmlReader, IXmlLineInfo
+    internal sealed class XNodeReader : XmlReader, IXmlLineInfo
     {
         private static readonly char[] s_WhitespaceChars = new char[] { ' ', '\t', '\n', '\r' };
 
@@ -24,7 +24,7 @@ namespace System.Xml.Linq
         {
             _source = node;
             _root = node;
-            _nameTable = nameTable != null ? nameTable : CreateNameTable();
+            _nameTable = nameTable ?? CreateNameTable();
             _omitDuplicateNamespaces = (options & ReaderOptions.OmitDuplicateNamespaces) != 0 ? true : false;
         }
 
@@ -554,17 +554,16 @@ namespace System.Xml.Linq
 
         public override string GetAttribute(int index)
         {
-            // https://github.com/dotnet/runtime/issues/44287
-            //     We should replace returning null with ArgumentOutOfRangeException
-            //     In case of not interactive state likely we should throw InvalidOperationException
             if (!IsInteractive)
             {
-                return null!;
+                throw new InvalidOperationException(SR.InvalidOperation_ExpectedInteractive);
             }
+
             if (index < 0)
             {
-                return null!;
+                throw new ArgumentOutOfRangeException(nameof(index));
             }
+
             XElement? e = GetElementInAttributeScope();
             if (e != null)
             {
@@ -584,7 +583,7 @@ namespace System.Xml.Linq
                     } while (a != e.lastAttr);
                 }
             }
-            return null!;
+            throw new ArgumentOutOfRangeException(nameof(index));
         }
 
         public override string? LookupNamespace(string prefix)
@@ -732,11 +731,11 @@ namespace System.Xml.Linq
             {
                 return false;
             }
-            XAttribute? a = _source as XAttribute;
-            if (a == null)
-            {
-                a = _parent as XAttribute;
-            }
+
+            XAttribute? a =
+                _source as XAttribute ??
+                _parent as XAttribute;
+
             if (a != null)
             {
                 if (a.parent != null)
@@ -814,11 +813,11 @@ namespace System.Xml.Linq
                 }
                 return false;
             }
-            XAttribute? a = _source as XAttribute;
-            if (a == null)
-            {
-                a = _parent as XAttribute;
-            }
+
+            XAttribute? a =
+                _source as XAttribute ??
+                _parent as XAttribute;
+
             if (a != null)
             {
                 if (a.parent != null && ((XElement)a.parent).lastAttr != a)
@@ -1153,7 +1152,7 @@ namespace System.Xml.Linq
                     XNamespace? ns = e.GetNamespaceOfPrefix(qualifiedName.Substring(0, i));
                     if (ns != null)
                     {
-                        localName = qualifiedName.Substring(i + 1, qualifiedName.Length - i - 1);
+                        localName = qualifiedName.Substring(i + 1);
                         namespaceName = ns.NamespaceName;
                         return;
                     }
@@ -1389,8 +1388,7 @@ namespace System.Xml.Linq
         /// <returns>The first attribute which is not a namespace attribute or null if the end of attributes has bean reached</returns>
         private XAttribute? GetFirstNonDuplicateNamespaceAttribute(XAttribute candidate)
         {
-            Debug.Assert(_omitDuplicateNamespaces, "This method should only be called if we're omitting duplicate namespace attribute." +
-                                                  "For perf reason it's better to test this flag in the caller method.");
+            Debug.Assert(_omitDuplicateNamespaces, "This method should only be called if we're omitting duplicate namespace attribute. For perf reason it's better to test this flag in the caller method.");
             if (!IsDuplicateNamespaceAttribute(candidate))
             {
                 return candidate;

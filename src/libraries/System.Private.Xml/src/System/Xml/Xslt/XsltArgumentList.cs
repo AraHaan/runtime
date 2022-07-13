@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 
 namespace System.Xml.Xsl
 {
@@ -16,6 +17,10 @@ namespace System.Xml.Xsl
     {
         private readonly Hashtable _parameters = new Hashtable();
         private readonly Hashtable _extensions = new Hashtable();
+        private const string ExtensionObjectWarning = @"The stylesheet may have calls to methods of the extension object passed in which cannot be statically analyzed " +
+            "by the trimmer. Ensure all methods that may be called are preserved.";
+        internal const string ExtensionObjectSuppresion = @"In order for this code path to be hit, a previous call to XsltArgumentList.AddExtensionObject is " +
+            "required. That method is already annotated as unsafe and throwing a warning, so we can suppress here.";
 
         // Used for reporting xsl:message's during execution
         internal XsltMessageEncounteredEventHandler? xsltMessageEncountered;
@@ -27,6 +32,7 @@ namespace System.Xml.Xsl
             return _parameters[new XmlQualifiedName(name, namespaceUri)];
         }
 
+        [RequiresUnreferencedCode(ExtensionObjectWarning)]
         public object? GetExtensionObject(string namespaceUri)
         {
             return _extensions[namespaceUri];
@@ -34,19 +40,21 @@ namespace System.Xml.Xsl
 
         public void AddParam(string name, string namespaceUri, object parameter)
         {
-            CheckArgumentNull(name, nameof(name));
-            CheckArgumentNull(namespaceUri, nameof(namespaceUri));
-            CheckArgumentNull(parameter, nameof(parameter));
+            ArgumentNullException.ThrowIfNull(name);
+            ArgumentNullException.ThrowIfNull(namespaceUri);
+            ArgumentNullException.ThrowIfNull(parameter);
 
             XmlQualifiedName qname = new XmlQualifiedName(name, namespaceUri);
             qname.Verify();
             _parameters.Add(qname, parameter);
         }
 
+        [RequiresUnreferencedCode(ExtensionObjectWarning)]
         public void AddExtensionObject(string namespaceUri, object extension)
         {
-            CheckArgumentNull(namespaceUri, nameof(namespaceUri));
-            CheckArgumentNull(extension, nameof(extension));
+            ArgumentNullException.ThrowIfNull(namespaceUri);
+            ArgumentNullException.ThrowIfNull(extension);
+
             _extensions.Add(namespaceUri, extension);
         }
 
@@ -82,14 +90,6 @@ namespace System.Xml.Xsl
             _parameters.Clear();
             _extensions.Clear();
             xsltMessageEncountered = null;
-        }
-
-        private static void CheckArgumentNull(object param, string paramName)
-        {
-            if (param == null)
-            {
-                throw new ArgumentNullException(paramName);
-            }
         }
     }
 }

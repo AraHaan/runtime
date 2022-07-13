@@ -3,12 +3,12 @@
 
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Pdh
+    internal static partial class Pdh
     {
-        [DllImport(Libraries.Pdh, CharSet = CharSet.Unicode)]
-        public static extern int PdhFormatFromRawValue(
+        [LibraryImport(Libraries.Pdh)]
+        public static partial int PdhFormatFromRawValue(
             uint dwCounterType,
             uint dwFormat,
             ref long pTimeBase,

@@ -150,7 +150,7 @@ FCIMPL4(INT32, ThreadPoolNative::GetNextConfigUInt32Value,
         [=](const CLRConfig::ConfigDWORDInfo &configInfo, bool isBoolean, const WCHAR *appContextConfigName) -> bool
     {
         bool wasNotConfigured = true;
-        *configValueRef = CLRConfig::GetConfigValue(configInfo, true /* acceptExplicitDefaultFromRegutil */, &wasNotConfigured);
+        *configValueRef = CLRConfig::GetConfigValue(configInfo, &wasNotConfigured);
         if (wasNotConfigured)
         {
             return false;
@@ -164,9 +164,9 @@ FCIMPL4(INT32, ThreadPoolNative::GetNextConfigUInt32Value,
     switch (configVariableIndex)
     {
         case 0:
-            // Special case for UsePortableThreadPool, which doesn't go into the AppContext
-            *configValueRef = 1;
-            *isBooleanRef = true;
+            // Special case for UsePortableThreadPool and similar, which don't go into the AppContext
+            *configValueRef = ThreadpoolMgr::UsePortableThreadPoolForIO() ? 2 : 1;
+            *isBooleanRef = false;
             *appContextConfigNameRef = NULL;
             return 1;
 
@@ -227,6 +227,7 @@ FCIMPLEND
 FCIMPL2(FC_BOOL_RET, ThreadPoolNative::CorSetMaxThreads,DWORD workerThreads, DWORD completionPortThreads)
 {
     FCALL_CONTRACT;
+    _ASSERTE_ALL_BUILDS(__FILE__, !ThreadpoolMgr::UsePortableThreadPoolForIO());
 
     BOOL bRet = FALSE;
     HELPER_METHOD_FRAME_BEGIN_RET_0();
@@ -241,6 +242,7 @@ FCIMPLEND
 FCIMPL2(VOID, ThreadPoolNative::CorGetMaxThreads,DWORD* workerThreads, DWORD* completionPortThreads)
 {
     FCALL_CONTRACT;
+    _ASSERTE_ALL_BUILDS(__FILE__, !ThreadpoolMgr::UsePortableThreadPoolForIO());
 
     ThreadpoolMgr::GetMaxThreads(workerThreads,completionPortThreads);
     return;
@@ -251,6 +253,7 @@ FCIMPLEND
 FCIMPL2(FC_BOOL_RET, ThreadPoolNative::CorSetMinThreads,DWORD workerThreads, DWORD completionPortThreads)
 {
     FCALL_CONTRACT;
+    _ASSERTE_ALL_BUILDS(__FILE__, !ThreadpoolMgr::UsePortableThreadPoolForIO());
 
     BOOL bRet = FALSE;
     HELPER_METHOD_FRAME_BEGIN_RET_0();
@@ -265,6 +268,7 @@ FCIMPLEND
 FCIMPL2(VOID, ThreadPoolNative::CorGetMinThreads,DWORD* workerThreads, DWORD* completionPortThreads)
 {
     FCALL_CONTRACT;
+    _ASSERTE_ALL_BUILDS(__FILE__, !ThreadpoolMgr::UsePortableThreadPoolForIO());
 
     ThreadpoolMgr::GetMinThreads(workerThreads,completionPortThreads);
     return;
@@ -275,6 +279,7 @@ FCIMPLEND
 FCIMPL2(VOID, ThreadPoolNative::CorGetAvailableThreads,DWORD* workerThreads, DWORD* completionPortThreads)
 {
     FCALL_CONTRACT;
+    _ASSERTE_ALL_BUILDS(__FILE__, !ThreadpoolMgr::UsePortableThreadPoolForIO());
 
     ThreadpoolMgr::GetAvailableThreads(workerThreads,completionPortThreads);
     return;
@@ -285,14 +290,17 @@ FCIMPLEND
 FCIMPL0(INT32, ThreadPoolNative::GetThreadCount)
 {
     FCALL_CONTRACT;
+    _ASSERTE_ALL_BUILDS(__FILE__, !ThreadpoolMgr::UsePortableThreadPoolForIO());
+
     return ThreadpoolMgr::GetThreadCount();
 }
 FCIMPLEND
 
 /*****************************************************************************************************/
-INT64 QCALLTYPE ThreadPoolNative::GetCompletedWorkItemCount()
+extern "C" INT64 QCALLTYPE ThreadPool_GetCompletedWorkItemCount()
 {
     QCALL_CONTRACT;
+    _ASSERTE_ALL_BUILDS(__FILE__, !ThreadpoolMgr::UsePortableThreadPoolForIO());
 
     INT64 result = 0;
 
@@ -366,7 +374,6 @@ FCIMPL0(FC_BOOL_RET, ThreadPoolNative::NotifyRequestComplete)
     // we need a thread adjustment, before setting up the frame.
     //
     Thread *pThread = GetThread();
-    _ASSERTE (pThread);
 
     INT32 priority = pThread->ResetManagedThreadObjectInCoopMode(ThreadNative::PRIORITY_NORMAL);
 
@@ -469,7 +476,7 @@ RegisterWaitForSingleObjectCallback_Worker(LPVOID ptr)
 
 VOID NTAPI RegisterWaitForSingleObjectCallback(PVOID delegateInfo, BOOLEAN TimerOrWaitFired)
 {
-    Thread* pThread = GetThread();
+    Thread* pThread = GetThreadNULLOk();
     if (pThread == NULL)
     {
         ClrFlsSetThreadType(ThreadType_Threadpool_Worker);
@@ -529,7 +536,6 @@ FCIMPL5(LPVOID, ThreadPoolNative::CorRegisterWaitForSingleObject,
     _ASSERTE(hWaitHandle);
 
     Thread* pCurThread = GetThread();
-    _ASSERTE( pCurThread);
 
     DelegateInfoHolder delegateInfo = DelegateInfo::MakeDelegateInfo(
                                                                 &gc.state,
@@ -555,27 +561,6 @@ FCIMPL5(LPVOID, ThreadPoolNative::CorRegisterWaitForSingleObject,
 }
 FCIMPLEND
 
-#ifdef TARGET_WINDOWS // the IO completion thread pool is currently only available on Windows
-FCIMPL1(void, ThreadPoolNative::CorQueueWaitCompletion, Object* completeWaitWorkItemObjectUNSAFE)
-{
-    FCALL_CONTRACT;
-    _ASSERTE_ALL_BUILDS(__FILE__, ThreadpoolMgr::UsePortableThreadPool());
-
-    OBJECTREF completeWaitWorkItemObject = ObjectToOBJECTREF(completeWaitWorkItemObjectUNSAFE);
-    HELPER_METHOD_FRAME_BEGIN_1(completeWaitWorkItemObject);
-
-    _ASSERTE(completeWaitWorkItemObject != NULL);
-
-    OBJECTHANDLE completeWaitWorkItemObjectHandle = GetAppDomain()->CreateHandle(completeWaitWorkItemObject);
-    ThreadpoolMgr::PostQueuedCompletionStatus(
-        (LPOVERLAPPED)completeWaitWorkItemObjectHandle,
-        ThreadpoolMgr::ManagedWaitIOCompletionCallback);
-
-    HELPER_METHOD_FRAME_END();
-}
-FCIMPLEND
-#endif // TARGET_WINDOWS
-
 VOID QueueUserWorkItemManagedCallback(PVOID pArg)
 {
     CONTRACTL
@@ -593,8 +578,7 @@ VOID QueueUserWorkItemManagedCallback(PVOID pArg)
     *wasNotRecalled = dispatch.Call_RetBool(NULL);
 }
 
-
-BOOL QCALLTYPE ThreadPoolNative::RequestWorkerThread()
+extern "C" BOOL QCALLTYPE ThreadPool_RequestWorkerThread()
 {
     QCALL_CONTRACT;
 
@@ -623,7 +607,7 @@ BOOL QCALLTYPE ThreadPoolNative::RequestWorkerThread()
     return res;
 }
 
-BOOL QCALLTYPE ThreadPoolNative::PerformGateActivities(INT32 cpuUtilization)
+extern "C" BOOL QCALLTYPE ThreadPool_PerformGateActivities(INT32 cpuUtilization)
 {
     QCALL_CONTRACT;
 
@@ -631,7 +615,7 @@ BOOL QCALLTYPE ThreadPoolNative::PerformGateActivities(INT32 cpuUtilization)
 
     BEGIN_QCALL;
 
-    _ASSERTE_ALL_BUILDS(__FILE__, ThreadpoolMgr::UsePortableThreadPool());
+    _ASSERTE_ALL_BUILDS(__FILE__, ThreadpoolMgr::UsePortableThreadPool() && !ThreadpoolMgr::UsePortableThreadPoolForIO());
 
     ThreadpoolMgr::PerformGateActivities(cpuUtilization);
     needGateThread = ThreadpoolMgr::NeedGateThreadForIOCompletions();
@@ -715,37 +699,12 @@ FCIMPLEND
 
 /********************************************************************************************************************/
 
-void QCALLTYPE ThreadPoolNative::ExecuteUnmanagedThreadPoolWorkItem(LPTHREAD_START_ROUTINE callback, LPVOID state)
-{
-    QCALL_CONTRACT;
-
-    BEGIN_QCALL;
-
-    _ASSERTE_ALL_BUILDS(__FILE__, ThreadpoolMgr::UsePortableThreadPool());
-    callback(state);
-
-    END_QCALL;
-}
-
-/********************************************************************************************************************/
-
 struct BindIoCompletion_Args
 {
     DWORD ErrorCode;
     DWORD numBytesTransferred;
     LPOVERLAPPED lpOverlapped;
 };
-
-void SetAsyncResultProperties(
-    OVERLAPPEDDATAREF overlapped,
-    DWORD dwErrorCode,
-    DWORD dwNumBytes
-)
-{
-    STATIC_CONTRACT_THROWS;
-    STATIC_CONTRACT_GC_NOTRIGGER;
-    STATIC_CONTRACT_MODE_ANY;
-}
 
 VOID BindIoCompletionCallBack_Worker(LPVOID args)
 {
@@ -783,9 +742,6 @@ VOID BindIoCompletionCallBack_Worker(LPVOID args)
     {
         // no user delegate to callback
         _ASSERTE((overlapped->m_callback == NULL) || !"This is benign, but should be optimized");
-
-
-        SetAsyncResultProperties(overlapped, ErrorCode, numBytesTransferred);
     }
     GCPROTECT_END();
 }
@@ -795,7 +751,7 @@ void __stdcall BindIoCompletionCallbackStubEx(DWORD ErrorCode,
                                               LPOVERLAPPED lpOverlapped,
                                               BOOL setStack)
 {
-    Thread* pThread = GetThread();
+    Thread* pThread = GetThreadNULLOk();
     if (pThread == NULL)
     {
         // TODO: how do we notify user of OOM here?
@@ -830,26 +786,12 @@ void WINAPI BindIoCompletionCallbackStub(DWORD ErrorCode,
 {
     WRAPPER_NO_CONTRACT;
     BindIoCompletionCallbackStubEx(ErrorCode, numBytesTransferred, lpOverlapped, TRUE);
-
-#ifndef TARGET_UNIX
-    extern Volatile<ULONG> g_fCompletionPortDrainNeeded;
-
-    Thread *pThread = GetThread();
-    if (g_fCompletionPortDrainNeeded && pThread)
-    {
-        // We have started draining completion port.
-        // The next job picked up by this thread is going to be after our special marker.
-        if (!pThread->IsCompletionPortDrained())
-        {
-            pThread->MarkCompletionPortDrained();
-        }
-    }
-#endif // !TARGET_UNIX
 }
 
 FCIMPL1(FC_BOOL_RET, ThreadPoolNative::CorBindIoCompletionCallback, HANDLE fileHandle)
 {
     FCALL_CONTRACT;
+    _ASSERTE_ALL_BUILDS(__FILE__, !ThreadpoolMgr::UsePortableThreadPoolForIO());
 
     BOOL retVal = FALSE;
 
@@ -881,6 +823,7 @@ FCIMPLEND
 FCIMPL1(FC_BOOL_RET, ThreadPoolNative::CorPostQueuedCompletionStatus, LPOVERLAPPED lpOverlapped)
 {
     FCALL_CONTRACT;
+    _ASSERTE_ALL_BUILDS(__FILE__, !ThreadpoolMgr::UsePortableThreadPoolForIO());
 
     OVERLAPPEDDATAREF   overlapped = ObjectToOVERLAPPEDDATAREF(OverlappedDataObject::GetOverlapped(lpOverlapped));
 
@@ -909,144 +852,3 @@ FCIMPL1(FC_BOOL_RET, ThreadPoolNative::CorPostQueuedCompletionStatus, LPOVERLAPP
     FC_RETURN_BOOL(res);
 }
 FCIMPLEND
-
-
-/********************************************************************************************************************/
-
-
-/******************************************************************************************/
-/*                                                                                        */
-/*                              Timer Functions                                           */
-/*                                                                                        */
-/******************************************************************************************/
-
-void AppDomainTimerCallback_Worker(LPVOID ptr)
-{
-    CONTRACTL
-    {
-        GC_TRIGGERS;
-        THROWS;
-        MODE_COOPERATIVE;
-    }
-    CONTRACTL_END;
-
-#ifdef _DEBUG
-    MethodDesc *pMeth = CoreLibBinder::GetMethod(METHOD__TIMER_QUEUE__APPDOMAIN_TIMER_CALLBACK);
-    LogCall(pMeth,"AppDomainTimerCallback");
-#endif
-
-    ThreadpoolMgr::TimerInfoContext* pTimerInfoContext = (ThreadpoolMgr::TimerInfoContext*)ptr;
-    ARG_SLOT args[] = { PtrToArgSlot(pTimerInfoContext->TimerId) };
-    MethodDescCallSite(METHOD__TIMER_QUEUE__APPDOMAIN_TIMER_CALLBACK).Call(args);
-}
-
-VOID WINAPI AppDomainTimerCallback(PVOID callbackState, BOOLEAN timerOrWaitFired)
-{
-    Thread* pThread = GetThread();
-    if (pThread == NULL)
-    {
-        // TODO: how do we notify user of OOM here?
-        ClrFlsSetThreadType(ThreadType_Threadpool_Worker);
-        pThread = SetupThreadNoThrow();
-        if (pThread == NULL) {
-            return;
-        }
-    }
-
-    CONTRACTL
-    {
-        THROWS;
-        MODE_ANY;
-        GC_TRIGGERS;
-    }
-    CONTRACTL_END;
-
-    GCX_COOP();
-
-    ThreadpoolMgr::TimerInfoContext* pTimerInfoContext = (ThreadpoolMgr::TimerInfoContext*)callbackState;
-    ManagedThreadBase::ThreadPool(AppDomainTimerCallback_Worker, pTimerInfoContext);
-}
-
-HANDLE QCALLTYPE AppDomainTimerNative::CreateAppDomainTimer(INT32 dueTime, INT32 timerId)
-{
-    QCALL_CONTRACT;
-
-    HANDLE hTimer = NULL;
-    BEGIN_QCALL;
-
-    _ASSERTE(dueTime >= 0);
-    _ASSERTE(timerId >= 0);
-
-    AppDomain* pAppDomain = GetThread()->GetDomain();
-
-    ThreadpoolMgr::TimerInfoContext* timerContext = new ThreadpoolMgr::TimerInfoContext();
-    timerContext->TimerId = timerId;
-    NewHolder<ThreadpoolMgr::TimerInfoContext> timerContextHolder(timerContext);
-
-    BOOL res = ThreadpoolMgr::CreateTimerQueueTimer(
-        &hTimer,
-        (WAITORTIMERCALLBACK)AppDomainTimerCallback,
-        (PVOID)timerContext,
-        (ULONG)dueTime,
-        (ULONG)-1 /* this timer doesn't repeat */,
-        0 /* no flags */);
-
-    if (!res)
-    {
-        if (GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
-            COMPlusThrow(kNotSupportedException);
-        else
-            COMPlusThrowWin32();
-    }
-    else
-    {
-        timerContextHolder.SuppressRelease();
-    }
-
-    END_QCALL;
-    return hTimer;
-}
-
-BOOL QCALLTYPE AppDomainTimerNative::DeleteAppDomainTimer(HANDLE hTimer)
-{
-    QCALL_CONTRACT;
-
-    BOOL res = FALSE;
-    BEGIN_QCALL;
-
-    _ASSERTE(hTimer != NULL && hTimer != INVALID_HANDLE_VALUE);
-    res = ThreadpoolMgr::DeleteTimerQueueTimer(hTimer, NULL);
-
-    if (!res)
-    {
-        DWORD errorCode = ::GetLastError();
-        if (errorCode != ERROR_IO_PENDING)
-            COMPlusThrowWin32(HRESULT_FROM_WIN32(errorCode));
-    }
-
-    END_QCALL;
-    return res;
-}
-
-
-BOOL QCALLTYPE AppDomainTimerNative::ChangeAppDomainTimer(HANDLE hTimer, INT32 dueTime)
-{
-    QCALL_CONTRACT;
-
-    BOOL res = FALSE;
-    BEGIN_QCALL;
-
-    _ASSERTE(hTimer != NULL && hTimer != INVALID_HANDLE_VALUE);
-    _ASSERTE(dueTime >= 0);
-
-    res = ThreadpoolMgr::ChangeTimerQueueTimer(
-        hTimer,
-        (ULONG)dueTime,
-        (ULONG)-1 /* this timer doesn't repeat */);
-
-    if (!res)
-        COMPlusThrowWin32();
-
-    END_QCALL;
-    return res;
-}

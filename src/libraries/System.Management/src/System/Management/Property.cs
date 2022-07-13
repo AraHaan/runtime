@@ -16,7 +16,7 @@ namespace System.Management
     // RuntimeHelpers.GetObjectValue.  This returns reference types right back to the caller, but if passed
     // a boxed non-primitive value type, it will return a boxed copy.  We cannot use GetObjectValue for primitives
     // because its implementation does not copy boxed primitives.
-    internal class ValueTypeSafety
+    internal static class ValueTypeSafety
     {
         public static object GetSafeObject(object theValue)
         {
@@ -121,7 +121,7 @@ namespace System.Management
         /// </value>
         public string Name
         { //doesn't change for this object so we don't need to refresh
-            get { return propertyName != null ? propertyName : ""; }
+            get { return propertyName ?? ""; }
         }
 
         /// <summary>
@@ -250,16 +250,8 @@ namespace System.Management
         /// <para>A <see cref='System.Management.QualifierDataCollection'/> that represents
         ///    the set of qualifiers defined on the property.</para>
         /// </value>
-        public QualifierDataCollection Qualifiers
-        {
-            get
-            {
-                if (qualifiers == null)
-                    qualifiers = new QualifierDataCollection(parent, propertyName, QualifierType.PropertyQualifier);
+        public QualifierDataCollection Qualifiers => qualifiers ??= new QualifierDataCollection(parent, propertyName, QualifierType.PropertyQualifier);
 
-                return qualifiers;
-            }
-        }
         internal long NullEnumValue
         {
             get

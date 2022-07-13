@@ -7,7 +7,7 @@ using System.Text;
 
 namespace System.Security
 {
-#if NET50_OBSOLETIONS
+#if NETCOREAPP
     [Obsolete(Obsoletions.CodeAccessSecurityMessage, DiagnosticId = Obsoletions.CodeAccessSecurityDiagId, UrlFormat = Obsoletions.SharedUrlFormat)]
 #endif
     [Serializable]
@@ -55,7 +55,7 @@ namespace System.Security
 
         public HostProtectionResource ProtectedResources { get; }
 
-        private void AppendResourceString(string resourceString, object attr, StringBuilder sb)
+        private static void AppendResourceString(string resourceString, object attr, StringBuilder sb)
         {
             if (attr == null)
                 return;

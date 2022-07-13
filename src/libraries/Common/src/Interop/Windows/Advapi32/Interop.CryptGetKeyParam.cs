@@ -4,9 +4,9 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Advapi32
+    internal static partial class Advapi32
     {
         internal enum CryptGetKeyParamFlags : int
         {
@@ -17,9 +17,10 @@ internal partial class Interop
             KP_KEYLEN = 9
         }
 
-        [DllImport(Libraries.Advapi32, SetLastError = true)]
-        public static extern bool CryptGetKeyParam(
-            SafeKeyHandle hKey,
+        [LibraryImport(Libraries.Advapi32, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool CryptGetKeyParam(
+            SafeCapiKeyHandle hKey,
             CryptGetKeyParamFlags dwParam,
             byte[]? pbData,
             ref int pdwDataLen,

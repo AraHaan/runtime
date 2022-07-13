@@ -7,15 +7,13 @@ using System.Runtime.CompilerServices;
 
 namespace Microsoft.Extensions.Logging.Console
 {
-    internal class AnsiParser
+    internal sealed class AnsiParser
     {
         private readonly Action<string, int, int, ConsoleColor?, ConsoleColor?> _onParseWrite;
         public AnsiParser(Action<string, int, int, ConsoleColor?, ConsoleColor?> onParseWrite)
         {
-            if (onParseWrite == null)
-            {
-                throw new ArgumentNullException(nameof(onParseWrite));
-            }
+            ThrowHelper.ThrowIfNull(onParseWrite);
+
             _onParseWrite = onParseWrite;
         }
 

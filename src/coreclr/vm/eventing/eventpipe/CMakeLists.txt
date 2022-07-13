@@ -1,13 +1,5 @@
 include(FindPythonInterp)
 
-function(addprefix var prefix list)
-  set(f)
-  foreach(i ${list})
-    set(f ${f} ${prefix}/${i})
-  endforeach()
-  set(${var} ${f} PARENT_SCOPE)
-endfunction()
-
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(GENERATE_SCRIPT ${CLR_DIR}/scripts/genEventPipe.py)
@@ -41,7 +33,7 @@ set (EVENTPIPE_HEADERS "")
 set (CORECLR_EVENTPIPE_SHIM_SOURCES "")
 set (CORECLR_EVENTPIPE_SHIM_HEADERS "")
 
-set (SHARED_EVENTPIPE_SOURCE_PATH "${SHARED_EVENTPIPE_DIR}")
+set (SHARED_EVENTPIPE_SOURCE_PATH "${CLR_SRC_NATIVE_DIR}/eventpipe")
 set (CORECLR_EVENTPIPE_SHIM_SOURCE_PATH "${CORECLR_EVENTPIPE_SHIM_DIR}")
 
 include (${SHARED_EVENTPIPE_SOURCE_PATH}/CMakeLists.txt)
@@ -65,7 +57,11 @@ set_source_files_properties(${SHARED_EVENTPIPE_SOURCE_PATH}/ds-sources.c PROPERT
 set_source_files_properties(${EVENTPIPE_SOURCES} PROPERTIES LANGUAGE CXX)
 
 if(CLR_CMAKE_HOST_UNIX)
-  set_source_files_properties(${EVENTPIPE_SOURCES} PROPERTIES COMPILE_OPTIONS -xc++)
+  if (CMAKE_VERSION VERSION_GREATER 3.11 OR CMAKE_VERSION VERSION_EQUAL 3.11)
+    set_source_files_properties(${EVENTPIPE_SOURCES} PROPERTIES COMPILE_OPTIONS -xc++)
+  else(CMAKE_VERSION VERSION_GREATER 3.11 OR CMAKE_VERSION VERSION_EQUAL 3.11)
+    add_compile_options(-xc++)
+  endif()
 endif(CLR_CMAKE_HOST_UNIX)
 
 list(APPEND CORECLR_EVENTPIPE_SHIM_SOURCES
@@ -88,6 +84,7 @@ list(APPEND EVENTPIPE_SOURCES
   ${CORECLR_EVENTPIPE_SHIM_SOURCES}
   ${CORECLR_EVENTPIPE_SHIM_HEADERS}
   ${EVENTPIPE_HEADERS}
+  ${SHARED_EVENTPIPE_CONFIG_HEADERS}
 )
 
 add_library_clr(eventpipe_gen_objs OBJECT ${GEN_EVENTPIPE_SOURCES})

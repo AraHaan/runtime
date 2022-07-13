@@ -4,7 +4,10 @@
 
 If you haven't already done so, please read [this document](../../README.md#Build_Requirements) to understand the build requirements for your operating system.
 
-The Emscripten SDK (emsdk) needs to be installed.  Follow the installation guide [here](https://emscripten.org/docs/getting_started/downloads.html#sdk-download-and-install) or run `make -C src/mono/wasm provision-wasm` to install emsdk into `src/mono/wasm/emsdk`.
+The **correct version** of Emscripten SDK (emsdk) needs to be installed.
+* Run `make -C src/mono/wasm provision-wasm` to install emsdk into `src/mono/wasm/emsdk`.
+* Alternatively follow the [installation guide](https://emscripten.org/docs/getting_started/downloads.html#sdk-download-and-install).
+Do not install `latest` but rather specific version e.g. `./emsdk install 2.0.23`. See [emscripten-version.txt](../../../../src/mono/wasm/emscripten-version.txt)
 
 Once installed the `EMSDK_PATH` environment variable needs to be set:
 
@@ -149,7 +152,7 @@ Submit a PR request with the updated version, wait for all checks to pass and fo
     {
       "dockerfile": "src/ubuntu/18.04/webassembly/Dockerfile",
       "simpleTags": [
-        "ubuntu-18.04-webassembly-20200529220811-6a6da63"
+        "ubuntu-18.04-webassembly-20210707133424-12f133e"
       ],
       "digest": "sha256:1f2d920a70bd8d55bbb329e87c3bd732ef930d64ff288dab4af0aa700c25cfaf",
       "osType": "Linux",
@@ -162,11 +165,11 @@ Submit a PR request with the updated version, wait for all checks to pass and fo
 },
 ```
 
-Copy the docker image tag and replace it in [platform-matrix.yml](https://github.com/dotnet/runtime/blob/master/eng/pipelines/common/platform-matrix.yml#L172)
+Copy the docker image tag and replace it in [platform-matrix.yml](https://github.com/dotnet/runtime/blob/main/eng/pipelines/common/platform-matrix.yml#L172)
 
 ```
 container:
-    image: ubuntu-18.04-webassembly-20200409132031-f70ea41
+    image: ubuntu-18.04-webassembly-20210707133424-12f133e
     registry: mcr
 ```
 

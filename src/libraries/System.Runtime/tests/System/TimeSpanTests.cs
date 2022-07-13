@@ -82,6 +82,45 @@ namespace System.Tests
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new TimeSpan(max.Days, max.Hours, max.Minutes, max.Seconds, max.Milliseconds + 1));
         }
 
+        [Fact]
+        public static void Ctor_Int_Int_Int_Int_Int_Int()
+        {
+            var timeSpan = new TimeSpan(10, 9, 8, 7, 6, 5);
+            VerifyTimeSpan(timeSpan, 10, 9, 8, 7, 6, 5);
+        }
+
+        [Fact]
+        public static void Ctor_Int_Int_Int_Int_Int_Int_Invalid()
+        {
+            // TimeSpan > TimeSpan.MinValue
+            TimeSpan min = TimeSpan.MinValue;
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new TimeSpan(min.Days - 1, min.Hours, min.Minutes, min.Seconds, min.Milliseconds, min.Microseconds));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new TimeSpan(min.Days, min.Hours - 1, min.Minutes, min.Seconds, min.Milliseconds, min.Microseconds));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new TimeSpan(min.Days, min.Hours, min.Minutes - 1, min.Seconds, min.Milliseconds, min.Microseconds));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new TimeSpan(min.Days, min.Hours, min.Minutes, min.Seconds - 1, min.Milliseconds, min.Microseconds));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new TimeSpan(min.Days, min.Hours, min.Minutes, min.Seconds, min.Milliseconds, min.Microseconds - 1));
+
+            // TimeSpan > TimeSpan.MaxValue
+            TimeSpan max = TimeSpan.MaxValue;
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new TimeSpan(max.Days + 1, max.Hours, max.Minutes, max.Seconds, max.Milliseconds, max.Microseconds));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new TimeSpan(max.Days, max.Hours + 1, max.Minutes, max.Seconds, max.Milliseconds, max.Microseconds));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new TimeSpan(max.Days, max.Hours, max.Minutes + 1, max.Seconds, max.Milliseconds, max.Microseconds));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new TimeSpan(max.Days, max.Hours, max.Minutes, max.Seconds + 1, max.Milliseconds, max.Microseconds));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new TimeSpan(max.Days, max.Hours, max.Minutes, max.Seconds, max.Milliseconds, max.Microseconds + 1));
+        }
+
+        [Theory]
+        [InlineData(100)]
+        [InlineData(300)]
+        [InlineData(900)]
+        public static void Ctor_Int_Int_Int_Int_Int_Int_WithNanosecond(int nanoseconds)
+        {
+            var timeSpan = new TimeSpan(10, 9, 8, 7, 6, 5);
+            timeSpan = new TimeSpan(timeSpan.Ticks + nanoseconds / 100);
+
+            VerifyTimeSpan(timeSpan, 10, 9, 8, 7, 6, 5, nanoseconds);
+        }
+
         public static IEnumerable<object[]> Total_Days_Hours_Minutes_Seconds_Milliseconds_TestData()
         {
             yield return new object[] { new TimeSpan(0, 0, 0, 0, 0), 0.0, 0.0, 0.0, 0.0, 0.0 };
@@ -898,6 +937,154 @@ namespace System.Tests
             AssertExtensions.Throws<ArgumentException>("styles", () => TimeSpan.TryParseExact(inputString, new string[] { "s" }, new CultureInfo("en-US"), styles, out result));
         }
 
+        public static IEnumerable<object[]> Parse_ValidWithOffsetCount_TestData()
+        {
+            foreach (object[] inputs in Parse_Valid_TestData())
+            {
+                yield return new object[] { inputs[0], 0, ((string)inputs[0]).Length, inputs[1], inputs[2] };
+            }
+
+            yield return new object[] { "     12:24:02      ", 5, 8, null, new TimeSpan(0, 12, 24, 2, 0) };
+            yield return new object[] { "     12:24:02      ", 6, 7, null, new TimeSpan(0, 2, 24, 2, 0) };
+            yield return new object[] { "     12:24:02      ", 6, 6, null, new TimeSpan(0, 2, 24, 0, 0) };
+            yield return new object[] { "12:24:02.01", 0, 8, CultureInfo.InvariantCulture, new TimeSpan(0, 12, 24, 2, 0) };
+            yield return new object[] { "1:1:1.00000001", 0, 7, CultureInfo.InvariantCulture, new TimeSpan(1, 1, 1) };
+            yield return new object[] { "1:1:.00000001", 0, 6, CultureInfo.InvariantCulture, new TimeSpan(36600000000) };
+            yield return new object[] { "24:00:00", 1, 7, null, new TimeSpan(4, 0, 0) };
+        }
+
+        [Theory]
+        [MemberData(nameof(Parse_ValidWithOffsetCount_TestData))]
+        public static void Parse_Span(string inputString, int offset, int count, IFormatProvider provider, TimeSpan expected)
+        {
+            ReadOnlySpan<char> input = inputString.AsSpan(offset, count);
+            TimeSpan result;
+
+            // Default provider.
+            if (provider == null)
+            {
+                Assert.True(TimeSpan.TryParse(input, out result));
+                Assert.Equal(expected, result);
+            }
+
+            Assert.Equal(expected, TimeSpan.Parse(input, provider));
+            Assert.True(TimeSpan.TryParse(input, provider, out result));
+            Assert.Equal(expected, result);
+
+            // Also negate
+            if (!char.IsWhiteSpace(input[0]))
+            {
+                input = ("-" + inputString.Substring(offset, count)).AsSpan();
+                expected = -expected;
+
+                Assert.Equal(expected, TimeSpan.Parse(input, provider));
+                Assert.True(TimeSpan.TryParse(input, provider, out result));
+                Assert.Equal(expected, result);
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(Parse_Invalid_TestData))]
+        public static void Parse_Span_Invalid(string inputString, IFormatProvider provider, Type exceptionType)
+        {
+            if (inputString != null)
+            {
+                Assert.Throws(exceptionType, () => TimeSpan.Parse(inputString.AsSpan(), provider));
+                Assert.False(TimeSpan.TryParse(inputString.AsSpan(), provider, out TimeSpan result));
+                Assert.Equal(TimeSpan.Zero, result);
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(ParseExact_Valid_TestData))]
+        public static void ParseExact_Span_Valid(string inputString, string format, TimeSpan expected)
+        {
+            ReadOnlySpan<char> input = inputString.AsSpan();
+
+            TimeSpan result;
+            Assert.Equal(expected, TimeSpan.ParseExact(input, format, new CultureInfo("en-US")));
+            Assert.Equal(expected, TimeSpan.ParseExact(input, format, new CultureInfo("en-US"), TimeSpanStyles.None));
+            Assert.Equal(expected, TimeSpan.ParseExact(input, new[] { format }, new CultureInfo("en-US")));
+            Assert.Equal(expected, TimeSpan.ParseExact(input, new[] { format }, new CultureInfo("en-US"), TimeSpanStyles.None));
+
+            Assert.True(TimeSpan.TryParseExact(input, format, new CultureInfo("en-US"), out result));
+            Assert.Equal(expected, result);
+
+            Assert.True(TimeSpan.TryParseExact(input, format, new CultureInfo("en-US"), TimeSpanStyles.None, out result));
+            Assert.Equal(expected, result);
+
+            Assert.True(TimeSpan.TryParseExact(input, new[] { format }, new CultureInfo("en-US"), out result));
+            Assert.Equal(expected, result);
+
+            Assert.True(TimeSpan.TryParseExact(input, new[] { format }, new CultureInfo("en-US"), TimeSpanStyles.None, out result));
+            Assert.Equal(expected, result);
+
+            if (format != "c" && format != "t" && format != "T" && format != "g" && format != "G")
+            {
+                // TimeSpanStyles is interpreted only for custom formats
+                Assert.Equal(expected.Negate(), TimeSpan.ParseExact(input, format, new CultureInfo("en-US"), TimeSpanStyles.AssumeNegative));
+
+                Assert.True(TimeSpan.TryParseExact(input, format, new CultureInfo("en-US"), TimeSpanStyles.AssumeNegative, out result));
+                Assert.Equal(expected.Negate(), result);
+            }
+            else
+            {
+                // Inputs that can be parsed in standard formats with ParseExact should also be parsable with Parse
+                Assert.Equal(expected, TimeSpan.Parse(input, CultureInfo.InvariantCulture));
+
+                Assert.True(TimeSpan.TryParse(input, CultureInfo.InvariantCulture, out result));
+                Assert.Equal(expected, result);
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(ParseExact_Invalid_TestData))]
+        public static void ParseExactTest_Span_Invalid(string inputString, string format, Type exceptionType)
+        {
+            if (inputString != null && format != null)
+            {
+                Assert.Throws(exceptionType, () => TimeSpan.ParseExact(inputString.AsSpan(), format, new CultureInfo("en-US")));
+
+                TimeSpan result;
+                Assert.False(TimeSpan.TryParseExact(inputString.AsSpan(), format, new CultureInfo("en-US"), out result));
+                Assert.Equal(TimeSpan.Zero, result);
+
+                Assert.False(TimeSpan.TryParseExact(inputString.AsSpan(), format, new CultureInfo("en-US"), TimeSpanStyles.None, out result));
+                Assert.Equal(TimeSpan.Zero, result);
+
+                Assert.False(TimeSpan.TryParseExact(inputString.AsSpan(), new[] { format }, new CultureInfo("en-US"), out result));
+                Assert.Equal(TimeSpan.Zero, result);
+
+                Assert.False(TimeSpan.TryParseExact(inputString.AsSpan(), new[] { format }, new CultureInfo("en-US"), TimeSpanStyles.None, out result));
+                Assert.Equal(TimeSpan.Zero, result);
+            }
+        }
+
+        [Fact]
+        public static void ParseExactMultiple_Span_InvalidNullEmptyFormats()
+        {
+            TimeSpan result;
+
+            AssertExtensions.Throws<ArgumentNullException>("formats", () => TimeSpan.ParseExact("12:34:56".AsSpan(), (string[])null, null));
+            Assert.False(TimeSpan.TryParseExact("12:34:56".AsSpan(), (string[])null, null, out result));
+
+            Assert.Throws<FormatException>(() => TimeSpan.ParseExact("12:34:56".AsSpan(), new string[0], null));
+            Assert.False(TimeSpan.TryParseExact("12:34:56".AsSpan(), new string[0], null, out result));
+        }
+
+        [Theory]
+        [MemberData(nameof(ParseExact_InvalidStyles_TestData))]
+        public void ParseExact_InvalidStylesSpan_ThrowsArgumentException(TimeSpanStyles styles)
+        {
+            TimeSpan result;
+
+            string inputString = "00:00:00";
+            AssertExtensions.Throws<ArgumentException>("styles", () => TimeSpan.ParseExact(inputString.AsSpan(), "s", new CultureInfo("en-US"), styles));
+            AssertExtensions.Throws<ArgumentException>("styles", () => TimeSpan.ParseExact(inputString.AsSpan(), new string[] { "s" }, new CultureInfo("en-US"), styles));
+            AssertExtensions.Throws<ArgumentException>("styles", () => TimeSpan.TryParseExact(inputString.AsSpan(), "s", new CultureInfo("en-US"), styles, out result));
+            AssertExtensions.Throws<ArgumentException>("styles", () => TimeSpan.TryParseExact(inputString.AsSpan(), new string[] { "s" }, new CultureInfo("en-US"), styles, out result));
+        }
+
         public static IEnumerable<object[]> Subtract_TestData()
         {
             yield return new object[] { new TimeSpan(0, 0, 0), new TimeSpan(1, 2, 3), new TimeSpan(-1, -2, -3) };
@@ -1085,6 +1272,20 @@ namespace System.Tests
             Assert.Equal(timeSpan, +timeSpan);
         }
 
+        private static void VerifyTimeSpan(TimeSpan timeSpan, int days, int hours, int minutes, int seconds,
+            int milliseconds, int microseconds)
+        {
+            VerifyTimeSpan(timeSpan, days, hours, minutes, seconds, milliseconds);
+            Assert.Equal(microseconds, timeSpan.Microseconds);
+        }
+
+        private static void VerifyTimeSpan(TimeSpan timeSpan, int days, int hours, int minutes, int seconds,
+            int milliseconds, int microseconds, int nanoseconds)
+        {
+            VerifyTimeSpan(timeSpan, days, hours, minutes, seconds, milliseconds, microseconds);
+            Assert.Equal(nanoseconds, timeSpan.Nanoseconds);
+        }
+
         [Theory]
         [MemberData(nameof(CompareTo_TestData))]
         public static void CompareTo_Object(TimeSpan timeSpan1, object obj, int expected)
@@ -1217,154 +1418,6 @@ namespace System.Tests
             AssertExtensions.Throws<ArgumentException>("divisor", () => TimeSpan.FromDays(1).Divide(double.NaN));
         }
 
-        public static IEnumerable<object[]> Parse_ValidWithOffsetCount_TestData()
-        {
-            foreach (object[] inputs in Parse_Valid_TestData())
-            {
-                yield return new object[] { inputs[0], 0, ((string)inputs[0]).Length, inputs[1], inputs[2] };
-            }
-
-            yield return new object[] { "     12:24:02      ", 5, 8, null, new TimeSpan(0, 12, 24, 2, 0) };
-            yield return new object[] { "     12:24:02      ", 6, 7, null, new TimeSpan(0, 2, 24, 2, 0) };
-            yield return new object[] { "     12:24:02      ", 6, 6, null, new TimeSpan(0, 2, 24, 0, 0) };
-            yield return new object[] { "12:24:02.01", 0, 8, CultureInfo.InvariantCulture, new TimeSpan(0, 12, 24, 2, 0) };
-            yield return new object[] { "1:1:1.00000001", 0, 7, CultureInfo.InvariantCulture, new TimeSpan(1, 1, 1) };
-            yield return new object[] { "1:1:.00000001", 0, 6, CultureInfo.InvariantCulture, new TimeSpan(36600000000) };
-            yield return new object[] { "24:00:00", 1, 7, null, new TimeSpan(4, 0, 0) };
-        }
-
-        [Theory]
-        [MemberData(nameof(Parse_ValidWithOffsetCount_TestData))]
-        public static void Parse_Span(string inputString, int offset, int count, IFormatProvider provider, TimeSpan expected)
-        {
-            ReadOnlySpan<char> input = inputString.AsSpan(offset, count);
-            TimeSpan result;
-
-            // Default provider.
-            if (provider == null)
-            {
-                Assert.True(TimeSpan.TryParse(input, out result));
-                Assert.Equal(expected, result);
-            }
-
-            Assert.Equal(expected, TimeSpan.Parse(input, provider));
-            Assert.True(TimeSpan.TryParse(input, provider, out result));
-            Assert.Equal(expected, result);
-
-            // Also negate
-            if (!char.IsWhiteSpace(input[0]))
-            {
-                input = ("-" + inputString.Substring(offset, count)).AsSpan();
-                expected = -expected;
-
-                Assert.Equal(expected, TimeSpan.Parse(input, provider));
-                Assert.True(TimeSpan.TryParse(input, provider, out result));
-                Assert.Equal(expected, result);
-            }
-        }
-
-        [Theory]
-        [MemberData(nameof(Parse_Invalid_TestData))]
-        public static void Parse_Span_Invalid(string inputString, IFormatProvider provider, Type exceptionType)
-        {
-            if (inputString != null)
-            {
-                Assert.Throws(exceptionType, () => TimeSpan.Parse(inputString.AsSpan(), provider));
-                Assert.False(TimeSpan.TryParse(inputString.AsSpan(), provider, out TimeSpan result));
-                Assert.Equal(TimeSpan.Zero, result);
-            }
-        }
-
-        [Theory]
-        [MemberData(nameof(ParseExact_Valid_TestData))]
-        public static void ParseExact_Span_Valid(string inputString, string format, TimeSpan expected)
-        {
-            ReadOnlySpan<char> input = inputString.AsSpan();
-
-            TimeSpan result;
-            Assert.Equal(expected, TimeSpan.ParseExact(input, format, new CultureInfo("en-US")));
-            Assert.Equal(expected, TimeSpan.ParseExact(input, format, new CultureInfo("en-US"), TimeSpanStyles.None));
-            Assert.Equal(expected, TimeSpan.ParseExact(input, new[] { format }, new CultureInfo("en-US")));
-            Assert.Equal(expected, TimeSpan.ParseExact(input, new[] { format }, new CultureInfo("en-US"), TimeSpanStyles.None));
-
-            Assert.True(TimeSpan.TryParseExact(input, format, new CultureInfo("en-US"), out result));
-            Assert.Equal(expected, result);
-
-            Assert.True(TimeSpan.TryParseExact(input, format, new CultureInfo("en-US"), TimeSpanStyles.None, out result));
-            Assert.Equal(expected, result);
-
-            Assert.True(TimeSpan.TryParseExact(input, new[] { format }, new CultureInfo("en-US"), out result));
-            Assert.Equal(expected, result);
-
-            Assert.True(TimeSpan.TryParseExact(input, new[] { format }, new CultureInfo("en-US"), TimeSpanStyles.None, out result));
-            Assert.Equal(expected, result);
-
-            if (format != "c" && format != "t" && format != "T" && format != "g" && format != "G")
-            {
-                // TimeSpanStyles is interpreted only for custom formats
-                Assert.Equal(expected.Negate(), TimeSpan.ParseExact(input, format, new CultureInfo("en-US"), TimeSpanStyles.AssumeNegative));
-
-                Assert.True(TimeSpan.TryParseExact(input, format, new CultureInfo("en-US"), TimeSpanStyles.AssumeNegative, out result));
-                Assert.Equal(expected.Negate(), result);
-            }
-            else
-            {
-                // Inputs that can be parsed in standard formats with ParseExact should also be parsable with Parse
-                Assert.Equal(expected, TimeSpan.Parse(input, CultureInfo.InvariantCulture));
-
-                Assert.True(TimeSpan.TryParse(input, CultureInfo.InvariantCulture, out result));
-                Assert.Equal(expected, result);
-            }
-        }
-
-        [Theory]
-        [MemberData(nameof(ParseExact_Invalid_TestData))]
-        public static void ParseExactTest_Span_Invalid(string inputString, string format, Type exceptionType)
-        {
-            if (inputString != null && format != null)
-            {
-                Assert.Throws(exceptionType, () => TimeSpan.ParseExact(inputString.AsSpan(), format, new CultureInfo("en-US")));
-
-                TimeSpan result;
-                Assert.False(TimeSpan.TryParseExact(inputString.AsSpan(), format, new CultureInfo("en-US"), out result));
-                Assert.Equal(TimeSpan.Zero, result);
-
-                Assert.False(TimeSpan.TryParseExact(inputString.AsSpan(), format, new CultureInfo("en-US"), TimeSpanStyles.None, out result));
-                Assert.Equal(TimeSpan.Zero, result);
-
-                Assert.False(TimeSpan.TryParseExact(inputString.AsSpan(), new[] { format }, new CultureInfo("en-US"), out result));
-                Assert.Equal(TimeSpan.Zero, result);
-
-                Assert.False(TimeSpan.TryParseExact(inputString.AsSpan(), new[] { format }, new CultureInfo("en-US"), TimeSpanStyles.None, out result));
-                Assert.Equal(TimeSpan.Zero, result);
-            }
-        }
-
-        [Fact]
-        public static void ParseExactMultiple_Span_InvalidNullEmptyFormats()
-        {
-            TimeSpan result;
-
-            AssertExtensions.Throws<ArgumentNullException>("formats", () => TimeSpan.ParseExact("12:34:56".AsSpan(), (string[])null, null));
-            Assert.False(TimeSpan.TryParseExact("12:34:56".AsSpan(), (string[])null, null, out result));
-
-            Assert.Throws<FormatException>(() => TimeSpan.ParseExact("12:34:56".AsSpan(), new string[0], null));
-            Assert.False(TimeSpan.TryParseExact("12:34:56".AsSpan(), new string[0], null, out result));
-        }
-
-        [Theory]
-        [MemberData(nameof(ParseExact_InvalidStyles_TestData))]
-        public void ParseExact_InvalidStylesSpan_ThrowsArgumentException(TimeSpanStyles styles)
-        {
-            TimeSpan result;
-
-            string inputString = "00:00:00";
-            AssertExtensions.Throws<ArgumentException>("styles", () => TimeSpan.ParseExact(inputString.AsSpan(), "s", new CultureInfo("en-US"), styles));
-            AssertExtensions.Throws<ArgumentException>("styles", () => TimeSpan.ParseExact(inputString.AsSpan(), new string[] { "s" }, new CultureInfo("en-US"), styles));
-            AssertExtensions.Throws<ArgumentException>("styles", () => TimeSpan.TryParseExact(inputString.AsSpan(), "s", new CultureInfo("en-US"), styles, out result));
-            AssertExtensions.Throws<ArgumentException>("styles", () => TimeSpan.TryParseExact(inputString.AsSpan(), new string[] { "s" }, new CultureInfo("en-US"), styles, out result));
-        }
-
         [Theory]
         [MemberData(nameof(ToString_TestData))]
         public static void TryFormat_Valid(TimeSpan input, string format, CultureInfo info, string expected)
@@ -1405,6 +1458,26 @@ namespace System.Tests
             Assert.Equal(12345600, TimeSpan.FromSeconds(1.23456).Ticks);
 
             Assert.Equal(1.23456 * 60 * 10_000_000, TimeSpan.FromMinutes(1.23456).Ticks);
+        }
+
+        [Theory]
+        [InlineData(0, 0)]
+        [InlineData(100, 10)]
+        [InlineData(1_000, 100)]
+        public static void TestTotalMicroseconds(long ticks, double totalMicroseconds)
+        {
+            var timeSpan = new TimeSpan(ticks);
+            Assert.Equal(totalMicroseconds, timeSpan.TotalMicroseconds);
+        }
+
+        [Theory]
+        [InlineData(0, 0)]
+        [InlineData(100, 10_000)]
+        [InlineData(1_000, 100_000)]
+        public static void TestTotalNanoseconds(long ticks, double totalNanoseconds)
+        {
+            var timeSpan = new TimeSpan(ticks);
+            Assert.Equal(totalNanoseconds, timeSpan.TotalNanoseconds);
         }
     }
 }

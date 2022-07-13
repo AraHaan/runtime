@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Internal.Runtime.CompilerServices;
 
 namespace System
 {
@@ -112,7 +111,7 @@ namespace System
 
             public override int Next(int minValue, int maxValue)
             {
-                ulong exclusiveRange = (ulong)(maxValue - minValue);
+                ulong exclusiveRange = (ulong)((long)maxValue - minValue);
 
                 if (exclusiveRange > 1)
                 {

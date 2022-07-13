@@ -11,64 +11,15 @@ using ILLocalVariable = Internal.IL.Stubs.ILLocalVariable;
 
 namespace Internal.TypeSystem.Interop
 {
-    enum MarshallerKind
-    {
-        Unknown,
-        BlittableValue,
-        Array,
-        BlittableArray,
-        Bool,   // 4 byte bool
-        CBool,  // 1 byte bool
-        Enum,
-        AnsiChar,  // Marshal char (Unicode 16bits) for byte (Ansi 8bits)
-        UnicodeChar,
-        AnsiCharArray,
-        ByValArray,
-        ByValAnsiCharArray, // Particular case of ByValArray because the conversion between wide Char and Byte need special treatment.
-        AnsiString,
-        UnicodeString,
-        UTF8String,
-        ByValAnsiString,
-        ByValUnicodeString,
-        AnsiStringBuilder,
-        UnicodeStringBuilder,
-        FunctionPointer,
-        SafeHandle,
-        CriticalHandle,
-        HandleRef,
-        VoidReturn,
-        Variant,
-        Object,
-        OleDateTime,
-        Decimal,
-        Guid,
-        Struct,
-        BlittableStruct,
-        BlittableStructPtr,   // Additional indirection on top of blittable struct. Used by MarshalAs(LpStruct)
-        LayoutClass,
-        LayoutClassPtr,
-        AsAnyA,
-        AsAnyW,
-        ComInterface,
-        BlittableValueClassWithCopyCtor,
-        Invalid
-    }
     public enum MarshalDirection
     {
         Forward,    // safe-to-unsafe / managed-to-native
         Reverse,    // unsafe-to-safe / native-to-managed
     }
 
-    public enum MarshallerType
-    {
-        Argument,
-        Element,
-        Field
-    }
-
     // Each type of marshaller knows how to generate the marshalling code for the argument it marshals.
     // Marshallers contain method related marshalling information (which is common to all the Marshallers)
-    // and also argument specific marshalling informaiton
+    // and also argument specific marshalling information.
     abstract partial class Marshaller
     {
         #region Instance state information
@@ -145,12 +96,14 @@ namespace Internal.TypeSystem.Interop
             }
         }
 
+        internal bool IsHRSwappedRetVal => Index == 0 && !Return;
+
         public bool In;
         public bool Out;
         public bool Return;
         public bool IsManagedByRef;                     // Whether managed argument is passed by ref
         public bool IsNativeByRef;                      // Whether native argument is passed by byref
-                                                        // There are special cases (such as LpStruct, and class) that 
+                                                        // There are special cases (such as LpStruct, and class) that
                                                         // isNativeByRef != IsManagedByRef
         public MarshalDirection MarshalDirection;
         protected PInvokeILCodeStreams _ilCodeStreams;
@@ -243,7 +196,7 @@ namespace Internal.TypeSystem.Interop
                         break;
                     default:
                         // Storing by-ref arg/local is not supported because StInd require
-                        // address to be pushed first. Instead we need to introduce a non-byref 
+                        // address to be pushed first. Instead we need to introduce a non-byref
                         // local and propagate value as needed for by-ref arguments
                         Debug.Assert(false);
                         break;
@@ -331,7 +284,7 @@ namespace Internal.TypeSystem.Interop
             //
             if (isOut)
             {
-                // Passing as [Out] by ref is always valid. 
+                // Passing as [Out] by ref is always valid.
                 if (!marshaller.IsManagedByRef)
                 {
                     // Ignore [Out] for ValueType, string and pointers
@@ -374,6 +327,44 @@ namespace Internal.TypeSystem.Interop
                     marshaller.Out = false;
             }
 
+            return marshaller;
+        }
+
+        /// <summary>
+        /// Create a marshaller
+        /// </summary>
+        /// <param name="parameterType">type of the parameter to marshal</param>
+        /// <returns>The created Marshaller</returns>
+        public static Marshaller CreateDisabledMarshaller(TypeDesc parameterType,
+            int? parameterIndex,
+            MarshallerType marshallerType,
+            MarshalDirection direction,
+            Marshaller[] marshallers,
+            int index,
+            PInvokeFlags flags,
+            bool isReturn)
+        {
+            MarshallerKind marshallerKind = MarshalHelpers.GetDisabledMarshallerKind(parameterType);
+
+            TypeSystemContext context = parameterType.Context;
+            // Create the marshaller based on MarshallerKind
+            Marshaller marshaller = CreateMarshaller(marshallerKind);
+            marshaller.Context = context;
+            marshaller.MarshallerKind = marshallerKind;
+            marshaller.MarshallerType = marshallerType;
+            marshaller.ElementMarshallerKind = MarshallerKind.Unknown;
+            marshaller.ManagedParameterType = parameterType;
+            marshaller.ManagedType = parameterType;
+            marshaller.Return = isReturn;
+            marshaller.IsManagedByRef = false;
+            marshaller.IsNativeByRef = false;
+            marshaller.MarshalDirection = direction;
+            marshaller.MarshalAsDescriptor = null;
+            marshaller.Marshallers = marshallers;
+            marshaller.Index = index;
+            marshaller.PInvokeFlags = flags;
+            marshaller.In = true;
+            marshaller.Out = false;
             return marshaller;
         }
         #endregion
@@ -508,7 +499,7 @@ namespace Internal.TypeSystem.Interop
 
         public virtual void LoadReturnValue(ILCodeStream codeStream)
         {
-            Debug.Assert(Return);
+            Debug.Assert(Return || IsHRSwappedRetVal);
 
             switch (MarshalDirection)
             {
@@ -632,26 +623,41 @@ namespace Internal.TypeSystem.Interop
 
         /// <summary>
         /// Propagate by-ref arg to corresponding local
-        /// We can't load value + ldarg + ldind in the expected order, so 
+        /// We can't load value + ldarg + ldind in the expected order, so
         /// we had to use a non-by-ref local and manually propagate the value
         /// </summary>
         protected void PropagateFromByRefArg(ILCodeStream stream, Home home)
         {
             stream.EmitLdArg(Index - 1);
-            stream.EmitLdInd(ManagedType);
+            switch (MarshalDirection)
+            {
+                case MarshalDirection.Forward: stream.EmitLdInd(ManagedType); break;
+                case MarshalDirection.Reverse: stream.EmitLdInd(NativeType); break;
+            }
             home.StoreValue(stream);
         }
 
         /// <summary>
         /// Propagate local to corresponding by-ref arg
-        /// We can't load value + ldarg + ldind in the expected order, so 
+        /// We can't load value + ldarg + ldind in the expected order, so
         /// we had to use a non-by-ref local and manually propagate the value
         /// </summary>
         protected void PropagateToByRefArg(ILCodeStream stream, Home home)
         {
+            // If by-ref arg has index == 0 then that argument is used for HR swapping and we just return that value.
+            if (IsHRSwappedRetVal)
+            {
+                // Returning result would be handled by LoadReturnValue
+                return;
+            }
+
             stream.EmitLdArg(Index - 1);
             home.LoadValue(stream);
-            stream.EmitStInd(ManagedType);
+            switch (MarshalDirection)
+            {
+                case MarshalDirection.Forward: stream.EmitStInd(ManagedType); break;
+                case MarshalDirection.Reverse: stream.EmitStInd(NativeType); break;
+            }
         }
 
         protected virtual void EmitMarshalArgumentManagedToNative()
@@ -836,7 +842,7 @@ namespace Internal.TypeSystem.Interop
             SetupArgumentsForFieldMarshalling();
             //
             // For field marshalling we expect the value of the field is already loaded
-            // in the stack. 
+            // in the stack.
             //
             StoreManagedValue(marshallingCodeStream);
 
@@ -899,6 +905,12 @@ namespace Internal.TypeSystem.Interop
     {
         protected override void EmitMarshalArgumentManagedToNative()
         {
+            if (IsHRSwappedRetVal)
+            {
+                base.EmitMarshalArgumentManagedToNative();
+                return;
+            }
+
             if (IsNativeByRef && MarshalDirection == MarshalDirection.Forward)
             {
                 ILCodeStream marshallingCodeStream = _ilCodeStreams.MarshallingCodeStream;
@@ -978,6 +990,11 @@ namespace Internal.TypeSystem.Interop
             }
         }
 
+        protected override void SetupArgumentsForFieldMarshalling()
+        {
+            ThrowHelper.ThrowTypeLoadException(ExceptionStringID.ClassLoadGeneral, ManagedType);
+        }
+
         protected Marshaller GetElementMarshaller(MarshalDirection direction)
         {
             if (_elementMarshaller == null)
@@ -1036,7 +1053,7 @@ namespace Internal.TypeSystem.Interop
 
                     if (index < 0 || index >= Marshallers.Length - 1)
                     {
-                        throw new InvalidProgramException("Invalid SizeParamIndex, must be between 0 and parameter count");
+                        ThrowHelper.ThrowMarshalDirectiveException();
                     }
 
                     //zero-th index is for return type
@@ -1056,7 +1073,8 @@ namespace Internal.TypeSystem.Interop
                         case TypeFlags.UIntPtr:
                             break;
                         default:
-                            throw new InvalidProgramException("Invalid SizeParamIndex, parameter must be  of type int/uint");
+                            ThrowHelper.ThrowMarshalDirectiveException();
+                            break;
                     }
 
                     // @TODO - We can use LoadManagedValue, but that requires byref arg propagation happen in a special setup stream
@@ -1345,7 +1363,7 @@ namespace Internal.TypeSystem.Interop
             // Check for null array
             LoadManagedValue(codeStream);
             codeStream.Emit(ILOpcode.brfalse, lNullArray);
-            
+
             if (IsManagedByRef)
             {
                 base.AllocManagedToNative(codeStream);
@@ -1403,13 +1421,38 @@ namespace Internal.TypeSystem.Interop
 
     class BooleanMarshaller : Marshaller
     {
+        private int _trueValue;
+        public BooleanMarshaller(int trueValue = 1)
+        {
+            _trueValue = trueValue;
+        }
+
         protected override void AllocAndTransformManagedToNative(ILCodeStream codeStream)
         {
+            ILEmitter emitter = _ilCodeStreams.Emitter;
+            ILCodeLabel pLoadFalseLabel = emitter.NewCodeLabel();
+            ILCodeLabel pDoneLabel = emitter.NewCodeLabel();
+
             LoadManagedValue(codeStream);
-            codeStream.EmitLdc(0);
-            codeStream.Emit(ILOpcode.ceq);
-            codeStream.EmitLdc(0);
-            codeStream.Emit(ILOpcode.ceq);
+            if (_trueValue == 1)
+            {
+                codeStream.EmitLdc(0);
+                codeStream.Emit(ILOpcode.ceq);
+                codeStream.EmitLdc(0);
+                codeStream.Emit(ILOpcode.ceq);
+            }
+            else
+            {
+                codeStream.Emit(ILOpcode.brfalse, pLoadFalseLabel);
+                codeStream.EmitLdc(_trueValue);
+                codeStream.Emit(ILOpcode.br, pDoneLabel);
+
+                codeStream.EmitLabel(pLoadFalseLabel);
+                codeStream.EmitLdc(0);
+
+                codeStream.EmitLabel(pDoneLabel);
+            }
+
             StoreNativeValue(codeStream);
         }
 
@@ -1449,7 +1492,7 @@ namespace Internal.TypeSystem.Interop
         internal override void EmitElementCleanup(ILCodeStream codeStream, ILEmitter emitter)
         {
             codeStream.Emit(ILOpcode.call, emitter.NewToken(
-                                Context.GetHelperEntryPoint("InteropHelpers", "CoTaskMemFree")));
+                                InteropTypes.GetMarshal(Context).GetKnownMethod("FreeCoTaskMem", null)));
         }
 
         protected override void TransformManagedToNative(ILCodeStream codeStream)
@@ -1546,6 +1589,7 @@ namespace Internal.TypeSystem.Interop
 
     class AnsiStringMarshaller : Marshaller
     {
+
         internal override bool CleanupRequired
         {
             get
@@ -1557,7 +1601,7 @@ namespace Internal.TypeSystem.Interop
         internal override void EmitElementCleanup(ILCodeStream codeStream, ILEmitter emitter)
         {
             codeStream.Emit(ILOpcode.call, emitter.NewToken(
-                                Context.GetHelperEntryPoint("InteropHelpers", "CoTaskMemFree")));
+                                InteropTypes.GetMarshal(Context).GetKnownMethod("FreeCoTaskMem", null)));
         }
 
         protected override void TransformManagedToNative(ILCodeStream codeStream)
@@ -1567,17 +1611,6 @@ namespace Internal.TypeSystem.Interop
             //
             // ANSI marshalling. Allocate a byte array, copy characters
             //
-
-#if READYTORUN
-            var stringToAnsi =
-                Context.SystemModule.GetKnownType("System.StubHelpers", "AnsiBSTRMarshaler")
-                .GetKnownMethod("ConvertToNative", null);
-            int flags = (PInvokeFlags.BestFitMapping ? 0x1 : 0)
-                | (PInvokeFlags.ThrowOnUnmappableChar ? 0x100 : 0);
-            codeStream.EmitLdc(flags);
-            LoadManagedValue(codeStream);
-            codeStream.Emit(ILOpcode.call, emitter.NewToken(stringToAnsi));
-#else
             LoadManagedValue(codeStream);
             var stringToAnsi = Context.GetHelperEntryPoint("InteropHelpers", "StringToAnsiString");
 
@@ -1585,7 +1618,6 @@ namespace Internal.TypeSystem.Interop
             codeStream.Emit(PInvokeFlags.ThrowOnUnmappableChar ? ILOpcode.ldc_i4_1 : ILOpcode.ldc_i4_0);
 
             codeStream.Emit(ILOpcode.call, emitter.NewToken(stringToAnsi));
-#endif
 
             StoreNativeValue(codeStream);
         }
@@ -1593,14 +1625,7 @@ namespace Internal.TypeSystem.Interop
         protected override void TransformNativeToManaged(ILCodeStream codeStream)
         {
             ILEmitter emitter = _ilCodeStreams.Emitter;
-
-#if READYTORUN
-            var ansiToString =
-                Context.SystemModule.GetKnownType("System.StubHelpers", "AnsiBSTRMarshaler")
-                .GetKnownMethod("ConvertToManaged", null);
-#else
             var ansiToString = Context.GetHelperEntryPoint("InteropHelpers", "AnsiStringToString");
-#endif
             LoadNativeValue(codeStream);
             codeStream.Emit(ILOpcode.call, emitter.NewToken(ansiToString));
             StoreManagedValue(codeStream);
@@ -1609,13 +1634,6 @@ namespace Internal.TypeSystem.Interop
         protected override void EmitCleanupManaged(ILCodeStream codeStream)
         {
             var emitter = _ilCodeStreams.Emitter;
-#if READYTORUN
-            MethodDesc clearNative =
-                Context.SystemModule.GetKnownType("System.StubHelpers", "AnsiBSTRMarshaler")
-                .GetKnownMethod("ClearNative", null);
-            LoadNativeValue(codeStream);
-            codeStream.Emit(ILOpcode.call, emitter.NewToken(clearNative));
-#else
             var lNullCheck = emitter.NewCodeLabel();
 
             // Check for null array
@@ -1624,65 +1642,101 @@ namespace Internal.TypeSystem.Interop
 
             LoadNativeValue(codeStream);
             codeStream.Emit(ILOpcode.call, emitter.NewToken(
-                                Context.GetHelperEntryPoint("InteropHelpers", "CoTaskMemFree")));
+                                InteropTypes.GetMarshal(Context).GetKnownMethod("FreeCoTaskMem", null)));
 
             codeStream.EmitLabel(lNullCheck);
-#endif
         }
     }
 
     class UTF8StringMarshaller : Marshaller
     {
-        internal override bool CleanupRequired
-        {
-            get
-            {
-                return true;
-            }
-        }
+        private const int LocalBufferLength = 0x100;
+
+        private ILLocalVariable? _marshallerInstance = null;
+
+        private MetadataType Marshaller => Context.SystemModule.GetKnownType("System.Runtime.InteropServices.Marshalling", "Utf8StringMarshaller");
+
+        private MetadataType MarshallerIn => Marshaller.GetNestedType("ManagedToUnmanagedIn");
+
+        internal override bool CleanupRequired => true;
 
         internal override void EmitElementCleanup(ILCodeStream codeStream, ILEmitter emitter)
         {
+            Debug.Assert(_marshallerInstance is null);
+
             codeStream.Emit(ILOpcode.call, emitter.NewToken(
-                                Context.GetHelperEntryPoint("InteropHelpers", "CoTaskMemFree")));
+                                Marshaller.GetKnownMethod("Free", null)));
         }
 
         protected override void TransformManagedToNative(ILCodeStream codeStream)
         {
             ILEmitter emitter = _ilCodeStreams.Emitter;
 
-            //
-            // UTF8 marshalling. Allocate a byte array, copy characters
-            //
-            var stringToAnsi = Context.GetHelperEntryPoint("InteropHelpers", "StringToUTF8String");
-            LoadManagedValue(codeStream);
-            codeStream.Emit(ILOpcode.call, emitter.NewToken(stringToAnsi));
+            if (In && !Out && !IsManagedByRef)
+            {
+                TypeDesc marshallerIn = MarshallerIn;
+
+                if (_marshallerInstance == null)
+                    _marshallerInstance = emitter.NewLocal(marshallerIn);
+
+                var vBuffer = emitter.NewLocal(Context.GetWellKnownType(WellKnownType.IntPtr));
+                codeStream.EmitLdc(LocalBufferLength);
+                codeStream.Emit(ILOpcode.localloc);
+                codeStream.EmitStLoc(vBuffer);
+
+                codeStream.EmitLdLoca(_marshallerInstance.Value);
+
+                LoadManagedValue(codeStream);
+
+                // Create ReadOnlySpan<byte> from the stack-allocated buffer
+                codeStream.EmitLdLoc(vBuffer);
+                codeStream.EmitLdc(LocalBufferLength);
+
+                var spanOfByte = Context.SystemModule.GetKnownType("System", "Span`1").MakeInstantiatedType(
+                    new TypeDesc[] { Context.GetWellKnownType(WellKnownType.Byte) });
+
+                codeStream.Emit(ILOpcode.newobj, emitter.NewToken(spanOfByte.GetKnownMethod(".ctor",
+                    new MethodSignature(0, 0, Context.GetWellKnownType(WellKnownType.Void),
+                            new TypeDesc[] { Context.GetWellKnownType(WellKnownType.Void).MakePointerType(), Context.GetWellKnownType(WellKnownType.Int32) }))));
+                codeStream.Emit(ILOpcode.call, emitter.NewToken(marshallerIn.GetKnownMethod("FromManaged", null)));
+
+                codeStream.EmitLdLoca(_marshallerInstance.Value);
+                codeStream.Emit(ILOpcode.call, emitter.NewToken(marshallerIn.GetKnownMethod("ToUnmanaged", null)));
+            }
+            else
+            {
+                LoadManagedValue(codeStream);
+                codeStream.Emit(ILOpcode.call, emitter.NewToken(Marshaller.GetKnownMethod("ConvertToUnmanaged", null)));
+            }
+
             StoreNativeValue(codeStream);
         }
 
         protected override void TransformNativeToManaged(ILCodeStream codeStream)
         {
             ILEmitter emitter = _ilCodeStreams.Emitter;
-            var ansiToString = Context.GetHelperEntryPoint("InteropHelpers", "UTF8StringToString");
+
             LoadNativeValue(codeStream);
-            codeStream.Emit(ILOpcode.call, emitter.NewToken(ansiToString));
+            codeStream.Emit(ILOpcode.call, emitter.NewToken(Marshaller.GetKnownMethod("ConvertToManaged", null)));
             StoreManagedValue(codeStream);
         }
 
         protected override void EmitCleanupManaged(ILCodeStream codeStream)
         {
-            var emitter = _ilCodeStreams.Emitter;
-            var lNullCheck = emitter.NewCodeLabel();
+            ILEmitter emitter = _ilCodeStreams.Emitter;
 
-            // Check for null array
-            LoadManagedValue(codeStream);
-            codeStream.Emit(ILOpcode.brfalse, lNullCheck);
-
-            LoadNativeValue(codeStream);
-            codeStream.Emit(ILOpcode.call, emitter.NewToken(
-                                Context.GetHelperEntryPoint("InteropHelpers", "CoTaskMemFree")));
-
-            codeStream.EmitLabel(lNullCheck);
+            if (_marshallerInstance != null)
+            {
+                codeStream.EmitLdLoca(_marshallerInstance.Value);
+                codeStream.Emit(ILOpcode.call, emitter.NewToken(
+                                    MarshallerIn.GetKnownMethod("Free", null)));
+            }
+            else
+            {
+                LoadNativeValue(codeStream);
+                codeStream.Emit(ILOpcode.call, emitter.NewToken(
+                                    Marshaller.GetKnownMethod("Free", null)));
+            }
         }
     }
 
@@ -1691,11 +1745,15 @@ namespace Internal.TypeSystem.Interop
         private void AllocSafeHandle(ILCodeStream codeStream)
         {
             var ctor = ManagedType.GetParameterlessConstructor();
-            if (ctor == null || ((MetadataType)ManagedType).IsAbstract)
+            if (ctor == null)
             {
                 ThrowHelper.ThrowMissingMethodException(ManagedType, ".ctor",
                     new MethodSignature(MethodSignatureFlags.None, genericParameterCount: 0,
                     ManagedType.Context.GetWellKnownType(WellKnownType.Void), TypeDesc.EmptyTypes));
+            }
+            if (((MetadataType)ManagedType).IsAbstract)
+            {
+                ThrowHelper.ThrowMarshalDirectiveException();
             }
 
             codeStream.Emit(ILOpcode.newobj, _ilCodeStreams.Emitter.NewToken(ctor));
@@ -1742,19 +1800,7 @@ namespace Internal.TypeSystem.Interop
                 if (IsManagedByRef)
                     PropagateFromByRefArg(marshallingCodeStream, _managedHome);
 
-                // Boolean by-ref for DangerousAddRef().
                 var vAddRefed = emitter.NewLocal(Context.GetWellKnownType(WellKnownType.Boolean));
-                marshallingCodeStream.EmitLdc(0);
-                marshallingCodeStream.EmitStLoc(vAddRefed);
-
-                // Initialize native value to null.
-                marshallingCodeStream.EmitLdc(0);
-                marshallingCodeStream.Emit(ILOpcode.conv_i);
-                StoreNativeValue(marshallingCodeStream);
-
-                ILCodeLabel lHandleIsNull = emitter.NewCodeLabel();
-                LoadManagedValue(marshallingCodeStream);
-                marshallingCodeStream.Emit(ILOpcode.brfalse, lHandleIsNull);
                 LoadManagedValue(marshallingCodeStream);
                 marshallingCodeStream.EmitLdLoca(vAddRefed);
                 marshallingCodeStream.Emit(ILOpcode.call, emitter.NewToken(
@@ -1767,14 +1813,13 @@ namespace Internal.TypeSystem.Interop
                     safeHandleType.GetKnownMethod("DangerousGetHandle",
                         new MethodSignature(0, 0, Context.GetWellKnownType(WellKnownType.IntPtr), TypeDesc.EmptyTypes))));
                 StoreNativeValue(marshallingCodeStream);
-                marshallingCodeStream.EmitLabel(lHandleIsNull);
 
                 ILCodeLabel lNotAddrefed = emitter.NewCodeLabel();
                 cleanupCodeStream.EmitLdLoc(vAddRefed);
                 cleanupCodeStream.Emit(ILOpcode.brfalse, lNotAddrefed);
                 LoadManagedValue(cleanupCodeStream);
                 cleanupCodeStream.Emit(ILOpcode.call, emitter.NewToken(
-                    safeHandleType.GetKnownMethod("DangerousRelease", 
+                    safeHandleType.GetKnownMethod("DangerousRelease",
                         new MethodSignature(0, 0, Context.GetWellKnownType(WellKnownType.Void), TypeDesc.EmptyTypes))));
                 cleanupCodeStream.EmitLabel(lNotAddrefed);
             }
@@ -1785,7 +1830,7 @@ namespace Internal.TypeSystem.Interop
                 //    must allocate this before the native call to avoid a failure point when we already have a native resource
                 //    allocated. We must allocate a new SafeHandle even if we have one on input since both input and output native
                 //    handles need to be tracked and released by a SafeHandle.
-                // 2) Initialize a local IntPtr that will be passed to the native call. 
+                // 2) Initialize a local IntPtr that will be passed to the native call.
                 // 3) After the native call, the new handle value is written into the output SafeHandle and that SafeHandle
                 //    is propagated back to the caller.
                 var vSafeHandle = emitter.NewLocal(ManagedType);
@@ -1812,9 +1857,17 @@ namespace Internal.TypeSystem.Interop
                         new MethodSignature(0, 0, Context.GetWellKnownType(WellKnownType.Void),
                             new TypeDesc[] { Context.GetWellKnownType(WellKnownType.IntPtr) }))));
 
-                cleanupCodeStream.EmitLdArg(Index - 1);
-                cleanupCodeStream.EmitLdLoc(vSafeHandle);
-                cleanupCodeStream.EmitStInd(ManagedType);
+                if (IsHRSwappedRetVal)
+                {
+                    cleanupCodeStream.EmitLdLoc(vSafeHandle);
+                    StoreManagedValue(cleanupCodeStream);
+                }
+                else
+                {
+                    cleanupCodeStream.EmitLdArg(Index - 1);
+                    cleanupCodeStream.EmitLdLoc(vSafeHandle);
+                    cleanupCodeStream.EmitStInd(ManagedType);
+                }
 
                 cleanupCodeStream.EmitLabel(lSkipPropagation);
             }
@@ -1860,7 +1913,7 @@ namespace Internal.TypeSystem.Interop
             codeStream.Emit(ILOpcode.brfalse, lNullPointer);
 
             codeStream.Emit(ILOpcode.call, _ilCodeStreams.Emitter.NewToken(
-                InteropTypes.GetMarshal(Context).GetKnownMethod("GetFunctionPointerForDelegate",
+                InteropTypes.GetPInvokeMarshal(Context).GetKnownMethod("GetFunctionPointerForDelegate",
                 new MethodSignature(MethodSignatureFlags.Static, 0, Context.GetWellKnownType(WellKnownType.IntPtr),
                     new TypeDesc[] { Context.GetWellKnownType(WellKnownType.MulticastDelegate).BaseType }
                 ))));
@@ -1884,16 +1937,12 @@ namespace Internal.TypeSystem.Interop
             LoadNativeValue(codeStream);
             codeStream.Emit(ILOpcode.dup);
             codeStream.Emit(ILOpcode.brfalse, lNullPointer);
-
-            TypeDesc systemType = Context.SystemModule.GetKnownType("System", "Type");
-
             codeStream.Emit(ILOpcode.ldtoken, _ilCodeStreams.Emitter.NewToken(ManagedType));
-            codeStream.Emit(ILOpcode.call, _ilCodeStreams.Emitter.NewToken(systemType.GetKnownMethod("GetTypeFromHandle", null)));
 
             codeStream.Emit(ILOpcode.call, _ilCodeStreams.Emitter.NewToken(
-                InteropTypes.GetMarshal(Context).GetKnownMethod("GetDelegateForFunctionPointer",
+                InteropTypes.GetPInvokeMarshal(Context).GetKnownMethod("GetDelegateForFunctionPointer",
                 new MethodSignature(MethodSignatureFlags.Static, 0, Context.GetWellKnownType(WellKnownType.MulticastDelegate).BaseType,
-                    new TypeDesc[] { Context.GetWellKnownType(WellKnownType.IntPtr), systemType }
+                    new TypeDesc[] { Context.GetWellKnownType(WellKnownType.IntPtr), Context.GetWellKnownType(WellKnownType.RuntimeTypeHandle) }
                 ))));
 
             codeStream.Emit(ILOpcode.br, lDone);

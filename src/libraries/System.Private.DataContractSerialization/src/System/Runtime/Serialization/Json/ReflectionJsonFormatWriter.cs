@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -13,16 +14,18 @@ using System.Xml;
 
 namespace System.Runtime.Serialization.Json
 {
-    internal class ReflectionJsonFormatWriter
+    internal sealed class ReflectionJsonFormatWriter
     {
         private readonly ReflectionJsonClassWriter _reflectionClassWriter = new ReflectionJsonClassWriter();
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public void ReflectionWriteClass(XmlWriterDelegator xmlWriter, object obj, XmlObjectSerializerWriteContextComplexJson context, ClassDataContract classContract, XmlDictionaryString[]? memberNames)
         {
             _reflectionClassWriter.ReflectionWriteClass(xmlWriter, obj, context, classContract, memberNames);
         }
 
-        public void ReflectionWriteCollection(XmlWriterDelegator xmlWriter, object obj, XmlObjectSerializerWriteContextComplexJson context, CollectionDataContract collectionContract)
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
+        public static void ReflectionWriteCollection(XmlWriterDelegator xmlWriter, object obj, XmlObjectSerializerWriteContextComplexJson context, CollectionDataContract collectionContract)
         {
             JsonWriterDelegator? jsonWriter = xmlWriter as JsonWriterDelegator;
             if (jsonWriter == null)
@@ -30,7 +33,7 @@ namespace System.Runtime.Serialization.Json
                 throw new ArgumentException(nameof(xmlWriter));
             }
 
-            XmlDictionaryString itemName = context.CollectionItemName;
+            XmlDictionaryString itemName = XmlObjectSerializerWriteContextComplexJson.CollectionItemName;
 
             if (collectionContract.Kind == CollectionKind.Array)
             {
@@ -44,9 +47,9 @@ namespace System.Runtime.Serialization.Json
                     PrimitiveDataContract? primitiveContract = PrimitiveDataContract.GetPrimitiveDataContract(itemType);
                     for (int i = 0; i < array.Length; ++i)
                     {
-                        _reflectionClassWriter.ReflectionWriteStartElement(jsonWriter, itemName);
-                        _reflectionClassWriter.ReflectionWriteValue(jsonWriter, context, itemType, array.GetValue(i), false, primitiveContract);
-                        _reflectionClassWriter.ReflectionWriteEndElement(jsonWriter);
+                        ReflectionJsonClassWriter.ReflectionWriteStartElement(jsonWriter, itemName);
+                        ReflectionJsonClassWriter.ReflectionWriteValue(jsonWriter, context, itemType, array.GetValue(i), false, primitiveContract);
+                        ReflectionJsonClassWriter.ReflectionWriteEndElement(jsonWriter);
                     }
                 }
             }
@@ -72,9 +75,9 @@ namespace System.Runtime.Serialization.Json
                         object current = enumerator.Current;
                         object key = ((IKeyValue)current).Key!;
                         object value = ((IKeyValue)current).Value!;
-                        _reflectionClassWriter.ReflectionWriteStartElement(jsonWriter, key.ToString()!);
-                        _reflectionClassWriter.ReflectionWriteValue(jsonWriter, context, dictionaryValueType ?? value.GetType(), value, false, primitiveContractForParamType: null);
-                        _reflectionClassWriter.ReflectionWriteEndElement(jsonWriter);
+                        ReflectionJsonClassWriter.ReflectionWriteStartElement(jsonWriter, key.ToString()!);
+                        ReflectionJsonClassWriter.ReflectionWriteValue(jsonWriter, context, dictionaryValueType ?? value.GetType(), value, false, primitiveContractForParamType: null);
+                        ReflectionJsonClassWriter.ReflectionWriteEndElement(jsonWriter);
                     }
                 }
                 else
@@ -96,7 +99,7 @@ namespace System.Runtime.Serialization.Json
                         Type elementType = collectionContract.GetCollectionElementType();
                         bool isDictionary = collectionContract.Kind == CollectionKind.Dictionary || collectionContract.Kind == CollectionKind.GenericDictionary;
 
-                        DataContract? itemContract = null;
+                        DataContract? itemContract;
                         JsonDataContract? jsonDataContract = null;
                         if (isDictionary)
                         {
@@ -108,24 +111,24 @@ namespace System.Runtime.Serialization.Json
                         {
                             object current = enumerator.Current;
                             context.IncrementItemCount(1);
-                            _reflectionClassWriter.ReflectionWriteStartElement(jsonWriter, itemName);
+                            ReflectionJsonClassWriter.ReflectionWriteStartElement(jsonWriter, itemName);
                             if (isDictionary)
                             {
                                 jsonDataContract!.WriteJsonValue(jsonWriter, current, context, collectionContract.ItemType.TypeHandle);
                             }
                             else
                             {
-                                _reflectionClassWriter.ReflectionWriteValue(jsonWriter, context, elementType, current, false, primitiveContractForParamType: null);
+                                ReflectionJsonClassWriter.ReflectionWriteValue(jsonWriter, context, elementType, current, false, primitiveContractForParamType: null);
                             }
 
-                            _reflectionClassWriter.ReflectionWriteEndElement(jsonWriter);
+                            ReflectionJsonClassWriter.ReflectionWriteEndElement(jsonWriter);
                         }
                     }
                 }
             }
         }
 
-        private void ReflectionWriteObjectAttribute(XmlWriterDelegator xmlWriter)
+        private static void ReflectionWriteObjectAttribute(XmlWriterDelegator xmlWriter)
         {
             xmlWriter.WriteAttributeString(
                 prefix: null,
@@ -134,7 +137,8 @@ namespace System.Runtime.Serialization.Json
                 value: JsonGlobals.objectString);
         }
 
-        private bool ReflectionTryWritePrimitiveArray(JsonWriterDelegator jsonWriter, object obj, Type underlyingType, Type itemType, XmlDictionaryString collectionItemName)
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
+        private static bool ReflectionTryWritePrimitiveArray(JsonWriterDelegator jsonWriter, object obj, Type underlyingType, Type itemType, XmlDictionaryString collectionItemName)
         {
             PrimitiveDataContract? primitiveContract = PrimitiveDataContract.GetPrimitiveDataContract(itemType);
             if (primitiveContract == null)
@@ -178,7 +182,7 @@ namespace System.Runtime.Serialization.Json
             return true;
         }
 
-        private void ReflectionWriteArrayAttribute(XmlWriterDelegator xmlWriter)
+        private static void ReflectionWriteArrayAttribute(XmlWriterDelegator xmlWriter)
         {
             xmlWriter.WriteAttributeString(
                 prefix: null,
@@ -188,8 +192,9 @@ namespace System.Runtime.Serialization.Json
         }
     }
 
-    internal class ReflectionJsonClassWriter : ReflectionClassWriter
+    internal sealed class ReflectionJsonClassWriter : ReflectionClassWriter
     {
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         protected override int ReflectionWriteMembers(XmlWriterDelegator xmlWriter, object obj, XmlObjectSerializerWriteContext context, ClassDataContract classContract, ClassDataContract derivedMostClassContract, int childElementIndex, XmlDictionaryString[]? memberNames)
         {
             Debug.Assert(memberNames != null);
@@ -234,11 +239,8 @@ namespace System.Runtime.Serialization.Json
 
                 if (shouldWriteValue)
                 {
-                    if (memberValue == null)
-                    {
-                        memberValue = ReflectionGetMemberValue(obj, member);
-                    }
-                    bool requiresNameAttribute = DataContractJsonSerializerImpl.CheckIfXmlNameRequiresMapping(classContract.MemberNames![i]);
+                    memberValue ??= ReflectionGetMemberValue(obj, member);
+                    bool requiresNameAttribute = DataContractJsonSerializer.CheckIfXmlNameRequiresMapping(classContract.MemberNames![i]);
                     PrimitiveDataContract? primitiveContract = member.MemberPrimitiveContract;
                     if (requiresNameAttribute || !ReflectionTryWritePrimitive(xmlWriter, context, memberType, memberValue, memberNames[i + childElementIndex] /*name*/, null/*ns*/, primitiveContract))
                     {
@@ -267,17 +269,17 @@ namespace System.Runtime.Serialization.Json
             return memberCount;
         }
 
-        public void ReflectionWriteStartElement(XmlWriterDelegator xmlWriter, XmlDictionaryString name)
+        public static void ReflectionWriteStartElement(XmlWriterDelegator xmlWriter, XmlDictionaryString name)
         {
             xmlWriter.WriteStartElement(name, null);
         }
 
-        public void ReflectionWriteStartElement(XmlWriterDelegator xmlWriter, string name)
+        public static void ReflectionWriteStartElement(XmlWriterDelegator xmlWriter, string name)
         {
             xmlWriter.WriteStartElement(name, null);
         }
 
-        public void ReflectionWriteEndElement(XmlWriterDelegator xmlWriter)
+        public static void ReflectionWriteEndElement(XmlWriterDelegator xmlWriter)
         {
             xmlWriter.WriteEndElement();
         }

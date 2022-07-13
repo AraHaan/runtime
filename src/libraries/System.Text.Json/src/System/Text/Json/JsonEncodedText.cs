@@ -16,8 +16,8 @@ namespace System.Text.Json
     /// </remarks>
     public readonly struct JsonEncodedText : IEquatable<JsonEncodedText>
     {
-        private readonly byte[] _utf8Value;
-        private readonly string _value;
+        internal readonly byte[] _utf8Value;
+        internal readonly string _value;
 
         /// <summary>
         /// Returns the UTF-8 encoded representation of the pre-encoded JSON text.
@@ -45,8 +45,10 @@ namespace System.Text.Json
         /// </exception>
         public static JsonEncodedText Encode(string value, JavaScriptEncoder? encoder = null)
         {
-            if (value == null)
-                throw new ArgumentNullException(nameof(value));
+            if (value is null)
+            {
+                ThrowHelper.ThrowArgumentNullException(nameof(value));
+            }
 
             return Encode(value.AsSpan(), encoder);
         }

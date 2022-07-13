@@ -28,6 +28,8 @@ namespace System.Net.Http.Functional.Tests
         [Theory]
         [InlineData(false, CancellationMode.Token)]
         [InlineData(true, CancellationMode.Token)]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/36634", TestPlatforms.Browser)] // out of memory
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task PostAsync_CancelDuringRequestContentSend_TaskCanceledQuickly(bool chunkedTransfer, CancellationMode mode)
         {
             if (LoopbackServerFactory.Version >= HttpVersion20.Value && chunkedTransfer)
@@ -77,12 +79,16 @@ namespace System.Net.Http.Functional.Tests
                 {
                     await server.AcceptConnectionAsync(connection => serverRelease.Task);
                 }
-                catch { };  // Ignore any closing errors since we did not really process anything.
+                catch (Exception ex)
+                {
+                    _output.WriteLine($"Ignored exception:{Environment.NewLine}{ex}");
+                }
             });
         }
 
         [Theory]
         [MemberData(nameof(OneBoolAndCancellationMode))]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_CancelDuringResponseHeadersReceived_TaskCanceledQuickly(bool connectionClose, CancellationMode mode)
         {
             if (LoopbackServerFactory.Version >= HttpVersion20.Value && connectionClose)
@@ -109,7 +115,7 @@ namespace System.Net.Http.Functional.Tests
                     Task serverTask = server.AcceptConnectionAsync(async connection =>
                     {
                         await connection.ReadRequestDataAsync();
-                        await connection.SendResponseAsync(HttpStatusCode.OK, content: null, isFinal: false);
+                        await connection.SendPartialResponseHeadersAsync(HttpStatusCode.OK);
 
                         partialResponseHeadersSent.TrySetResult(true);
                         await clientFinished.Task;
@@ -130,7 +136,11 @@ namespace System.Net.Http.Functional.Tests
                     {
                         clientFinished.SetResult(true);
                         await serverTask;
-                    } catch { }
+                    }
+                    catch (Exception ex)
+                    {
+                        _output.WriteLine($"Ignored exception:{Environment.NewLine}{ex}");
+                    }
                 });
             }
         }
@@ -187,13 +197,19 @@ namespace System.Net.Http.Functional.Tests
                     {
                         clientFinished.SetResult(true);
                         await serverTask;
-                    } catch { }
+                    }
+                    catch (Exception ex)
+                    {
+                        _output.WriteLine($"Ignored exception:{Environment.NewLine}{ex}");
+                    }
                 });
             }
         }
 
         [Theory]
         [MemberData(nameof(ThreeBools))]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/65429", typeof(PlatformDetection), nameof(PlatformDetection.IsNodeJS))]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_CancelDuringResponseBodyReceived_Unbuffered_TaskCanceledQuickly(bool chunkedTransfer, bool connectionClose, bool readOrCopyToAsync)
         {
             if (LoopbackServerFactory.Version >= HttpVersion20.Value && (chunkedTransfer || connectionClose))
@@ -228,14 +244,29 @@ namespace System.Net.Http.Functional.Tests
                         await connection.ReadRequestDataAsync();
                         await connection.SendResponseAsync(HttpStatusCode.OK, headers: headers, isFinal: false);
                         await clientFinished.Task;
+
+#if TARGET_BROWSER
+                        // make sure that the browser closed the connection
+                        await connection.WaitForCloseAsync(CancellationToken.None);
+#endif
                     });
 
                     var req = new HttpRequestMessage(HttpMethod.Get, url) { Version = UseVersion };
                     req.Headers.ConnectionClose = connectionClose;
+
+#if TARGET_BROWSER
+                    var WebAssemblyEnableStreamingResponseKey = new HttpRequestOptionsKey<bool>("WebAssemblyEnableStreamingResponse");
+                    req.Options.Set(WebAssemblyEnableStreamingResponseKey, true);
+#endif
+
                     Task<HttpResponseMessage> getResponse = client.SendAsync(TestAsync, req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
                     await ValidateClientCancellationAsync(async () =>
                     {
-                        HttpResponseMessage resp = await getResponse;
+                        // This 'using' shouldn't be necessary in general. However, HTTP3 does not remove the request stream from the
+                        // active stream table until the user disposes the response (or it gets finalized).
+                        // This means the connection will fail to shut down promptly.
+                        // See https://github.com/dotnet/runtime/issues/58072
+                        using HttpResponseMessage resp = await getResponse;
                         Stream respStream = await resp.Content.ReadAsStreamAsync(TestAsync);
                         Task readTask = readOrCopyToAsync ?
                             respStream.ReadAsync(new byte[1], 0, 1, cts.Token) :
@@ -243,20 +274,26 @@ namespace System.Net.Http.Functional.Tests
                         cts.Cancel();
                         await readTask;
                     });
-
                     try
                     {
                         clientFinished.SetResult(true);
                         await serverTask;
-                    } catch { }
+                    }
+                    catch (Exception ex)
+                    {
+                        _output.WriteLine($"Ignored exception:{Environment.NewLine}{ex}");
+                    }
                 });
             }
         }
+
         [Theory]
         [InlineData(CancellationMode.CancelPendingRequests, false)]
         [InlineData(CancellationMode.DisposeHttpClient, false)]
         [InlineData(CancellationMode.CancelPendingRequests, true)]
         [InlineData(CancellationMode.DisposeHttpClient, true)]
+        [SkipOnPlatform(TestPlatforms.Browser, "Browser doesn't have blocking synchronous Stream.ReadByte and so it waits for whole body")]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task GetAsync_CancelPendingRequests_DoesntCancelReadAsyncOnResponseStream(CancellationMode mode, bool copyToAsync)
         {
             if (IsWinHttpHandler && UseVersion >= HttpVersion20.Value)
@@ -329,6 +366,7 @@ namespace System.Net.Http.Functional.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.Browser, "MaxConnectionsPerServer is not supported on Browser")]
         public async Task MaxConnectionsPerServer_WaitingConnectionsAreCancelable()
         {
             if (LoopbackServerFactory.Version >= HttpVersion20.Value)

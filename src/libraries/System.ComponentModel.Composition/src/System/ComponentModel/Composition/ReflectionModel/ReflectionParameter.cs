@@ -7,16 +7,13 @@ using Microsoft.Internal;
 
 namespace System.ComponentModel.Composition.ReflectionModel
 {
-    internal class ReflectionParameter : ReflectionItem
+    internal sealed class ReflectionParameter : ReflectionItem
     {
         private readonly ParameterInfo _parameter;
 
         public ReflectionParameter(ParameterInfo parameter)
         {
-            if (parameter == null)
-            {
-                throw new ArgumentNullException(nameof(parameter));
-            }
+            ArgumentNullException.ThrowIfNull(parameter);
 
             _parameter = parameter;
         }
@@ -31,14 +28,8 @@ namespace System.ComponentModel.Composition.ReflectionModel
             get { return UnderlyingParameter.Name; }
         }
 
-        public override string GetDisplayName()
-        {
-            return string.Format(
-                CultureInfo.CurrentCulture,
-                "{0} (Parameter=\"{1}\")",  // NOLOC
-                UnderlyingParameter.Member.GetDisplayName(),
-                UnderlyingParameter.Name);
-        }
+        public override string GetDisplayName() =>
+            $"{UnderlyingParameter.Member.GetDisplayName()} (Parameter=\"{UnderlyingParameter.Name}\")";  // NOLOC
 
         public override Type ReturnType
         {

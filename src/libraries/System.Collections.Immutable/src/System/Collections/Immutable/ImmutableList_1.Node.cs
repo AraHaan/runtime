@@ -186,7 +186,6 @@ namespace System.Collections.Immutable
                 }
             }
 
-#if !NETSTANDARD1_0
             /// <summary>
             /// Gets a read-only reference to the element of the set at the given index.
             /// </summary>
@@ -196,20 +195,24 @@ namespace System.Collections.Immutable
             {
                 Requires.Range(index >= 0 && index < this.Count, nameof(index));
 
+                return ref ItemRefUnchecked(index);
+            }
+
+            private ref readonly T ItemRefUnchecked(int index)
+            {
                 Debug.Assert(_left != null && _right != null);
                 if (index < _left._count)
                 {
-                    return ref _left.ItemRef(index);
+                    return ref _left.ItemRefUnchecked(index);
                 }
 
                 if (index > _left._count)
                 {
-                    return ref _right.ItemRef(index - _left._count - 1);
+                    return ref _right.ItemRefUnchecked(index - _left._count - 1);
                 }
 
                 return ref _key;
             }
-#endif
 
             #region IEnumerable<T> Members
 
@@ -381,7 +384,7 @@ namespace System.Collections.Immutable
                 Requires.Range(index >= 0 && index < this.Count, nameof(index));
                 Debug.Assert(_left != null && _right != null);
 
-                Node result = this;
+                Node result;
                 if (index == _left._count)
                 {
                     // We have a match. If this is a leaf, just remove it
@@ -481,7 +484,7 @@ namespace System.Collections.Immutable
                 Requires.Range(index >= 0 && index < this.Count, nameof(index));
                 Debug.Assert(!this.IsEmpty);
 
-                Node result = this;
+                Node result;
                 if (index == _left!._count)
                 {
                     // We have a match.
@@ -524,13 +527,8 @@ namespace System.Collections.Immutable
                 int end = index + count - 1;
                 while (start < end)
                 {
-#if !NETSTANDARD1_0
                     T a = result.ItemRef(start);
                     T b = result.ItemRef(end);
-#else
-                    T a = result[start];
-                    T b = result[end];
-#endif
                     result = result
                         .ReplaceAt(end, a)
                         .ReplaceAt(start, b);
@@ -638,7 +636,7 @@ namespace System.Collections.Immutable
             {
                 Requires.Range(index >= 0, nameof(index));
                 Requires.Range(count >= 0, nameof(count));
-                comparer = comparer ?? Comparer<T>.Default;
+                comparer ??= Comparer<T>.Default;
 
                 if (this.IsEmpty || count <= 0)
                 {
@@ -750,7 +748,7 @@ namespace System.Collections.Immutable
                 Requires.Range(count <= this.Count, nameof(count));
                 Requires.Range(index + count <= this.Count, nameof(count));
 
-                equalityComparer = equalityComparer ?? EqualityComparer<T>.Default;
+                equalityComparer ??= EqualityComparer<T>.Default;
                 using (var enumerator = new Enumerator(this, startIndex: index, count: count))
                 {
                     while (enumerator.MoveNext())
@@ -791,7 +789,7 @@ namespace System.Collections.Immutable
                 Requires.Range(count >= 0 && count <= this.Count, nameof(count));
                 Requires.Argument(index - count + 1 >= 0);
 
-                equalityComparer = equalityComparer ?? EqualityComparer<T>.Default;
+                equalityComparer ??= EqualityComparer<T>.Default;
                 using (var enumerator = new Enumerator(this, startIndex: index, count: count, reversed: true))
                 {
                     while (enumerator.MoveNext())
@@ -1040,10 +1038,7 @@ namespace System.Collections.Immutable
                 {
                     if (match(item))
                     {
-                        if (list == null)
-                        {
-                            list = new List<T>();
-                        }
+                        list ??= new List<T>();
 
                         list.Add(item);
                     }

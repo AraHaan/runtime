@@ -290,8 +290,7 @@ namespace System.Collections.Immutable
                 Requires.NotNull(keyComparer, nameof(keyComparer));
                 Requires.NotNull(valueComparer, nameof(valueComparer));
 
-                bool dummy;
-                return this.SetOrAdd(key, value, keyComparer, valueComparer, false, out dummy, out mutated);
+                return this.SetOrAdd(key, value, keyComparer, valueComparer, false, out _, out mutated);
             }
 
             /// <summary>
@@ -327,7 +326,6 @@ namespace System.Collections.Immutable
                 return this.RemoveRecursive(key, keyComparer, out mutated);
             }
 
-#if !NETSTANDARD1_0
             /// <summary>
             /// Returns a read-only reference to the value associated with the provided key.
             /// </summary>
@@ -345,7 +343,6 @@ namespace System.Collections.Immutable
 
                 return ref match._value;
             }
-#endif
 
             /// <summary>
             /// Tries to get the value.
@@ -763,8 +760,7 @@ namespace System.Collections.Immutable
                                 successor = successor._left;
                             }
 
-                            bool dummyMutated;
-                            var newRight = _right.Remove(successor._key, keyComparer, out dummyMutated);
+                            var newRight = _right.Remove(successor._key, keyComparer, out _);
                             result = successor.Mutate(left: _left, right: newRight);
                         }
                     }

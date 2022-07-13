@@ -236,11 +236,7 @@ namespace System.Diagnostics.Eventing.Reader
                     return _containerChannel;
                 lock (_syncObject)
                 {
-                    if (_containerChannel == null)
-                    {
-                        _containerChannel = (string)NativeWrapper.EvtGetEventInfo(this.Handle, UnsafeNativeMethods.EvtEventPropertyId.EvtEventPath);
-                    }
-                    return _containerChannel;
+                    return _containerChannel ??= (string)NativeWrapper.EvtGetEventInfo(this.Handle, UnsafeNativeMethods.EvtEventPropertyId.EvtEventPath);
                 }
             }
         }
@@ -253,11 +249,7 @@ namespace System.Diagnostics.Eventing.Reader
                     return _matchedQueryIds;
                 lock (_syncObject)
                 {
-                    if (_matchedQueryIds == null)
-                    {
-                        _matchedQueryIds = (int[])NativeWrapper.EvtGetEventInfo(this.Handle, UnsafeNativeMethods.EvtEventPropertyId.EvtEventQueryIDs);
-                    }
-                    return _matchedQueryIds;
+                    return _matchedQueryIds ??= (int[])NativeWrapper.EvtGetEventInfo(this.Handle, UnsafeNativeMethods.EvtEventPropertyId.EvtEventQueryIDs);
                 }
             }
         }
@@ -343,11 +335,11 @@ namespace System.Diagnostics.Eventing.Reader
         {
             get
             {
-                if (_taskNameReady == true)
+                if (_taskNameReady)
                     return _taskName;
                 lock (_syncObject)
                 {
-                    if (_taskNameReady == false)
+                    if (!_taskNameReady)
                     {
                         _taskNameReady = true;
                         _taskName = _cachedMetadataInformation.GetTaskDisplayName(this.ProviderName, Handle);
@@ -365,11 +357,7 @@ namespace System.Diagnostics.Eventing.Reader
                     return _keywordsNames;
                 lock (_syncObject)
                 {
-                    if (_keywordsNames == null)
-                    {
-                        _keywordsNames = _cachedMetadataInformation.GetKeywordDisplayNames(this.ProviderName, Handle);
-                    }
-                    return _keywordsNames;
+                    return _keywordsNames ??= _cachedMetadataInformation.GetKeywordDisplayNames(this.ProviderName, Handle);
                 }
             }
         }
@@ -391,16 +379,15 @@ namespace System.Diagnostics.Eventing.Reader
 
         public IList<object> GetPropertyValues(EventLogPropertySelector propertySelector)
         {
-            if (propertySelector == null)
-                throw new ArgumentNullException(nameof(propertySelector));
+            ArgumentNullException.ThrowIfNull(propertySelector);
+
             return NativeWrapper.EvtRenderBufferWithContextUserOrValues(propertySelector.Handle, Handle);
         }
 
         public override string ToXml()
         {
-            StringBuilder renderBuffer = new StringBuilder(2000);
-            NativeWrapper.EvtRender(EventLogHandle.Zero, Handle, UnsafeNativeMethods.EvtRenderFlags.EvtRenderEventXml, renderBuffer);
-            return renderBuffer.ToString();
+            char[] renderBuffer = GC.AllocateUninitializedArray<char>(2000);
+            return NativeWrapper.EvtRenderXml(EventLogHandle.Zero, Handle, renderBuffer);
         }
 
         protected override void Dispose(bool disposing)

@@ -50,8 +50,8 @@ namespace System.Collections.Generic
         // pushed onto the stack in the same order they are read by the enumerator.
         public Stack(IEnumerable<T> collection)
         {
-            if (collection == null)
-                throw new ArgumentNullException(nameof(collection));
+            ArgumentNullException.ThrowIfNull(collection);
+
             _array = EnumerableHelpers.ToArray(collection, out _size);
         }
 
@@ -96,14 +96,11 @@ namespace System.Collections.Generic
         // Copies the stack into an array.
         public void CopyTo(T[] array, int arrayIndex)
         {
-            if (array == null)
-            {
-                throw new ArgumentNullException(nameof(array));
-            }
+            ArgumentNullException.ThrowIfNull(array);
 
             if (arrayIndex < 0 || arrayIndex > array.Length)
             {
-                throw new ArgumentOutOfRangeException(nameof(arrayIndex), arrayIndex, SR.ArgumentOutOfRange_Index);
+                throw new ArgumentOutOfRangeException(nameof(arrayIndex), arrayIndex, SR.ArgumentOutOfRange_IndexMustBeLessOrEqual);
             }
 
             if (array.Length - arrayIndex < _size)
@@ -122,10 +119,7 @@ namespace System.Collections.Generic
 
         void ICollection.CopyTo(Array array, int arrayIndex)
         {
-            if (array == null)
-            {
-                throw new ArgumentNullException(nameof(array));
-            }
+            ArgumentNullException.ThrowIfNull(array);
 
             if (array.Rank != 1)
             {
@@ -139,7 +133,7 @@ namespace System.Collections.Generic
 
             if (arrayIndex < 0 || arrayIndex > array.Length)
             {
-                throw new ArgumentOutOfRangeException(nameof(arrayIndex), arrayIndex, SR.ArgumentOutOfRange_Index);
+                throw new ArgumentOutOfRangeException(nameof(arrayIndex), arrayIndex, SR.ArgumentOutOfRange_IndexMustBeLessOrEqual);
             }
 
             if (array.Length - arrayIndex < _size)
@@ -282,10 +276,51 @@ namespace System.Collections.Generic
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void PushWithResize(T item)
         {
-            Array.Resize(ref _array, (_array.Length == 0) ? DefaultCapacity : 2 * _array.Length);
+            Debug.Assert(_size == _array.Length);
+            Grow(_size + 1);
             _array[_size] = item;
             _version++;
             _size++;
+        }
+
+        /// <summary>
+        /// Ensures that the capacity of this Stack is at least the specified <paramref name="capacity"/>.
+        /// If the current capacity of the Stack is less than specified <paramref name="capacity"/>,
+        /// the capacity is increased by continuously twice current capacity until it is at least the specified <paramref name="capacity"/>.
+        /// </summary>
+        /// <param name="capacity">The minimum capacity to ensure.</param>
+        /// <returns>The new capacity of this stack.</returns>
+        public int EnsureCapacity(int capacity)
+        {
+            if (capacity < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(capacity), capacity, SR.ArgumentOutOfRange_NeedNonNegNum);
+            }
+
+            if (_array.Length < capacity)
+            {
+                Grow(capacity);
+                _version++;
+            }
+
+            return _array.Length;
+        }
+
+        private void Grow(int capacity)
+        {
+            Debug.Assert(_array.Length < capacity);
+
+            int newcapacity = _array.Length == 0 ? DefaultCapacity : 2 * _array.Length;
+
+            // Allow the list to grow to maximum possible capacity (~2G elements) before encountering overflow.
+            // Note that this check works even when _items.Length overflowed thanks to the (uint) cast.
+            if ((uint)newcapacity > Array.MaxLength) newcapacity = Array.MaxLength;
+
+            // If computed capacity is still less than specified, set to the original argument.
+            // Capacities exceeding Array.MaxLength will be surfaced as OutOfMemoryException by Array.Resize.
+            if (newcapacity < capacity) newcapacity = capacity;
+
+            Array.Resize(ref _array, newcapacity);
         }
 
         // Copies the Stack to an array, in the same order Pop would return the items.

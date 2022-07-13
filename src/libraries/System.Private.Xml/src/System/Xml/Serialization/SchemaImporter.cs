@@ -1,20 +1,19 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Collections;
+using System.ComponentModel;
+using System.Configuration;
+#if DEBUG
+using System.Diagnostics;
+#endif
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
+using System.Xml.Schema;
+using System.Xml.Serialization.Configuration;
+
 namespace System.Xml.Serialization
 {
-    using System;
-    using System.Xml.Schema;
-    using System.Collections;
-    using System.ComponentModel;
-    using System.Reflection;
-    using System.Configuration;
-    using System.Xml.Serialization.Configuration;
-
-#if DEBUG
-    using System.Diagnostics;
-#endif
-
     public abstract class SchemaImporter
     {
         private XmlSchemas _schemas;
@@ -26,6 +25,7 @@ namespace System.Xml.Serialization
         private NameTable? _typesInUse;
         private NameTable? _groupsInUse;
 
+        [RequiresUnreferencedCode("calls SetCache")]
         internal SchemaImporter(XmlSchemas schemas, CodeGenerationOptions options, ImportContext context)
         {
             if (!schemas.Contains(XmlSchema.Namespace))
@@ -44,15 +44,7 @@ namespace System.Xml.Serialization
             Schemas.SetCache(Context.Cache, Context.ShareTypes);
         }
 
-        internal ImportContext Context
-        {
-            get
-            {
-                if (_context == null)
-                    _context = new ImportContext();
-                return _context;
-            }
-        }
+        internal ImportContext Context => _context ??= new ImportContext();
 
         internal Hashtable ImportedElements
         {
@@ -69,51 +61,20 @@ namespace System.Xml.Serialization
             get { return Context.TypeIdentifiers; }
         }
 
-        internal XmlSchemas Schemas
-        {
-            get
-            {
-                if (_schemas == null)
-                    _schemas = new XmlSchemas();
-                return _schemas;
-            }
-        }
+        internal XmlSchemas Schemas => _schemas ??= new XmlSchemas();
 
-        internal TypeScope Scope
-        {
-            get
-            {
-                if (_scope == null)
-                    _scope = new TypeScope();
-                return _scope;
-            }
-        }
+        internal TypeScope Scope => _scope ??= new TypeScope();
 
-        internal NameTable GroupsInUse
-        {
-            get
-            {
-                if (_groupsInUse == null)
-                    _groupsInUse = new NameTable();
-                return _groupsInUse;
-            }
-        }
+        internal NameTable GroupsInUse => _groupsInUse ??= new NameTable();
 
-        internal NameTable TypesInUse
-        {
-            get
-            {
-                if (_typesInUse == null)
-                    _typesInUse = new NameTable();
-                return _typesInUse;
-            }
-        }
+        internal NameTable TypesInUse => _typesInUse ??= new NameTable();
 
         internal CodeGenerationOptions Options
         {
             get { return _options; }
         }
 
+        [RequiresUnreferencedCode("calls GetTypeDesc")]
         internal void MakeDerived(StructMapping structMapping, Type? baseType, bool baseTypeCanBeIndirect)
         {
             structMapping.ReferencedByTopLevelElement = true;
@@ -144,6 +105,7 @@ namespace System.Xml.Serialization
             return TypeIdentifiers.AddUnique(typeName, typeName);
         }
 
+        [RequiresUnreferencedCode("calls GetTypeDesc")]
         private StructMapping CreateRootMapping()
         {
             TypeDesc typeDesc = Scope.GetTypeDesc(typeof(object));
@@ -157,13 +119,10 @@ namespace System.Xml.Serialization
             return mapping;
         }
 
-        internal StructMapping GetRootMapping()
-        {
-            if (_root == null)
-                _root = CreateRootMapping();
-            return _root;
-        }
+        [RequiresUnreferencedCode("calls CreateRootMapping")]
+        internal StructMapping GetRootMapping() => _root ??= CreateRootMapping();
 
+        [RequiresUnreferencedCode("calls GetRootMapping")]
         internal StructMapping ImportRootMapping()
         {
             if (!_rootImported)
@@ -174,9 +133,10 @@ namespace System.Xml.Serialization
             return GetRootMapping();
         }
 
+        [RequiresUnreferencedCode("calls ImportType")]
         internal abstract void ImportDerivedTypes(XmlQualifiedName baseName);
 
-        internal void AddReference(XmlQualifiedName name, NameTable references, string error)
+        internal static void AddReference(XmlQualifiedName name, NameTable references, string error)
         {
             if (name.Namespace == XmlSchema.Namespace)
                 return;
@@ -187,7 +147,7 @@ namespace System.Xml.Serialization
             references[name] = name;
         }
 
-        internal void RemoveReference(XmlQualifiedName name, NameTable references)
+        internal static void RemoveReference(XmlQualifiedName name, NameTable references)
         {
             references[name] = null;
         }

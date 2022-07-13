@@ -18,6 +18,8 @@
 #include "interpreter.h"
 #endif // FEATURE_INTERPRETER
 
+#include "gcinfodecoder.h"
+
 #ifdef FEATURE_EH_FUNCLETS
 #define PROCESS_EXPLICIT_FRAME_BEFORE_MANAGED_FRAME
 #endif
@@ -301,7 +303,7 @@ bool CrawlFrame::IsGcSafe()
     return GetCodeManager()->IsGcSafe(&codeInfo, GetRelOffset());
 }
 
-#if defined(TARGET_ARM) || defined(TARGET_ARM64)
+#if defined(TARGET_ARM) || defined(TARGET_ARM64) || defined(TARGET_LOONGARCH64)
 bool CrawlFrame::HasTailCalls()
 {
     CONTRACTL {
@@ -312,7 +314,7 @@ bool CrawlFrame::HasTailCalls()
 
     return GetCodeManager()->HasTailCalls(&codeInfo);
 }
-#endif // TARGET_ARM || TARGET_ARM64
+#endif // TARGET_ARM || TARGET_ARM64 || TARGET_LOONGARCH64
 
 inline void CrawlFrame::GotoNextFrame()
 {
@@ -633,10 +635,20 @@ PCODE Thread::VirtualUnwindLeafCallFrame(T_CONTEXT* pContext)
 
     uControlPc = *(ULONGLONG*)pContext->Rsp;
     pContext->Rsp += sizeof(ULONGLONG);
+#ifdef TARGET_WINDOWS
+    DWORD64 ssp = GetSSP(pContext);
+    if (ssp != 0)
+    {
+        SetSSP(pContext, ssp + sizeof(ULONGLONG));
+    }
+#endif // TARGET_WINDOWS
 
 #elif defined(TARGET_ARM) || defined(TARGET_ARM64)
 
     uControlPc = TADDR(pContext->Lr);
+
+#elif defined(TARGET_LOONGARCH64)
+    uControlPc = TADDR(pContext->Ra);
 
 #else
     PORTABILITY_ASSERT("Thread::VirtualUnwindLeafCallFrame");
@@ -713,14 +725,12 @@ UINT_PTR Thread::VirtualUnwindToFirstManagedCallFrame(T_CONTEXT* pContext)
     // get our caller's PSP, or our caller's caller's SP.
     while (!ExecutionManager::IsManagedCode(uControlPc))
     {
-#ifdef FEATURE_WRITEBARRIER_COPY
         if (IsIPInWriteBarrierCodeCopy(uControlPc))
         {
             // Pretend we were executing the barrier function at its original location so that the unwinder can unwind the frame
             uControlPc = AdjustWriteBarrierIP(uControlPc);
             SetIP(pContext, uControlPc);
         }
-#endif // FEATURE_WRITEBARRIER_COPY
 
 #ifndef TARGET_UNIX
         uControlPc = VirtualUnwindCallFrame(pContext);
@@ -755,7 +765,7 @@ UINT_PTR Thread::VirtualUnwindToFirstManagedCallFrame(T_CONTEXT* pContext)
 #endif // FEATURE_EH_FUNCLETS
 
 #ifdef _DEBUG
-void Thread::DebugLogStackWalkInfo(CrawlFrame* pCF, __in_z LPCSTR pszTag, UINT32 uFramesProcessed)
+void Thread::DebugLogStackWalkInfo(CrawlFrame* pCF, _In_z_ LPCSTR pszTag, UINT32 uFramesProcessed)
 {
     LIMITED_METHOD_CONTRACT;
     SUPPORTS_DAC;
@@ -946,7 +956,7 @@ StackWalkAction Thread::StackWalkFrames(PSTACKWALKFRAMESCALLBACK pCallback,
     bool fUseInitRegDisplay;
 
 #ifndef DACCESS_COMPILE
-    _ASSERTE(GetThread() == this || (flags & ALLOW_ASYNC_STACK_WALK));
+    _ASSERTE(GetThreadNULLOk() == this || (flags & ALLOW_ASYNC_STACK_WALK));
     BOOL fDebuggerHasInitialContext = (GetFilterContext() != NULL);
     BOOL fProfilerHasInitialContext = (GetProfilerFilterContext() != NULL);
 
@@ -1496,9 +1506,9 @@ BOOL StackFrameIterator::IsValid(void)
         // In particular, is thread's starting frame the same as it was when
         // we started?
         BOOL bIsRealStartFrameUnchanged =
-            (m_pStartFrame != NULL) ||
-            (m_flags & POPFRAMES) ||
-            (m_pRealStartFrame == m_pThread->GetFrame());
+            (m_pStartFrame != NULL)
+            || (m_flags & POPFRAMES)
+            || (m_pRealStartFrame == m_pThread->GetFrame());
 
 #ifdef FEATURE_HIJACK
         // In GCStress >= 4 two threads could race on triggering GC;
@@ -1508,15 +1518,17 @@ BOOL StackFrameIterator::IsValid(void)
         // In normal case (no GCStress), after p/invoke, IL_STUB will check if GC is in progress and synchronize.
         // NOTE: This condition needs to be evaluated after the previous one to prevent a subtle race condition
         // (https://github.com/dotnet/runtime/issues/11678)
-        bIsRealStartFrameUnchanged = bIsRealStartFrameUnchanged ||
-            ((GCStress<cfg_instr>::IsEnabled()) &&
-            (m_pRealStartFrame != NULL) &&
-            (m_pRealStartFrame != FRAME_TOP) &&
-            (m_pRealStartFrame->GetVTablePtr() == InlinedCallFrame::GetMethodFrameVPtr()) &&
-            (m_pThread->GetFrame() != NULL) &&
-            (m_pThread->GetFrame() != FRAME_TOP) &&
-            ((m_pThread->GetFrame()->GetVTablePtr() == ResumableFrame::GetMethodFrameVPtr()) ||
-            (m_pThread->GetFrame()->GetVTablePtr() == RedirectedThreadFrame::GetMethodFrameVPtr())));
+        if (bIsRealStartFrameUnchanged == FALSE)
+        {
+            _ASSERTE(GCStress<cfg_instr>::IsEnabled());
+            _ASSERTE(m_pRealStartFrame != NULL);
+            _ASSERTE(m_pRealStartFrame != FRAME_TOP);
+            _ASSERTE(m_pRealStartFrame->GetVTablePtr() == InlinedCallFrame::GetMethodFrameVPtr());
+            _ASSERTE(m_pThread->GetFrame() != NULL);
+            _ASSERTE(m_pThread->GetFrame() != FRAME_TOP);
+            bIsRealStartFrameUnchanged = (m_pThread->GetFrame()->GetVTablePtr() == ResumableFrame::GetMethodFrameVPtr())
+                || (m_pThread->GetFrame()->GetVTablePtr() == RedirectedThreadFrame::GetMethodFrameVPtr());
+        }
 #endif // FEATURE_HIJACK
 
         _ASSERTE(bIsRealStartFrameUnchanged);
@@ -3135,6 +3147,12 @@ void StackFrameIterator::PostProcessingForManagedFrames(void)
     m_exInfoWalk.WalkToPosition(GetRegdisplaySP(m_crawl.pRD), (m_flags & POPFRAMES));
 #endif // ELIMINATE_FEF
 
+#ifdef TARGET_X86
+    hdrInfo gcHdrInfo;
+    DecodeGCHdrInfo(m_crawl.codeInfo.GetGCInfoToken(), 0, &gcHdrInfo);
+    bool hasReversePInvoke = gcHdrInfo.revPInvokeOffset != INVALID_REV_PINVOKE_OFFSET;
+#endif // TARGET_X86
+
     ProcessIp(GetControlPC(m_crawl.pRD));
 
     // if we have unwound to a native stack frame, stop and set the frame state accordingly
@@ -3143,6 +3161,18 @@ void StackFrameIterator::PostProcessingForManagedFrames(void)
         m_frameState = SFITER_NATIVE_MARKER_FRAME;
         m_crawl.isNativeMarker = true;
     }
+#ifdef TARGET_X86
+    else if (hasReversePInvoke)
+    {
+        // The managed frame we've unwound from had reverse PInvoke frame. Since we are on a frameless
+        // frame, that means that the method was called from managed code without any native frames in between. 
+        // On x86, the InlinedCallFrame of the pinvoke would get skipped as we've just unwound to the pinvoke IL stub and
+        // for this architecture, the inlined call frames are supposed to be processed before the managed frame they are stored in.
+        // So we force the stack frame iterator to process the InlinedCallFrame before the IL stub.
+        _ASSERTE(InlinedCallFrame::FrameHasActiveCall(m_crawl.pFrame));
+        m_crawl.isFrameless = false;
+    }
+#endif    
 } // StackFrameIterator::PostProcessingForManagedFrames()
 
 //---------------------------------------------------------------------------------------

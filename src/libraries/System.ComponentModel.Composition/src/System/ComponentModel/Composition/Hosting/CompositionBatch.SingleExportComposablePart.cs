@@ -11,16 +11,13 @@ namespace System.ComponentModel.Composition.Hosting
     public partial class CompositionBatch
     {
         // Represents a part that exports a single export
-        private class SingleExportComposablePart : ComposablePart
+        private sealed class SingleExportComposablePart : ComposablePart
         {
             private readonly Export _export;
 
             public SingleExportComposablePart(Export export)
             {
-                if (export == null)
-                {
-                    throw new ArgumentNullException(nameof(export));
-                }
+                ArgumentNullException.ThrowIfNull(export);
 
                 _export = export;
             }

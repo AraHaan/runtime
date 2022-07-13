@@ -3,8 +3,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TestRuntime>true</TestRuntime>
     <IncludeRemoteExecutor>true</IncludeRemoteExecutor>
-    <TargetFrameworks>$(NetCoreAppCurrent)</TargetFrameworks>
-    <UnicodeUcdVersion>13.0</UnicodeUcdVersion>
+    <TargetFramework>$(NetCoreAppCurrent)</TargetFramework>
+    <UnicodeUcdVersion>14.0</UnicodeUcdVersion>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
@@ -49,6 +49,7 @@
     <Compile Include="CultureInfo\CultureInfoGetFormat.cs" />
     <Compile Include="CultureInfo\CultureInfoGetHashCode.cs" />
     <Compile Include="CultureInfo\CultureInfoIsNeutralCulture.cs" />
+    <Compile Include="CultureInfo\CultureInfoNames.cs" />
     <Compile Include="CultureInfo\CultureInfoNativeName.cs" />
     <Compile Include="CultureInfo\CultureInfoNumberFormat.cs" />
     <Compile Include="CultureInfo\CultureInfoParent.cs" />

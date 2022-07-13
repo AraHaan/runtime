@@ -1,6 +1,8 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace System.ComponentModel
 {
     /// <summary>
@@ -25,25 +27,25 @@ namespace System.ComponentModel
         /// Initializes a new instance of the <see cref='System.ComponentModel.EditorAttribute'/> class with the type name and base type
         /// name of the editor.
         /// </summary>
-        public EditorAttribute(string typeName, string? baseTypeName)
+        public EditorAttribute(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] string typeName,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] string? baseTypeName)
         {
-            EditorTypeName = typeName ?? throw new ArgumentNullException(nameof(typeName));
+            ArgumentNullException.ThrowIfNull(typeName);
+
+            EditorTypeName = typeName;
             EditorBaseTypeName = baseTypeName;
         }
 
         /// <summary>
         /// Initializes a new instance of the <see cref='System.ComponentModel.EditorAttribute'/> class.
         /// </summary>
-        public EditorAttribute(string typeName, Type baseType)
+        public EditorAttribute(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] string typeName,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type baseType)
         {
-            if (typeName == null)
-            {
-                throw new ArgumentNullException(nameof(typeName));
-            }
-            if (baseType == null)
-            {
-                throw new ArgumentNullException(nameof(baseType));
-            }
+            ArgumentNullException.ThrowIfNull(typeName);
+            ArgumentNullException.ThrowIfNull(baseType);
 
             EditorTypeName = typeName;
             EditorBaseTypeName = baseType.AssemblyQualifiedName;
@@ -52,16 +54,12 @@ namespace System.ComponentModel
         /// <summary>
         /// Initializes a new instance of the <see cref='System.ComponentModel.EditorAttribute'/> class.
         /// </summary>
-        public EditorAttribute(Type type, Type baseType)
+        public EditorAttribute(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type baseType)
         {
-            if (type == null)
-            {
-                throw new ArgumentNullException(nameof(type));
-            }
-            if (baseType == null)
-            {
-                throw new ArgumentNullException(nameof(baseType));
-            }
+            ArgumentNullException.ThrowIfNull(type);
+            ArgumentNullException.ThrowIfNull(baseType);
 
             EditorTypeName = type.AssemblyQualifiedName!;
             EditorBaseTypeName = baseType.AssemblyQualifiedName;
@@ -70,11 +68,13 @@ namespace System.ComponentModel
         /// <summary>
         /// Gets the name of the base class or interface serving as a lookup key for this editor.
         /// </summary>
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         public string? EditorBaseTypeName { get; }
 
         /// <summary>
         /// Gets the name of the editor class.
         /// </summary>
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         public string EditorTypeName { get; }
 
         /// <summary>

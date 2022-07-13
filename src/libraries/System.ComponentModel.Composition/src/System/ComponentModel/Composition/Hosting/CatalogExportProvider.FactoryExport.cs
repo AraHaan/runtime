@@ -29,14 +29,8 @@ namespace System.ComponentModel.Composition.Hosting
                 get { return _factoryExportDefinition; }
             }
 
-            protected override object GetExportedValueCore()
-            {
-                if (_factoryExportPartDefinition == null)
-                {
-                    _factoryExportPartDefinition = new FactoryExportPartDefinition(this);
-                }
-                return _factoryExportPartDefinition;
-            }
+            protected override object GetExportedValueCore() =>
+                _factoryExportPartDefinition ??= new FactoryExportPartDefinition(this);
 
             protected ComposablePartDefinition UnderlyingPartDefinition
             {
@@ -56,7 +50,7 @@ namespace System.ComponentModel.Composition.Hosting
 
             public abstract Export CreateExportProduct();
 
-            private class FactoryExportPartDefinition : ComposablePartDefinition
+            private sealed class FactoryExportPartDefinition : ComposablePartDefinition
             {
                 private readonly FactoryExport _FactoryExport;
 

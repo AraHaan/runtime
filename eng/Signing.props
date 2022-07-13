@@ -20,6 +20,10 @@
     <!-- apphost and comhost template files are not signed, by design. -->
     <FileSignInfo Include="apphost.exe;singlefilehost.exe;comhost.dll" CertificateName="None" />
 
+    <!-- We don't need to code sign .js files because they are not used in Windows Script Host. -->
+    <!-- WARNING: Needs to happed outside of any target -->
+    <FileExtensionSignInfo Update=".js" CertificateName="None" />
+
     <!-- Third-party components which should be signed.  -->
     <FileSignInfo Include="Newtonsoft.Json.dll" CertificateName="3PartySHA2" />
     <FileSignInfo Include="Mono.Cecil.dll" CertificateName="3PartySHA2" />
@@ -35,10 +39,18 @@
     <DownloadedSymbolPackagesWithoutPaths Include="@(DownloadedSymbolPackages->'%(Filename)%(Extension)')" />
     <FileSignInfo Include="@(DownloadedSymbolPackagesWithoutPaths->Distinct())" CertificateName="None" />
 
-    <FileExtensionSignInfo Include=".msi" CertificateName="Microsoft400" />
+    <FileExtensionSignInfo Include=".msi" CertificateName="MicrosoftDotNet500" />
     <FileExtensionSignInfo Include=".pkg" CertificateName="8003" />
     <FileExtensionSignInfo Include=".deb;.rpm" CertificateName="LinuxSign" />
   </ItemGroup>
+
+  <!-- Update existing defaults from arcade that were using Microsoft400 to use the .NET-specific cert -->
+  <ItemGroup>
+    <FileExtensionSignInfo Update="@(FileExtensionSignInfo->WithMetadataValue('CertificateName','Microsoft400'))" CertificateName="MicrosoftDotNet500" />
+    <StrongNameSignInfo Update="@(StrongNameSignInfo->WithMetadataValue('CertificateName','Microsoft400'))" CertificateName="MicrosoftDotNet500" />
+    <FileSignInfo Update="@(FileSignInfo->WithMetadataValue('CertificateName','Microsoft400'))" CertificateName="MicrosoftDotNet500" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(PrepareArtifacts)' == 'true' and '$(PostBuildSign)' == 'true'">
     <ItemsToSignWithPaths Include="$(DownloadDirectory)**\*.msi" />
     <ItemsToSignWithPaths Include="$(DownloadDirectory)**\*.exe" />

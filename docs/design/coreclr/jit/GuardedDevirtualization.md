@@ -242,7 +242,7 @@ This is something we'll look into further.
 ### Interface Calls: The Two Class Case
 
 Interface calls on the CLR are implemented via [Virtual Stub Dispatch](
-https://github.com/dotnet/runtime/blob/master/docs/design/coreclr/botr/virtual-stub-dispatch.md
+https://github.com/dotnet/runtime/blob/main/docs/design/coreclr/botr/virtual-stub-dispatch.md
 )  (aka VSD). Calls are made through an indirection cell that initially points
 at a lookup stub. On the first call, the interface target is identified from the
 object's method table and the lookup stub is replaced with a dispatch stub that
@@ -399,7 +399,7 @@ This has the side effect of hoisting the call to be a top level (statement)
 expression and introduces a return value placeholder.
 
 We currently already have a similar transformation in the JIT, the "fat calli"
-transformation needed on CoreRT. This transformation runs at the right time --
+transformation needed on NativeAOT. This transformation runs at the right time --
 after the importer and before the inliner -- and introduces the right kind of
 `if-then-else` control flow structure. So the thought is to generalize this to
 handle guarded devirtualization as well.

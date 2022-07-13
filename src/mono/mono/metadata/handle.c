@@ -39,7 +39,7 @@ TODO (things to explore):
 
 There's no convenient way to wrap the object allocation function.
 Right now we do this:
-	MonoCultureInfoHandle culture = MONO_HANDLE_NEW (MonoCultureInfo, mono_object_new_checked (domain, klass, error));
+	MonoCultureInfoHandle culture = MONO_HANDLE_NEW (MonoCultureInfo, mono_object_new_checked (klass, error));
 
 Maybe what we need is a round of cleanup around all exposed types in the runtime to unify all helpers under the same hoof.
 Combine: MonoDefaults, GENERATE_GET_CLASS_WITH_CACHE, TYPED_HANDLE_DECL and friends.
@@ -49,7 +49,7 @@ Combine: MonoDefaults, GENERATE_GET_CLASS_WITH_CACHE, TYPED_HANDLE_DECL and frie
 
 /*
  * NOTE: Async suspend
- * 
+ *
  * If we are running with cooperative GC, all the handle stack
  * manipulation will complete before a GC thread scans the handle
  * stack. If we are using async suspend, however, a thread may be
@@ -149,7 +149,7 @@ mono_handle_chunk_leak_check (HandleStack *handles) {
 
 // There are deliberately locals and a constant NULL global with this same name.
 #ifdef __cplusplus
-extern MonoThreadInfo * const mono_thread_info_current_var = NULL;
+MonoThreadInfo * const mono_thread_info_current_var = NULL;
 #else
 MonoThreadInfo * const mono_thread_info_current_var = NULL;
 #endif
@@ -362,7 +362,7 @@ mono_stack_mark_record_size (MonoThreadInfo *info, HandleStackMark *stackmark, c
 /*
  * Pop the stack until @stackmark and make @value the top value.
  *
- * @return the new handle for what @value points to 
+ * @return the new handle for what @value points to
  */
 MonoRawHandle
 mono_stack_mark_pop_value (MonoThreadInfo *info, HandleStackMark *stackmark, MonoRawHandle value)
@@ -379,21 +379,21 @@ mono_stack_mark_pop_value (MonoThreadInfo *info, HandleStackMark *stackmark, Mon
 /* Temporary place for some of the handle enabled wrapper functions*/
 
 MonoStringHandle
-mono_string_new_handle (MonoDomain *domain, const char *data, MonoError *error)
+mono_string_new_handle (const char *data, MonoError *error)
 {
-	return MONO_HANDLE_NEW (MonoString, mono_string_new_checked (domain, data, error));
+	return MONO_HANDLE_NEW (MonoString, mono_string_new_checked (data, error));
 }
 
 MonoArrayHandle
-mono_array_new_handle (MonoDomain *domain, MonoClass *eclass, uintptr_t n, MonoError *error)
+mono_array_new_handle (MonoClass *eclass, uintptr_t n, MonoError *error)
 {
-	return MONO_HANDLE_NEW (MonoArray, mono_array_new_checked (domain, eclass, n, error));
+	return MONO_HANDLE_NEW (MonoArray, mono_array_new_checked (eclass, n, error));
 }
 
 MonoArrayHandle
-mono_array_new_full_handle (MonoDomain *domain, MonoClass *array_class, uintptr_t *lengths, intptr_t *lower_bounds, MonoError *error)
+mono_array_new_full_handle (MonoClass *array_class, uintptr_t *lengths, intptr_t *lower_bounds, MonoError *error)
 {
-	return MONO_HANDLE_NEW (MonoArray, mono_array_new_full_checked (domain, array_class, lengths, lower_bounds, error));
+	return MONO_HANDLE_NEW (MonoArray, mono_array_new_full_checked (array_class, lengths, lower_bounds, error));
 }
 
 MonoGCHandle
@@ -452,7 +452,7 @@ mono_object_handle_pin_unbox (MonoObjectHandle obj, MonoGCHandle *gchandle)
 void
 mono_array_handle_memcpy_refs (MonoArrayHandle dest, uintptr_t dest_idx, MonoArrayHandle src, uintptr_t src_idx, uintptr_t len)
 {
-	mono_array_memcpy_refs_internal (MONO_HANDLE_RAW (dest), dest_idx, MONO_HANDLE_RAW (src), src_idx, len);
+	mono_array_memcpy_refs_internal (MONO_HANDLE_RAW (dest), dest_idx, MONO_HANDLE_RAW (src), src_idx, GUINTPTR_TO_INT (len));
 }
 
 gboolean

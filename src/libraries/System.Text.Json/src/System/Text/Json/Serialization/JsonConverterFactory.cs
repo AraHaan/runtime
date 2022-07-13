@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics;
+using System.Text.Json.Serialization.Metadata;
 
 namespace System.Text.Json.Serialization
 {
@@ -18,13 +19,7 @@ namespace System.Text.Json.Serialization
         /// </summary>
         protected JsonConverterFactory() { }
 
-        internal sealed override ClassType ClassType
-        {
-            get
-            {
-                return ClassType.None;
-            }
-        }
+        internal sealed override ConverterStrategy ConverterStrategy => ConverterStrategy.None;
 
         /// <summary>
         /// Create a converter for the provided <see cref="Type"/>.
@@ -37,7 +32,7 @@ namespace System.Text.Json.Serialization
         /// </returns>
         public abstract JsonConverter? CreateConverter(Type typeToConvert, JsonSerializerOptions options);
 
-        internal override JsonPropertyInfo CreateJsonPropertyInfo()
+        internal override JsonPropertyInfo CreateJsonPropertyInfo(JsonTypeInfo declaringTypeInfo, JsonSerializerOptions options)
         {
             Debug.Fail("We should never get here.");
 
@@ -51,6 +46,8 @@ namespace System.Text.Json.Serialization
             throw new InvalidOperationException();
         }
 
+        internal sealed override Type? KeyType => null;
+
         internal sealed override Type? ElementType => null;
 
         internal JsonConverter GetConverterInternal(Type typeToConvert, JsonSerializerOptions options)
@@ -58,18 +55,34 @@ namespace System.Text.Json.Serialization
             Debug.Assert(CanConvert(typeToConvert));
 
             JsonConverter? converter = CreateConverter(typeToConvert, options);
-            if (converter == null)
+            switch (converter)
             {
-                ThrowHelper.ThrowInvalidOperationException_SerializerConverterFactoryReturnsNull(GetType());
+                case null:
+                    ThrowHelper.ThrowInvalidOperationException_SerializerConverterFactoryReturnsNull(GetType());
+                    break;
+                case JsonConverterFactory:
+                    ThrowHelper.ThrowInvalidOperationException_SerializerConverterFactoryReturnsJsonConverterFactorty(GetType());
+                    break;
             }
 
-            return converter!;
+            return converter;
         }
 
         internal sealed override object ReadCoreAsObject(
             ref Utf8JsonReader reader,
             JsonSerializerOptions options,
             ref ReadStack state)
+        {
+            Debug.Fail("We should never get here.");
+
+            throw new InvalidOperationException();
+        }
+
+        internal sealed override bool OnTryReadAsObject(
+            ref Utf8JsonReader reader,
+            JsonSerializerOptions options,
+            ref ReadStack state,
+            out object? value)
         {
             Debug.Fail("We should never get here.");
 
@@ -111,14 +124,20 @@ namespace System.Text.Json.Serialization
             throw new InvalidOperationException();
         }
 
-        internal sealed override void WriteWithQuotesAsObject(
+        internal sealed override void WriteAsPropertyNameCoreAsObject(
             Utf8JsonWriter writer, object value,
             JsonSerializerOptions options,
-            ref WriteStack state)
+            bool isWritingExtensionDataProperty)
         {
             Debug.Fail("We should never get here.");
 
             throw new InvalidOperationException();
+        }
+
+        internal sealed override JsonConverter<TTarget> CreateCastingConverter<TTarget>()
+        {
+            ThrowHelper.ThrowInvalidOperationException_ConverterCanConvertMultipleTypes(typeof(TTarget), this);
+            return null!;
         }
     }
 }

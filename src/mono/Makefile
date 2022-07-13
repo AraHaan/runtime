@@ -30,11 +30,11 @@ run-sample-coreclr:
 
 # build System.Private.CoreLib.dll
 bcl corelib:
-	../.././build.sh -c $(MONO_RUNTIME_CONFIG) -subset Mono.CoreLib
+	../.././build.sh -c $(MONO_RUNTIME_CONFIG) -subset Mono.CoreLib+Libs.Pretest
 
 # build runtime and copy to artifacts
 runtime:
-	../.././build.sh -c $(MONO_RUNTIME_CONFIG) -subset Mono.Runtime
+	../.././build.sh -c $(MONO_RUNTIME_CONFIG) -subset Mono.Runtime+Libs.Pretest
 
 # copy mono runtime bits from artifacts to $(DST)
 copy-runtime-files-to:

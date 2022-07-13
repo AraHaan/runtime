@@ -1,7 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;net461</TargetFrameworks>
+    <TargetFrameworks>$(NetCoreAppCurrent);$(NetCoreAppMinimum);netstandard2.0;$(NetFrameworkMinimum)</TargetFrameworks>
+    <Nullable>disable</Nullable>
+    <StrongNameKeyId>Microsoft</StrongNameKeyId>
+    <IsPackable>true</IsPackable>
+    <PackageDescription>Provides common attributes used by System.Composition types.
+
+Commonly Used Types:
+System.Composition.ExportAttribute
+System.Composition.ImportAttribute
+System.Composition.Convention.AttributedModelProvider</PackageDescription>
   </PropertyGroup>
+
   <ItemGroup>
     <Compile Include="System\Composition\Convention\AttributedModelProvider.cs" />
     <Compile Include="System\Composition\ExportAttribute.cs" />

@@ -82,7 +82,7 @@ static void indent (int diff) {
 		indent_level += diff;
 	if (start_time == 0)
 		start_time = mono_100ns_ticks ();
-	printf ("[%p: %.5f %d] ", (void*)mono_native_thread_id_get (), seconds_since_start (), indent_level);
+	printf ("[%p: %.5f %d] ", (gpointer)(gsize) mono_native_thread_id_get (), seconds_since_start (), indent_level);
 	if (diff > 0)
 		indent_level += diff;
 }
@@ -144,7 +144,6 @@ mono_trace_enter_method (MonoMethod *method, MonoJitInfo *ji, MonoProfilerCallCo
 {
 	int i;
 	MonoClass *klass;
-	MonoObject *o;
 	MonoMethodSignature *sig;
 	char *fname;
 	MonoGenericSharingContext *gsctx = NULL;
@@ -161,7 +160,7 @@ mono_trace_enter_method (MonoMethod *method, MonoJitInfo *ji, MonoProfilerCallCo
 
 	/* FIXME: Might be better to pass the ji itself */
 	if (!ji)
-		ji = mini_jit_info_table_find (mono_domain_get (), (char *)MONO_RETURN_ADDRESS (), NULL);
+		ji = mini_jit_info_table_find ((char *)MONO_RETURN_ADDRESS ());
 
 	printf ("ENTER:%c %s(", frame_kind (ji), fname);
 	g_free (fname);
@@ -213,7 +212,7 @@ mono_trace_enter_method (MonoMethod *method, MonoJitInfo *ji, MonoProfilerCallCo
 
 		MonoType *type = sig->params [i];
 
-		if (type->byref) {
+		if (m_type_is_byref (type)) {
 			printf ("[BYREF:%p]", *(gpointer*)buf);
 			mini_profiler_context_free_buffer (buf);
 			break;
@@ -248,13 +247,13 @@ mono_trace_enter_method (MonoMethod *method, MonoJitInfo *ji, MonoProfilerCallCo
 
 				printf ("[STRING:%p:%s]", s, as);
 				g_free (as);
-			} else 
+			} else
 				printf ("[STRING:null]");
 			break;
 		}
 		case MONO_TYPE_CLASS:
 		case MONO_TYPE_OBJECT: {
-			o = *arg_in_stack_slot(buf, MonoObject *);
+			MonoObject *o = *arg_in_stack_slot(buf, MonoObject *);
 			if (o) {
 				klass = o->vtable->klass;
 
@@ -335,7 +334,7 @@ mono_trace_leave_method (MonoMethod *method, MonoJitInfo *ji, MonoProfilerCallCo
 
 	/* FIXME: Might be better to pass the ji itself from the JIT */
 	if (!ji)
-		ji = mini_jit_info_table_find (mono_domain_get (), (char *)MONO_RETURN_ADDRESS (), NULL);
+		ji = mini_jit_info_table_find ((char *)MONO_RETURN_ADDRESS ());
 
 	printf ("LEAVE:%c %s(", frame_kind (ji), fname);
 	g_free (fname);
@@ -353,6 +352,11 @@ mono_trace_leave_method (MonoMethod *method, MonoJitInfo *ji, MonoProfilerCallCo
 	type = mini_get_underlying_type (mono_method_signature_internal (method)->ret);
 
 	gpointer buf = mini_profiler_context_get_result (ctx);
+	if (!buf && type->type != MONO_TYPE_VOID) {
+		printf ("result unknown");
+		goto finish;
+	}
+
 	switch (type->type) {
 	case MONO_TYPE_VOID:
 		break;
@@ -401,7 +405,7 @@ mono_trace_leave_method (MonoMethod *method, MonoJitInfo *ji, MonoProfilerCallCo
 			}
 		} else
 			printf ("[OBJECT:%p]", o);
-	       
+
 		break;
 	}
 	case MONO_TYPE_I8: {
@@ -435,6 +439,7 @@ mono_trace_leave_method (MonoMethod *method, MonoJitInfo *ji, MonoProfilerCallCo
 	}
 	mini_profiler_context_free_buffer (buf);
 
+finish:
 	//printf (" ip: %p\n", MONO_RETURN_ADDRESS_N (1));
 	printf ("\n");
 	fflush (stdout);
@@ -459,7 +464,7 @@ mono_trace_tail_method (MonoMethod *method, MonoJitInfo *ji, MonoMethod *target)
 
 	/* FIXME: Might be better to pass the ji itself from the JIT */
 	if (!ji)
-		ji = mini_jit_info_table_find (mono_domain_get (), (char *)MONO_RETURN_ADDRESS (), NULL);
+		ji = mini_jit_info_table_find ((char *)MONO_RETURN_ADDRESS ());
 
 	printf ("TAILC:%c %s->%s\n", frame_kind (ji), fname, tname);
 	fflush (stdout);

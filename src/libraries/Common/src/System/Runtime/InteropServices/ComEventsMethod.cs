@@ -11,7 +11,7 @@ namespace System.Runtime.InteropServices
     /// Part of ComEventHelpers APIs which allow binding
     /// managed delegates to COM's connection point based events.
     /// </summary>
-    internal class ComEventsMethod
+    internal sealed class ComEventsMethod
     {
         /// <summary>
         /// This delegate wrapper class handles dynamic invocation of delegates. The reason for the wrapper's
@@ -22,7 +22,7 @@ namespace System.Runtime.InteropServices
         /// handling of this scenario - we are pre-processing delegate's signature by looking for 'ref enums'
         /// and cache the types required for such coercion.
         /// </summary>
-        public class DelegateWrapper
+        public sealed class DelegateWrapper
         {
             private bool _once;
             private int _expectedParamsCount;
@@ -81,10 +81,7 @@ namespace System.Runtime.InteropServices
                         && pi.ParameterType.HasElementType
                         && pi.ParameterType.GetElementType()!.IsEnum)
                     {
-                        if (targetTypes == null)
-                        {
-                            targetTypes = new Type?[_expectedParamsCount];
-                        }
+                        targetTypes ??= new Type?[_expectedParamsCount];
 
                         targetTypes[i] = pi.ParameterType.GetElementType();
                     }

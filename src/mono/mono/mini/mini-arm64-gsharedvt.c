@@ -131,15 +131,15 @@ get_arg_slots (ArgInfo *ainfo, int **out_slots)
  *   See mini-x86.c for documentation.
  */
 gpointer
-mono_arch_get_gsharedvt_call_info (gpointer addr, MonoMethodSignature *normal_sig, MonoMethodSignature *gsharedvt_sig, gboolean gsharedvt_in, gint32 vcall_offset, gboolean calli)
+mono_arch_get_gsharedvt_call_info (MonoMemoryManager *mem_manager, gpointer addr, MonoMethodSignature *normal_sig, MonoMethodSignature *gsharedvt_sig, gboolean gsharedvt_in, gint32 vcall_offset, gboolean calli)
 {
 	GSharedVtCallInfo *info;
 	CallInfo *caller_cinfo, *callee_cinfo;
 	MonoMethodSignature *caller_sig, *callee_sig;
-	int aindex, i;
+	int aindex;
 	gboolean var_ret = FALSE;
 	CallInfo *cinfo, *gcinfo;
-	MonoMethodSignature *sig, *gsig;
+	MonoMethodSignature *sig;
 	GPtrArray *map;
 
 	if (gsharedvt_in) {
@@ -163,12 +163,10 @@ mono_arch_get_gsharedvt_call_info (gpointer addr, MonoMethodSignature *normal_si
 	/* sig/cinfo describes the normal call, while gsig/gcinfo describes the gsharedvt call */
 	if (gsharedvt_in) {
 		sig = caller_sig;
-		gsig = callee_sig;
 		cinfo = caller_cinfo;
 		gcinfo = callee_cinfo;
 	} else {
 		sig = callee_sig;
-		gsig = caller_sig;
 		cinfo = callee_cinfo;
 		gcinfo = caller_cinfo;
 	}
@@ -229,7 +227,7 @@ mono_arch_get_gsharedvt_call_info (gpointer addr, MonoMethodSignature *normal_si
 		}
 		if (ainfo2->storage == ArgVtypeByRef && ainfo2->gsharedvt) {
 			/* Pass the address of the first src slot in a reg */
-			if (ainfo->storage != ArgVtypeByRef) {
+			if (ainfo->storage != ArgVtypeByRef && ainfo->storage != ArgVtypeByRefOnStack) {
 				if (ainfo->storage == ArgHFA && ainfo->esize == 4) {
 					arg_marshal = GSHAREDVT_ARG_BYVAL_TO_BYREF_HFAR4;
 					g_assert (src [0] < 64);
@@ -244,7 +242,7 @@ mono_arch_get_gsharedvt_call_info (gpointer addr, MonoMethodSignature *normal_si
 			dst [0] = map_reg (ainfo2->reg);
 		} else if (ainfo2->storage == ArgVtypeByRefOnStack && ainfo2->gsharedvt) {
 			/* Pass the address of the first src slot in a stack slot */
-			if (ainfo->storage != ArgVtypeByRef)
+			if (ainfo->storage != ArgVtypeByRef && ainfo->storage != ArgVtypeByRefOnStack)
 				arg_marshal = GSHAREDVT_ARG_BYVAL_TO_BYREF;
 			ndst = 1;
 			dst = g_new0 (int, 1);
@@ -307,7 +305,7 @@ mono_arch_get_gsharedvt_call_info (gpointer addr, MonoMethodSignature *normal_si
 		}
 		nslots = MIN (nsrc, ndst);
 
-		for (i = 0; i < nslots; ++i)
+		for (int i = 0; i < nslots; ++i)
 			add_to_map (map, src [i], dst [i]);
 
 		g_free (src);
@@ -320,7 +318,7 @@ mono_arch_get_gsharedvt_call_info (gpointer addr, MonoMethodSignature *normal_si
 		add_to_map (map, map_reg (ARMREG_R8), map_reg (ARMREG_R8));
 	}
 
-	info = mono_domain_alloc0 (mono_domain_get (), sizeof (GSharedVtCallInfo) + (map->len * sizeof (int)));
+	info = mono_mem_manager_alloc0 (mem_manager, sizeof (GSharedVtCallInfo) + (map->len * sizeof (int)));
 	info->addr = addr;
 	info->stack_usage = callee_cinfo->stack_usage;
 	info->ret_marshal = GSHAREDVT_RET_NONE;
@@ -337,7 +335,7 @@ mono_arch_get_gsharedvt_call_info (gpointer addr, MonoMethodSignature *normal_si
 
 	info->vcall_offset = vcall_offset;
 	info->map_count = map->len / 2;
-	for (i = 0; i < map->len; ++i)
+	for (guint i = 0; i < map->len; ++i)
 		info->map [i] = GPOINTER_TO_UINT (g_ptr_array_index (map, i));
 	g_ptr_array_free (map, TRUE);
 
@@ -345,7 +343,7 @@ mono_arch_get_gsharedvt_call_info (gpointer addr, MonoMethodSignature *normal_si
 	if (var_ret) {
 		switch (cinfo->ret.storage) {
 		case ArgInIReg:
-			if (!gsharedvt_in || sig->ret->byref) {
+			if (!gsharedvt_in || m_type_is_byref (sig->ret)) {
 				info->ret_marshal = GSHAREDVT_RET_I8;
 			} else {
 				MonoType *rtype = mini_get_underlying_type (sig->ret);

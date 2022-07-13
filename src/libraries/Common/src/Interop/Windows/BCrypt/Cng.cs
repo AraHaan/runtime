@@ -35,6 +35,7 @@ namespace Internal.NativeCrypto
             public const string Sha256 = "SHA256";              // BCRYPT_SHA256_ALGORITHM
             public const string Sha384 = "SHA384";              // BCRYPT_SHA384_ALGORITHM
             public const string Sha512 = "SHA512";              // BCRYPT_SHA512_ALGORITHM
+            public const string Pbkdf2 = "PBKDF2";              // BCRYPT_PBKDF2_ALGORITHM
         }
 
         internal static class KeyDerivationFunction
@@ -59,6 +60,7 @@ namespace Internal.NativeCrypto
 
         public const string BCRYPT_3DES_ALGORITHM = "3DES";
         public const string BCRYPT_AES_ALGORITHM = "AES";
+        public const string BCRYPT_CHACHA20_POLY1305_ALGORITHM = "CHACHA20_POLY1305";
         public const string BCRYPT_DES_ALGORITHM = "DES";
         public const string BCRYPT_RC2_ALGORITHM = "RC2";
 
@@ -117,16 +119,16 @@ namespace Internal.NativeCrypto
 
     internal static partial class Cng
     {
-        internal static class Interop
+        internal static partial class Interop
         {
-            [DllImport(Libraries.BCrypt, CharSet = CharSet.Unicode)]
-            public static extern NTSTATUS BCryptOpenAlgorithmProvider(out SafeAlgorithmHandle phAlgorithm, string pszAlgId, string? pszImplementation, int dwFlags);
+            [LibraryImport(Libraries.BCrypt, StringMarshalling = StringMarshalling.Utf16)]
+            public static partial NTSTATUS BCryptOpenAlgorithmProvider(out SafeAlgorithmHandle phAlgorithm, string pszAlgId, string? pszImplementation, int dwFlags);
 
-            [DllImport(Libraries.BCrypt, CharSet = CharSet.Unicode)]
-            public static extern NTSTATUS BCryptSetProperty(SafeAlgorithmHandle hObject, string pszProperty, string pbInput, int cbInput, int dwFlags);
+            [LibraryImport(Libraries.BCrypt, StringMarshalling = StringMarshalling.Utf16)]
+            public static partial NTSTATUS BCryptSetProperty(SafeAlgorithmHandle hObject, string pszProperty, string pbInput, int cbInput, int dwFlags);
 
-            [DllImport(Libraries.BCrypt, CharSet = CharSet.Unicode, EntryPoint = "BCryptSetProperty")]
-            private static extern NTSTATUS BCryptSetIntPropertyPrivate(SafeBCryptHandle hObject, string pszProperty, ref int pdwInput, int cbInput, int dwFlags);
+            [LibraryImport(Libraries.BCrypt, EntryPoint = "BCryptSetProperty", StringMarshalling = StringMarshalling.Utf16)]
+            private static partial NTSTATUS BCryptSetIntPropertyPrivate(SafeBCryptHandle hObject, string pszProperty, ref int pdwInput, int cbInput, int dwFlags);
 
             public static unsafe NTSTATUS BCryptSetIntProperty(SafeBCryptHandle hObject, string pszProperty, ref int pdwInput, int dwFlags)
             {
@@ -135,7 +137,7 @@ namespace Internal.NativeCrypto
         }
     }
 
-    internal sealed class SafeAlgorithmHandle : SafeBCryptHandle
+    internal sealed partial class SafeAlgorithmHandle : SafeBCryptHandle
     {
         protected sealed override bool ReleaseHandle()
         {
@@ -143,11 +145,11 @@ namespace Internal.NativeCrypto
             return ntStatus == 0;
         }
 
-        [DllImport(Libraries.BCrypt)]
-        private static extern uint BCryptCloseAlgorithmProvider(IntPtr hAlgorithm, int dwFlags);
+        [LibraryImport(Libraries.BCrypt)]
+        private static partial uint BCryptCloseAlgorithmProvider(IntPtr hAlgorithm, int dwFlags);
     }
 
-    internal sealed class SafeKeyHandle : SafeBCryptHandle
+    internal sealed partial class SafeKeyHandle : SafeBCryptHandle
     {
         private SafeAlgorithmHandle? _parentHandle;
 
@@ -175,7 +177,7 @@ namespace Internal.NativeCrypto
             return ntStatus == 0;
         }
 
-        [DllImport(Libraries.BCrypt)]
-        private static extern uint BCryptDestroyKey(IntPtr hKey);
+        [LibraryImport(Libraries.BCrypt)]
+        private static partial uint BCryptDestroyKey(IntPtr hKey);
     }
 }

@@ -11,7 +11,7 @@ using System.Threading;
 
 namespace System.Runtime.Caching
 {
-    internal class MemoryCacheEntry : MemoryCacheKey
+    internal sealed class MemoryCacheEntry : MemoryCacheKey
     {
         private readonly object _value;
         private readonly DateTime _utcCreated;
@@ -29,7 +29,7 @@ namespace System.Runtime.Caching
         private readonly CacheEntryRemovedCallback _callback;
         private SeldomUsedFields _fields; // optimization to reduce workingset when the entry hasn't any dependencies
 
-        private class SeldomUsedFields
+        private sealed class SeldomUsedFields
         {
             internal Collection<ChangeMonitor> _dependencies; // the entry's dependency needs to be disposed when the entry is released
             internal Dictionary<MemoryCacheEntryChangeMonitor, MemoryCacheEntryChangeMonitor> _dependents;  // dependents must be notified when this entry is removed
@@ -112,10 +112,11 @@ namespace System.Runtime.Caching
                                   CacheEntryRemovedCallback removedCallback,
                                   MemoryCache cache) : base(key)
         {
-            if (value == null)
+            if (value is null)
             {
                 throw new ArgumentNullException(nameof(value));
             }
+
             _utcCreated = DateTime.UtcNow;
             _value = value;
 
@@ -144,7 +145,10 @@ namespace System.Runtime.Caching
 
             _callback = removedCallback;
 
-            if (dependencies != null)
+            // CacheItemPolicy.ChangeMonitors is frequently the source for 'dependencies', and that property
+            // is never null. So check that the collection of dependencies is not empty before allocating
+            // the 'seldom' used fields.
+            if (dependencies != null && dependencies.Count > 0)
             {
                 _fields = new SeldomUsedFields();
                 _fields._dependencies = dependencies;
@@ -160,18 +164,10 @@ namespace System.Runtime.Caching
                 {
                     return;
                 }
-                if (_fields == null)
-                {
-                    _fields = new SeldomUsedFields();
-                }
-                if (_fields._cache == null)
-                {
-                    _fields._cache = cache;
-                }
-                if (_fields._dependents == null)
-                {
-                    _fields._dependents = new Dictionary<MemoryCacheEntryChangeMonitor, MemoryCacheEntryChangeMonitor>();
-                }
+
+                _fields ??= new SeldomUsedFields();
+                _fields._cache ??= cache;
+                _fields._dependents ??= new Dictionary<MemoryCacheEntryChangeMonitor, MemoryCacheEntryChangeMonitor>();
                 _fields._dependents[dependent] = dependent;
             }
         }
@@ -215,10 +211,7 @@ namespace System.Runtime.Caching
         {
             lock (this)
             {
-                if (_fields == null)
-                {
-                    _fields = new SeldomUsedFields();
-                }
+                _fields ??= new SeldomUsedFields();
                 _fields._updateSentinel = Tuple.Create(sentinelStore, sentinelEntry);
             }
         }
@@ -237,6 +230,10 @@ namespace System.Runtime.Caching
         {
             if (State == EntryState.AddedToCache)
             {
+                // This is a callback - not directly called by the user. We don't want
+                // to throw potentially unhandled "disposed" exceptions in this case.
+                // However, RemoveEntry sidesteps 'throwOnDispose' so we don't need to
+                // worry about a try/catch here.
                 _fields._cache.RemoveEntry(this.Key, this, CacheEntryRemovedReason.ChangeMonitorChanged);
             }
         }
@@ -264,10 +261,7 @@ namespace System.Runtime.Caching
             {
                 foreach (MemoryCacheEntryChangeMonitor dependent in deps)
                 {
-                    if (dependent != null)
-                    {
-                        dependent.OnCacheEntryReleased();
-                    }
+                    dependent?.OnCacheEntryReleased();
                 }
             }
 

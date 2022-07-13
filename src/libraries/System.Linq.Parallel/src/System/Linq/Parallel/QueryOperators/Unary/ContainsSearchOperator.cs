@@ -40,15 +40,7 @@ namespace System.Linq.Parallel
             Debug.Assert(child != null, "child data source cannot be null");
 
             _searchValue = searchValue;
-
-            if (comparer == null)
-            {
-                _comparer = EqualityComparer<TInput>.Default;
-            }
-            else
-            {
-                _comparer = comparer;
-            }
+            _comparer = comparer ?? EqualityComparer<TInput>.Default;
         }
 
         //---------------------------------------------------------------------------------------
@@ -132,7 +124,7 @@ namespace System.Linq.Parallel
         // requested.
         //
 
-        private class ContainsSearchOperatorEnumerator<TKey> : QueryOperatorEnumerator<bool, int>
+        private sealed class ContainsSearchOperatorEnumerator<TKey> : QueryOperatorEnumerator<bool, int>
         {
             private readonly QueryOperatorEnumerator<TInput, TKey> _source; // The source data.
             private readonly TInput _searchValue; // The value for which we are searching.
@@ -189,7 +181,7 @@ namespace System.Linq.Parallel
                     do
                     {
                         if ((i++ & CancellationState.POLL_INTERVAL) == 0)
-                            _cancellationToken.ThrowIfCancellationRequested();;
+                            _cancellationToken.ThrowIfCancellationRequested();
 
                         if (_resultFoundFlag.Value)
                         {

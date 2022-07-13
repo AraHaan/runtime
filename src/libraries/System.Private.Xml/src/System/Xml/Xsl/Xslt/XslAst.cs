@@ -7,12 +7,11 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Xml.Xsl.Qil;
+using ContextInfo = System.Xml.Xsl.Xslt.XsltInput.ContextInfo;
+using XPathQilFactory = System.Xml.Xsl.XPath.XPathQilFactory;
 
 namespace System.Xml.Xsl.Xslt
 {
-    using ContextInfo = XsltInput.ContextInfo;
-    using XPathQilFactory = System.Xml.Xsl.XPath.XPathQilFactory;
-
     // Set of classes that represent XSLT AST
 
     // XSLT AST is a tree of nodes that represent content of xsl template.
@@ -58,7 +57,7 @@ namespace System.Xml.Xsl.Xslt
         WithParam,
     }
 
-    internal class NsDecl
+    internal sealed class NsDecl
     {
         public readonly NsDecl? Prev;
         public readonly string? Prefix;  // Empty string denotes the default namespace, null - extension or excluded namespace
@@ -118,10 +117,7 @@ namespace System.Xml.Xsl.Xslt
         public void AddContent(XslNode node)
         {
             Debug.Assert(node != null);
-            if (_content == null)
-            {
-                _content = new List<XslNode>();
-            }
+            _content ??= new List<XslNode>();
             _content.Add(node);
         }
 
@@ -134,51 +130,6 @@ namespace System.Xml.Xsl.Xslt
             else
             {
                 _content.InsertRange(0, collection);
-            }
-        }
-
-        internal string? TraceName
-        {
-            get
-            {
-#if DEBUG
-                System.Text.StringBuilder sb = new System.Text.StringBuilder();
-                string nodeTypeName = NodeType switch
-                {
-                    XslNodeType.AttributeSet => "attribute-set",
-                    XslNodeType.Template => "template",
-                    XslNodeType.Param => "param",
-                    XslNodeType.Variable => "variable",
-                    XslNodeType.WithParam => "with-param",
-                    _ => NodeType.ToString(),
-                };
-                sb.Append(nodeTypeName);
-                if (Name != null)
-                {
-                    sb.Append(' ');
-                    sb.Append(Name.QualifiedName);
-                }
-
-                ISourceLineInfo? lineInfo = SourceLine;
-                if (lineInfo == null && NodeType == XslNodeType.AttributeSet)
-                {
-                    lineInfo = Content[0].SourceLine;
-                    Debug.Assert(lineInfo != null);
-                }
-                if (lineInfo != null)
-                {
-                    string fileName = SourceLineInfo.GetFileName(lineInfo.Uri!);
-                    int idx = fileName.LastIndexOf(System.IO.Path.DirectorySeparatorChar) + 1;
-                    sb.Append(" (");
-                    sb.Append(fileName, idx, fileName.Length - idx);
-                    sb.Append(':');
-                    sb.Append(lineInfo.Start.Line);
-                    sb.Append(')');
-                }
-                return sb.ToString();
-#else
-                return null;
-#endif
             }
         }
     }
@@ -198,20 +149,13 @@ namespace System.Xml.Xsl.Xslt
         Completed = 2,
     }
 
-    internal class AttributeSet : ProtoTemplate
+    internal sealed class AttributeSet : ProtoTemplate
     {
         public CycleCheck CycleCheck;     // Used to detect circular references
 
         public AttributeSet(QilName name, XslVersion xslVer) : base(XslNodeType.AttributeSet, name, xslVer) { }
 
-        public override string GetDebugName()
-        {
-            StringBuilder dbgName = new StringBuilder();
-            dbgName.Append("<xsl:attribute-set name=\"");
-            dbgName.Append(Name!.QualifiedName);
-            dbgName.Append("\">");
-            return dbgName.ToString();
-        }
+        public override string GetDebugName() => $"<xsl:attribute-set name=\"{Name!.QualifiedName}\">";
 
         public new void AddContent(XslNode node)
         {
@@ -225,7 +169,7 @@ namespace System.Xml.Xsl.Xslt
         }
     }
 
-    internal class Template : ProtoTemplate
+    internal sealed class Template : ProtoTemplate
     {
         public readonly string? Match;
         public readonly QilName Mode;
@@ -274,7 +218,7 @@ namespace System.Xml.Xsl.Xslt
         }
     }
 
-    internal class VarPar : XslNode
+    internal sealed class VarPar : XslNode
     {
         public XslFlags DefValueFlags;
         public QilNode? Value;          // Contains value for WithParams and global VarPars
@@ -282,7 +226,7 @@ namespace System.Xml.Xsl.Xslt
         public VarPar(XslNodeType nt, QilName name, string? select, XslVersion xslVer) : base(nt, name, select, xslVer) { }
     }
 
-    internal class Sort : XslNode
+    internal sealed class Sort : XslNode
     {
         public readonly string? Lang;
         public readonly string? DataType;
@@ -299,7 +243,7 @@ namespace System.Xml.Xsl.Xslt
         }
     }
 
-    internal class Keys : KeyedCollection<QilName, List<Key>>
+    internal sealed class Keys : KeyedCollection<QilName, List<Key>>
     {
         protected override QilName GetKeyForItem(List<Key> list)
         {
@@ -308,7 +252,7 @@ namespace System.Xml.Xsl.Xslt
         }
     }
 
-    internal class Key : XslNode
+    internal sealed class Key : XslNode
     {
         public readonly string? Match;
         public readonly string? Use;
@@ -354,7 +298,7 @@ namespace System.Xml.Xsl.Xslt
         Any,
     }
 
-    internal class Number : XslNode
+    internal sealed class Number : XslNode
     {
         public readonly NumberLevel Level;
         public readonly string? Count;
@@ -382,7 +326,7 @@ namespace System.Xml.Xsl.Xslt
         }
     }
 
-    internal class NodeCtor : XslNode
+    internal sealed class NodeCtor : XslNode
     {
         public readonly string NameAvt;
         public readonly string? NsAvt;
@@ -395,7 +339,7 @@ namespace System.Xml.Xsl.Xslt
         }
     }
 
-    internal class Text : XslNode
+    internal sealed class Text : XslNode
     {
         public readonly SerializationHints Hints;
 
@@ -406,7 +350,7 @@ namespace System.Xml.Xsl.Xslt
         }
     }
 
-    internal class XslNodeEx : XslNode
+    internal sealed class XslNodeEx : XslNode
     {
         public readonly ISourceLineInfo? ElemNameLi;
         public readonly ISourceLineInfo? EndTagLi;

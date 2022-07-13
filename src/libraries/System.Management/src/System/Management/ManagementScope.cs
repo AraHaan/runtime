@@ -32,7 +32,7 @@ namespace System.Management
                     {
                         if (s_allowManagementObjectQI == 0)
                         {
-                            s_allowManagementObjectQI = GetSwitchValueFromRegistry() == true ? 1 : -1;
+                            s_allowManagementObjectQI = GetSwitchValueFromRegistry() ? 1 : -1;
                         }
                     }
                 }
@@ -68,10 +68,7 @@ namespace System.Management
             finally
             {
                 // dispose of the key
-                if (s_switchesRegKey != null)
-                {
-                    s_switchesRegKey.Dispose();
-                }
+                s_switchesRegKey?.Dispose();
             }
 
             // if for any reason we cannot retrieve the value of the switch from the Registry,
@@ -494,8 +491,7 @@ namespace System.Management
         //Fires IdentifierChanged event
         private void FireIdentifierChanged()
         {
-            if (IdentifierChanged != null)
-                IdentifierChanged(this, null);
+            IdentifierChanged?.Invoke(this, null);
         }
 
         //Called when IdentifierChanged() event fires
@@ -618,7 +614,7 @@ namespace System.Management
         }
 
         internal ManagementScope(ManagementPath path, ManagementScope scope)
-            : this(path, (null != scope) ? scope.options : null) { }
+            : this(path, scope?.options) { }
 
         internal static ManagementScope _Clone(ManagementScope scope)
         {
@@ -809,10 +805,7 @@ namespace System.Management
         {
             get
             {
-                if (options == null)
-                    return options = ConnectionOptions._Clone(null, new IdentifierChangedEventHandler(HandleIdentifierChange));
-                else
-                    return options;
+                return options ??= ConnectionOptions._Clone(null, new IdentifierChangedEventHandler(HandleIdentifierChange));
             }
             set
             {
@@ -850,10 +843,7 @@ namespace System.Management
         {
             get
             {
-                if (prvpath == null)
-                    return prvpath = ManagementPath._Clone(null);
-                else
-                    return prvpath;
+                return prvpath ??= ManagementPath._Clone(null);
             }
             set
             {
@@ -1038,7 +1028,7 @@ namespace System.Management
 
     }//ManagementScope
 
-    internal class SecuredIEnumWbemClassObjectHandler
+    internal sealed class SecuredIEnumWbemClassObjectHandler
     {
         private readonly IEnumWbemClassObject pEnumWbemClassObjectsecurityHelper;
         private readonly ManagementScope scope;
@@ -1092,7 +1082,7 @@ namespace System.Management
     }
 
 
-    internal class SecuredConnectHandler
+    internal sealed class SecuredConnectHandler
     {
         private readonly ManagementScope scope;
 
@@ -1142,7 +1132,7 @@ namespace System.Management
         }
     }
 
-    internal class SecuredIWbemServicesHandler
+    internal sealed class SecuredIWbemServicesHandler
     {
         private readonly IWbemServices pWbemServiecsSecurityHelper;
         private readonly ManagementScope scope;
@@ -1381,7 +1371,7 @@ namespace System.Management
     }
 
 
-    internal class SecurityHandler
+    internal sealed class SecurityHandler
     {
         private bool needToReset;
         private readonly IntPtr handle;
@@ -1469,7 +1459,7 @@ namespace System.Management
     /// <summary>
     /// Converts a String to a ManagementScope
     /// </summary>
-    internal class ManagementScopeConverter : ExpandableObjectConverter
+    internal sealed class ManagementScopeConverter : ExpandableObjectConverter
     {
 
         /// <summary>

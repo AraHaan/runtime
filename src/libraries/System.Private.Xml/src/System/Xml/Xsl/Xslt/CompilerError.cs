@@ -5,7 +5,7 @@ using System.Collections;
 
 namespace System.Xml.Xsl.Xslt
 {
-    internal class CompilerError
+    internal sealed class CompilerError
     {
         public CompilerError(string fileName, int line, int column, string errorNumber, string errorText)
         {
@@ -29,7 +29,7 @@ namespace System.Xml.Xsl.Xslt
         public string FileName { get; set; }
     }
 
-    internal class CompilerErrorCollection : CollectionBase
+    internal sealed class CompilerErrorCollection : CollectionBase
     {
         public CompilerErrorCollection() { }
 
@@ -37,10 +37,7 @@ namespace System.Xml.Xsl.Xslt
 
         public void AddRange(CompilerError[] value)
         {
-            if (value == null)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
+            ArgumentNullException.ThrowIfNull(value);
 
             for (int i = 0; i < value.Length; i++)
             {

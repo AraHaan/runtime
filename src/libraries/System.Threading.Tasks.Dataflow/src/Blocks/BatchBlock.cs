@@ -68,7 +68,7 @@ namespace System.Threading.Tasks.Dataflow
                 onItemsRemoved, itemCountingFunc);
 
             // Initialize target
-            _target = new BatchBlockTargetCore(this, batchSize, batch => _source.AddMessage(batch), dataflowBlockOptions);
+            _target = new BatchBlockTargetCore(this, batchSize, _source.AddMessage, dataflowBlockOptions);
 
             // When the target is done, let the source know it won't be getting any more data
             _target.Completion.ContinueWith(delegate { _source.Complete(); },
@@ -88,13 +88,11 @@ namespace System.Threading.Tasks.Dataflow
             // Handle async cancellation requests by declining on the target
             Common.WireCancellationToComplete(
                 dataflowBlockOptions.CancellationToken, _source.Completion, state => ((BatchBlockTargetCore)state!).Complete(exception: null, dropPendingMessages: true, releaseReservedMessages: false), _target);
-#if FEATURE_TRACING
             DataflowEtwProvider etwLog = DataflowEtwProvider.Log;
             if (etwLog.IsEnabled())
             {
                 etwLog.DataflowBlockCreated(this, dataflowBlockOptions);
             }
-#endif
         }
 
         /// <include file='XmlDocs/CommonXmlDocComments.xml' path='CommonXmlDocComments/Blocks/Member[@name="Complete"]/*' />
@@ -103,7 +101,10 @@ namespace System.Threading.Tasks.Dataflow
         /// <include file='XmlDocs/CommonXmlDocComments.xml' path='CommonXmlDocComments/Blocks/Member[@name="Fault"]/*' />
         void IDataflowBlock.Fault(Exception exception)
         {
-            if (exception == null) throw new ArgumentNullException(nameof(exception));
+            if (exception is null)
+            {
+                throw new ArgumentNullException(nameof(exception));
+            }
 
             _target.Complete(exception, dropPendingMessages: true, releaseReservedMessages: false);
         }
@@ -178,16 +179,9 @@ namespace System.Threading.Tasks.Dataflow
         public override string ToString() { return Common.GetNameForDebugger(this, _source.DataflowBlockOptions); }
 
         /// <summary>The data to display in the debugger display attribute.</summary>
-        private object DebuggerDisplayContent
-        {
-            get
-            {
-                return string.Format("{0}, BatchSize={1}, OutputCount={2}",
-                    Common.GetNameForDebugger(this, _source.DataflowBlockOptions),
-                    BatchSize,
-                    OutputCountForDebugger);
-            }
-        }
+        private object DebuggerDisplayContent =>
+            $"{Common.GetNameForDebugger(this, _source.DataflowBlockOptions)}, BatchSize={BatchSize}, OutputCount={OutputCountForDebugger}";
+
         /// <summary>Gets the data to display in the debugger display attribute for this instance.</summary>
         object IDebuggerDisplay.Content { get { return DebuggerDisplayContent; } }
 
@@ -387,7 +381,7 @@ namespace System.Threading.Tasks.Dataflow
                             Debug.Assert(source != null, "We must have thrown if source == null && consumeToAccept == true.");
 
                             bool consumed;
-                            messageValue = source.ConsumeMessage(messageHeader, _owningBatch, out consumed);
+                            messageValue = source.ConsumeMessage(messageHeader, _owningBatch, out consumed)!;
                             if (!consumed) return DataflowMessageStatus.NotAvailable;
                         }
 
@@ -647,7 +641,6 @@ namespace System.Threading.Tasks.Dataflow
                 _nonGreedyState!.TaskForInputProcessing = new Task(thisBatchTarget => ((BatchBlockTargetCore)thisBatchTarget!).ProcessMessagesLoopCore(), this,
                                                     Common.GetCreationOptionsForTask(isReplacementReplica));
 
-#if FEATURE_TRACING
                 DataflowEtwProvider etwLog = DataflowEtwProvider.Log;
                 if (etwLog.IsEnabled())
                 {
@@ -655,7 +648,6 @@ namespace System.Threading.Tasks.Dataflow
                         _owningBatch, _nonGreedyState.TaskForInputProcessing, DataflowEtwProvider.TaskLaunchedReason.ProcessingInputMessages,
                         _messages.Count + _nonGreedyState.PostponedMessages.Count);
                 }
-#endif
 
                 // Start the task handling scheduling exceptions
                 Exception? exception = Common.StartTaskSafe(_nonGreedyState.TaskForInputProcessing, _dataflowBlockOptions.TaskScheduler);
@@ -1004,7 +996,7 @@ namespace System.Threading.Tasks.Dataflow
                     KeyValuePair<ISourceBlock<T>, KeyValuePair<DataflowMessageHeader, T>> sourceAndMessage = reserved[i];
                     reserved[i] = default(KeyValuePair<ISourceBlock<T>, KeyValuePair<DataflowMessageHeader, T>>); // in case of exception from ConsumeMessage
                     bool consumed;
-                    T consumedValue = sourceAndMessage.Key.ConsumeMessage(sourceAndMessage.Value.Key, _owningBatch, out consumed);
+                    T? consumedValue = sourceAndMessage.Key.ConsumeMessage(sourceAndMessage.Value.Key, _owningBatch, out consumed);
                     if (!consumed)
                     {
                         // The protocol broke down, so throw an exception, as this is fatal.  Before doing so, though,
@@ -1056,7 +1048,7 @@ namespace System.Threading.Tasks.Dataflow
                     KeyValuePair<ISourceBlock<T>, KeyValuePair<DataflowMessageHeader, T>> sourceAndMessage = reserved[i];
                     reserved[i] = default(KeyValuePair<ISourceBlock<T>, KeyValuePair<DataflowMessageHeader, T>>); // in case of exception from ConsumeMessage
                     bool consumed;
-                    T consumedValue = sourceAndMessage.Key.ConsumeMessage(sourceAndMessage.Value.Key, _owningBatch, out consumed);
+                    T? consumedValue = sourceAndMessage.Key.ConsumeMessage(sourceAndMessage.Value.Key, _owningBatch, out consumed);
                     if (consumed)
                     {
                         var consumedMessage = new KeyValuePair<DataflowMessageHeader, T>(sourceAndMessage.Value.Key, consumedValue!);
@@ -1109,7 +1101,7 @@ namespace System.Threading.Tasks.Dataflow
                         catch (Exception e)
                         {
                             if (throwOnFirstException) throw;
-                            if (exceptions == null) exceptions = new List<Exception>(1);
+                            exceptions ??= new List<Exception>(1);
                             exceptions.Add(e);
                         }
                     }
@@ -1170,8 +1162,7 @@ namespace System.Threading.Tasks.Dataflow
                 get
                 {
                     var displayBatch = _owningBatch as IDebuggerDisplay;
-                    return string.Format("Block=\"{0}\"",
-                        displayBatch != null ? displayBatch.Content : _owningBatch);
+                    return $"Block=\"{(displayBatch != null ? displayBatch.Content : _owningBatch)}\"";
                 }
             }
 
@@ -1188,9 +1179,9 @@ namespace System.Threading.Tasks.Dataflow
                 /// <summary>Gets the messages waiting to be processed.</summary>
                 public IEnumerable<T> InputQueue { get { return _target._messages.ToList(); } }
                 /// <summary>Gets the task being used for input processing.</summary>
-                public Task? TaskForInputProcessing { get { return _target._nonGreedyState != null ? _target._nonGreedyState.TaskForInputProcessing : null; } }
+                public Task? TaskForInputProcessing { get { return _target._nonGreedyState?.TaskForInputProcessing; } }
                 /// <summary>Gets the collection of postponed messages.</summary>
-                public QueuedMap<ISourceBlock<T>, DataflowMessageHeader>? PostponedMessages { get { return _target._nonGreedyState != null ? _target._nonGreedyState.PostponedMessages : null; } }
+                public QueuedMap<ISourceBlock<T>, DataflowMessageHeader>? PostponedMessages { get { return _target._nonGreedyState?.PostponedMessages; } }
                 /// <summary>Gets whether the block is declining further messages.</summary>
                 public bool IsDecliningPermanently { get { return _target._decliningPermanently; } }
                 /// <summary>Gets the DataflowBlockOptions used to configure this block.</summary>

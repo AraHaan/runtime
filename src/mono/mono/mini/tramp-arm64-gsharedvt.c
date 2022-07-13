@@ -26,7 +26,7 @@
  *   See tramp-x86.c for documentation.
  */
 gpointer
-mono_arch_get_gsharedvt_arg_trampoline (MonoDomain *domain, gpointer arg, gpointer addr)
+mono_arch_get_gsharedvt_arg_trampoline (gpointer arg, gpointer addr)
 {
 	guint8 *code, *buf;
 	int buf_len = 40;
@@ -50,6 +50,10 @@ mono_arch_get_gsharedvt_arg_trampoline (MonoDomain *domain, gpointer arg, gpoint
 
 	return buf;
 }
+
+MONO_PRAGMA_WARNING_PUSH()
+MONO_PRAGMA_WARNING_DISABLE(4701) /* potentially uninitialized local variable 'dst_ptr' used */
+MONO_PRAGMA_WARNING_DISABLE(4703) /* potentially uninitialized local pointer variable 'dst_ptr' used */
 
 gpointer
 mono_arm_start_gsharedvt_call (GSharedVtCallInfo *info, gpointer *caller, gpointer *callee, gpointer mrgctx_reg)
@@ -206,6 +210,8 @@ mono_arm_start_gsharedvt_call (GSharedVtCallInfo *info, gpointer *caller, gpoint
 		return info->addr;
 	}
 }
+
+MONO_PRAGMA_WARNING_POP()
 
 #ifndef DISABLE_JIT
 

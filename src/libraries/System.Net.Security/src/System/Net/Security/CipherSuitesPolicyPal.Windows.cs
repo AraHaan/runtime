@@ -5,13 +5,15 @@ using System.Collections.Generic;
 
 namespace System.Net.Security
 {
-    internal class CipherSuitesPolicyPal
+    internal sealed class CipherSuitesPolicyPal
     {
         internal CipherSuitesPolicyPal(IEnumerable<TlsCipherSuite> allowedCipherSuites)
         {
             throw new PlatformNotSupportedException(SR.net_ssl_ciphersuites_policy_not_supported);
         }
 
+#pragma warning disable CA1822
         internal IEnumerable<TlsCipherSuite> GetCipherSuites() => null!;
+#pragma warning restore CA1822
     }
 }

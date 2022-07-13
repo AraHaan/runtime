@@ -74,6 +74,7 @@ enum gc_reason
     reason_bgc_tuning_soh = 14,
     reason_bgc_tuning_loh = 15,
     reason_bgc_stepping = 16,
+    reason_induced_aggressive = 17,
     reason_max
 };
 
@@ -92,14 +93,6 @@ enum gc_etw_segment_type
     gc_etw_segment_large_object_heap = 1,
     gc_etw_segment_read_only_heap = 2,
     gc_etw_segment_pinned_object_heap = 3
-};
-
-// Types of allocations, emitted by the GCAllocationTick ETW event.
-enum gc_etw_alloc_kind
-{
-    gc_etw_alloc_soh = 0,
-    gc_etw_alloc_loh = 1,
-    gc_etw_alloc_poh = 2
 };
 
 /* forward declerations */
@@ -259,10 +252,6 @@ struct alloc_context : gc_alloc_context
 };
 
 class IGCHeapInternal : public IGCHeap {
-public:
-
-    virtual ~IGCHeapInternal() {}
-
 public:
     virtual int GetNumberOfHeaps () = 0;
     virtual int GetHomeHeapNumber () = 0;

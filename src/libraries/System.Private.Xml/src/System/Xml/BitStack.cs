@@ -9,7 +9,7 @@ namespace System.Xml
     /// <summary>
     /// Manages a stack of bits.  Exposes push, pop, and peek operations.
     /// </summary>
-    internal class BitStack
+    internal sealed class BitStack
     {
         private uint[]? _bitStack;
         private int _stackPos;
@@ -80,10 +80,7 @@ namespace System.Xml
         {
             int len;
 
-            if (_bitStack == null)
-            {
-                _bitStack = new uint[16];
-            }
+            _bitStack ??= new uint[16];
 
             // Push current unsigned int (which has been filled) onto a stack
             // and initialize this.curr to be used for future pushes.

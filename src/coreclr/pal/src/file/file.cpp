@@ -3,8 +3,6 @@
 
 /*++
 
-
-
 Module Name:
 
     file.cpp
@@ -12,8 +10,6 @@ Module Name:
 Abstract:
 
     Implementation of the file WIN API for the PAL
-
-
 
 --*/
 
@@ -325,34 +321,10 @@ CorUnix::InternalCanonicalizeRealPath(LPCSTR lpUnixPath, PathCharString& lpBuffe
             goto LExit;
         }
 
-        if (! RealPathHelper(pszCwdBuffer, lpBuffer))
+        if (!RealPathHelper(pszCwdBuffer, lpBuffer))
         {
             WARN("realpath() failed with error %d\n", errno);
             palError = FILEGetLastErrorFromErrno();
-#if defined(HOST_AMD64)
-            // If we are here, then we tried to invoke realpath
-            // against a directory.
-            //
-            // On Mac64, realpath implementation differs from Mac32
-            // by *not* supporting invalid filenames in the path (while
-            // Mac32 implementation does).
-            //
-            // Thus, if we are here, and the error code we see is
-            // ERROR_FILE_NOT_FOUND, then we should map it to
-            // ERROR_PATH_NOT_FOUND since it was a directory that
-            // was not found (and not a file).
-            if (palError == ERROR_FILE_NOT_FOUND)
-            {
-                // Since lpBuffer can be modified by the realpath call,
-                // and can result in a truncated subset of the original buffer,
-                // we use strstr as a level of safety.
-                 if (strstr(pszCwdBuffer, lpBuffer) != 0)
-                 {
-                     palError = ERROR_PATH_NOT_FOUND;
-                 }
-            }
-#endif // defined(HOST_AMD64)
-
             goto LExit;
         }
         lpFilename = lpExistingPath;
@@ -365,7 +337,7 @@ CorUnix::InternalCanonicalizeRealPath(LPCSTR lpUnixPath, PathCharString& lpBuffe
         // check if we are going to truncate the "/" corresponding to the
         // root folder (e.g. case of "/Volumes"). If so:
         //
-        // 1) Set the seperator to point to the NULL terminator of the specified
+        // 1) Set the separator to point to the NULL terminator of the specified
         //    file/folder name.
         //
         // 2) Null terminate lpBuffer
@@ -390,32 +362,6 @@ CorUnix::InternalCanonicalizeRealPath(LPCSTR lpUnixPath, PathCharString& lpBuffe
         {
             WARN("realpath() failed with error %d\n", errno);
             palError = FILEGetLastErrorFromErrno();
-
-#if defined(HOST_AMD64)
-            // If we are here, then we tried to invoke realpath
-            // against a directory after stripping out the filename
-            // from the original path.
-            //
-            // On Mac64, realpath implementation differs from Mac32
-            // by *not* supporting invalid filenames in the path (while
-            // Mac32 implementation does).
-            //
-            // Thus, if we are here, and the error code we see is
-            // ERROR_FILE_NOT_FOUND, then we should map it to
-            // ERROR_PATH_NOT_FOUND since it was a directory that
-            // was not found (and not a file).
-            if (palError == ERROR_FILE_NOT_FOUND)
-            {
-                // Since lpBuffer can be modified by the realpath call,
-                // and can result in a truncated subset of the original buffer,
-                // we use strstr as a level of safety.
-                if (strstr(lpExistingPath, lpBuffer) != 0)
-                 {
-                     palError = ERROR_PATH_NOT_FOUND;
-                 }
-            }
-#endif // defined(HOST_AMD64)
-
             goto LExit;
         }
 
@@ -1667,7 +1613,7 @@ GetFileAttributesExW(
     attr_data = (LPWIN32_FILE_ATTRIBUTE_DATA)lpFileInformation;
 
     attr_data->dwFileAttributes = GetFileAttributesW(lpFileName);
-    /* assume that GetFileAttributes will call SetLastError appropriately */
+    /* assume that GetFileAttributesW will call SetLastError appropriately */
     if ( attr_data->dwFileAttributes == (DWORD)-1 )
     {
         goto done;
@@ -1803,7 +1749,7 @@ SetFileAttributesA(
     new_mode = stat_data.st_mode;
     TRACE("st_mode is %#x\n", new_mode);
 
-    /* if we can't do GetFileAttributes on it, don't do SetFileAttributes */
+    /* if we can't do GetFileAttributesA on it, don't do SetFileAttributesA */
     if ( !(new_mode & S_IFREG) && !(new_mode & S_IFDIR) )
     {
         ERROR("Not a regular file or directory, S_IFMT is %#x\n",
@@ -3592,10 +3538,10 @@ CopyFileA(
     }
 
     /* Need to preserve the file attributes */
-    dwSrcFileAttributes = GetFileAttributes(lpExistingFileName);
+    dwSrcFileAttributes = GetFileAttributesA(lpExistingFileName);
     if (dwSrcFileAttributes == 0xffffffff)
     {
-        ERROR("GetFileAttributes failed for %s\n", lpExistingFileName);
+        ERROR("GetFileAttributesA failed for %s\n", lpExistingFileName);
         goto done;
     }
 

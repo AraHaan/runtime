@@ -56,7 +56,7 @@ void SpinLock::Init(LOCK_TYPE type, bool RequireCoopGC)
 
     while (TRUE)
     {
-        LONG curValue = FastInterlockCompareExchange((LONG*)&m_Initialized, BeingInitialized, UnInitialized);
+        LONG curValue = InterlockedCompareExchange((LONG*)&m_Initialized, BeingInitialized, UnInitialized);
         if (curValue == Initialized)
         {
             return;
@@ -163,7 +163,7 @@ BOOL SpinLock::GetLockNoWait()
     CONTRACTL_END;
 
     {
-        if (VolatileLoad(&m_lock) == 0 && FastInterlockExchange (&m_lock, 1) == 0)
+        if (VolatileLoad(&m_lock) == 0 && InterlockedExchange (&m_lock, 1) == 0)
         {
             EE_LOCK_TAKEN(this);
             return 1;
@@ -277,12 +277,13 @@ void SpinLock::dbg_PreEnterLock()
     }
     CONTRACTL_END;
 
-    Thread* pThread = GetThread();
+    Thread* pThread = GetThreadNULLOk();
     if (pThread)
     {
         // SpinLock can not be nested.
         _ASSERTE ((pThread->m_StateNC & Thread::TSNC_OwnsSpinLock) == 0);
 
+        IncCantAllocCount();
         pThread->SetThreadStateNC(Thread::TSNC_OwnsSpinLock);
 
         if (!pThread->PreemptiveGCDisabled())
@@ -300,7 +301,7 @@ void SpinLock::dbg_EnterLock()
     }
     CONTRACTL_END;
 
-    Thread* pThread = GetThread();
+    Thread* pThread = GetThreadNULLOk();
     if (pThread)
     {
         INCONTRACT(pThread->BeginNoTriggerGC(__FILE__, __LINE__));
@@ -317,10 +318,11 @@ void SpinLock::dbg_LeaveLock()
     }
     CONTRACTL_END;
 
-    Thread* pThread = GetThread();
+    Thread* pThread = GetThreadNULLOk();
     if (pThread)
     {
         _ASSERTE ((pThread->m_StateNC & Thread::TSNC_OwnsSpinLock) != 0);
+        DecCantAllocCount();
         pThread->ResetThreadStateNC(Thread::TSNC_OwnsSpinLock);
         INCONTRACT(pThread->EndNoTriggerGC());
     }

@@ -4,9 +4,9 @@
 using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Kernel32
+    internal static partial class Kernel32
     {
         internal static class CommModemState
         {
@@ -15,8 +15,9 @@ internal partial class Interop
             internal const int MS_RLSD_ON = 0x80;
         }
 
-        [DllImport(Libraries.Kernel32, SetLastError = true, CharSet = CharSet.Auto)]
-        internal static extern bool GetCommModemStatus(
+        [LibraryImport(Libraries.Kernel32, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool GetCommModemStatus(
             SafeFileHandle hFile,
             ref int lpModemStat);
     }

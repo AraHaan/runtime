@@ -269,18 +269,8 @@ namespace System.ComponentModel.Composition.Primitives
         ///         properties.
         ///     </para>
         /// </remarks>
-        public override Expression<Func<ExportDefinition, bool>> Constraint
-        {
-            get
-            {
-                if (_constraint == null)
-                {
-                    _constraint = ConstraintServices.CreateConstraint(ContractName, RequiredTypeIdentity, RequiredMetadata, RequiredCreationPolicy);
-                }
-
-                return _constraint;
-            }
-        }
+        public override Expression<Func<ExportDefinition, bool>> Constraint =>
+            _constraint ??= ConstraintServices.CreateConstraint(ContractName, RequiredTypeIdentity, RequiredMetadata, RequiredCreationPolicy);
 
         /// <summary>
         ///     Executes an optimized version of the contraint given by the <see cref="Constraint"/> property
@@ -371,11 +361,11 @@ namespace System.ComponentModel.Composition.Primitives
         {
             var sb = new StringBuilder();
 
-            sb.Append(string.Format("\n\tContractName\t{0}", ContractName));
-            sb.Append(string.Format("\n\tRequiredTypeIdentity\t{0}", RequiredTypeIdentity));
+            sb.Append("\n\tContractName\t").Append(ContractName);
+            sb.Append("\n\tRequiredTypeIdentity\t").Append(RequiredTypeIdentity);
             if (_requiredCreationPolicy != CreationPolicy.Any)
             {
-                sb.Append(string.Format("\n\tRequiredCreationPolicy\t{0}", RequiredCreationPolicy));
+                sb.Append("\n\tRequiredCreationPolicy\t").Append(RequiredCreationPolicy);
             }
 
             if (_requiredMetadata.Any())
@@ -383,7 +373,7 @@ namespace System.ComponentModel.Composition.Primitives
                 sb.Append("\n\tRequiredMetadata");
                 foreach (KeyValuePair<string, Type> metadataItem in _requiredMetadata)
                 {
-                    sb.Append(string.Format("\n\t\t{0}\t({1})", metadataItem.Key, metadataItem.Value));
+                    sb.Append("\n\t\t").Append(metadataItem.Key).Append("\t(").Append(metadataItem.Value).Append(')');
                 }
             }
             return sb.ToString();

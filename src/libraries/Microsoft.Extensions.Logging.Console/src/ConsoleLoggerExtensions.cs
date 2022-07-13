@@ -16,10 +16,15 @@ namespace Microsoft.Extensions.Logging
     [UnsupportedOSPlatform("browser")]
     public static class ConsoleLoggerExtensions
     {
+        internal const string TrimmingRequiresUnreferencedCodeMessage = "TOptions's dependent types may have their members trimmed. Ensure all required members are preserved.";
+
         /// <summary>
         /// Adds a console logger named 'Console' to the factory.
         /// </summary>
         /// <param name="builder">The <see cref="ILoggingBuilder"/> to use.</param>
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode",
+            Justification = "AddConsoleFormatter and RegisterProviderOptions are only dangerous when the Options type cannot be statically analyzed, but that is not the case here. " +
+            "The DynamicallyAccessedMembers annotations on them will make sure to preserve the right members from the different options objects.")]
         public static ILoggingBuilder AddConsole(this ILoggingBuilder builder)
         {
             builder.AddConfiguration();
@@ -41,10 +46,7 @@ namespace Microsoft.Extensions.Logging
         /// <param name="configure">A delegate to configure the <see cref="ConsoleLogger"/>.</param>
         public static ILoggingBuilder AddConsole(this ILoggingBuilder builder, Action<ConsoleLoggerOptions> configure)
         {
-            if (configure == null)
-            {
-                throw new ArgumentNullException(nameof(configure));
-            }
+            ThrowHelper.ThrowIfNull(configure);
 
             builder.AddConsole();
             builder.Services.Configure(configure);
@@ -106,10 +108,8 @@ namespace Microsoft.Extensions.Logging
         internal static ILoggingBuilder AddConsoleWithFormatter<TOptions>(this ILoggingBuilder builder, string name, Action<TOptions> configure)
             where TOptions : ConsoleFormatterOptions
         {
-            if (configure == null)
-            {
-                throw new ArgumentNullException(nameof(configure));
-            }
+            ThrowHelper.ThrowIfNull(configure);
+
             builder.AddFormatterWithName(name);
             builder.Services.Configure(configure);
 
@@ -123,7 +123,8 @@ namespace Microsoft.Extensions.Logging
         /// Adds a custom console logger formatter 'TFormatter' to be configured with options 'TOptions'.
         /// </summary>
         /// <param name="builder">The <see cref="ILoggingBuilder"/> to use.</param>
-        public static ILoggingBuilder AddConsoleFormatter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TFormatter, TOptions>(this ILoggingBuilder builder)
+        [RequiresUnreferencedCode(TrimmingRequiresUnreferencedCodeMessage)]
+        public static ILoggingBuilder AddConsoleFormatter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TFormatter, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TOptions>(this ILoggingBuilder builder)
             where TOptions : ConsoleFormatterOptions
             where TFormatter : ConsoleFormatter
         {
@@ -141,14 +142,12 @@ namespace Microsoft.Extensions.Logging
         /// </summary>
         /// <param name="builder">The <see cref="ILoggingBuilder"/> to use.</param>
         /// <param name="configure">A delegate to configure options 'TOptions' for custom formatter 'TFormatter'.</param>
-        public static ILoggingBuilder AddConsoleFormatter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TFormatter, TOptions>(this ILoggingBuilder builder, Action<TOptions> configure)
+        [RequiresUnreferencedCode(TrimmingRequiresUnreferencedCodeMessage)]
+        public static ILoggingBuilder AddConsoleFormatter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TFormatter, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TOptions>(this ILoggingBuilder builder, Action<TOptions> configure)
             where TOptions : ConsoleFormatterOptions
             where TFormatter : ConsoleFormatter
         {
-            if (configure == null)
-            {
-                throw new ArgumentNullException(nameof(configure));
-            }
+            ThrowHelper.ThrowIfNull(configure);
 
             builder.AddConsoleFormatter<TFormatter, TOptions>();
             builder.Services.Configure(configure);
@@ -157,10 +156,11 @@ namespace Microsoft.Extensions.Logging
     }
 
     [UnsupportedOSPlatform("browser")]
-    internal class ConsoleLoggerFormatterConfigureOptions<TFormatter, TOptions> : ConfigureFromConfigurationOptions<TOptions>
+    internal sealed class ConsoleLoggerFormatterConfigureOptions<TFormatter, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TOptions> : ConfigureFromConfigurationOptions<TOptions>
         where TOptions : ConsoleFormatterOptions
         where TFormatter : ConsoleFormatter
     {
+        [RequiresUnreferencedCode(ConsoleLoggerExtensions.TrimmingRequiresUnreferencedCodeMessage)]
         public ConsoleLoggerFormatterConfigureOptions(ILoggerProviderConfiguration<ConsoleLoggerProvider> providerConfiguration) :
             base(providerConfiguration.Configuration.GetSection("FormatterOptions"))
         {
@@ -168,7 +168,7 @@ namespace Microsoft.Extensions.Logging
     }
 
     [UnsupportedOSPlatform("browser")]
-    internal class ConsoleLoggerFormatterOptionsChangeTokenSource<TFormatter, TOptions> : ConfigurationChangeTokenSource<TOptions>
+    internal sealed class ConsoleLoggerFormatterOptionsChangeTokenSource<TFormatter, TOptions> : ConfigurationChangeTokenSource<TOptions>
         where TOptions : ConsoleFormatterOptions
         where TFormatter : ConsoleFormatter
     {

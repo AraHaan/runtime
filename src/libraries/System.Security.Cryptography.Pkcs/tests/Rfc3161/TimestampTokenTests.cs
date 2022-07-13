@@ -85,10 +85,22 @@ namespace System.Security.Cryptography.Pkcs.Tests
 
                 using (var signerCert = new X509Certificate2(testData.ExternalCertificateBytes))
                 {
-                    // Assert.NoThrow
-                    signedCms.CheckSignature(
-                        new X509Certificate2Collection(signerCert),
-                        true);
+                    if (!SignatureSupport.SupportsRsaSha1Signatures &&
+                        signedCms.SignerInfos[0].SignatureAlgorithm.Value == Oids.Rsa &&
+                        signedCms.SignerInfos[0].DigestAlgorithm.Value == Oids.Sha1)
+                    {
+                        Assert.ThrowsAny<CryptographicException>(() => signedCms.CheckSignature(
+                            new X509Certificate2Collection(signerCert),
+                            true));
+                        return;
+                    }
+                    else
+                    {
+                        // Assert.NoThrow
+                        signedCms.CheckSignature(
+                            new X509Certificate2Collection(signerCert),
+                            true);
+                    }
                 }
             }
 
@@ -828,7 +840,10 @@ namespace System.Security.Cryptography.Pkcs.Tests
             long accuracyMicroSeconds = (long)(TimeSpan.FromMinutes(1).TotalMilliseconds * 1000);
 
             byte[] serialNumber = BitConverter.GetBytes(DateTimeOffset.UtcNow.Ticks);
-            Array.Reverse(serialNumber);
+            if (BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(serialNumber);
+            }
 
             Rfc3161TimestampTokenInfo info = new Rfc3161TimestampTokenInfo(
                 new Oid("0.0", "0.0"),

@@ -660,7 +660,12 @@ void Compiler::unwindReserveFunc(FuncInfoDsc* func)
 
     if (fgFirstColdBlock != nullptr)
     {
-        unwindReserveFuncHelper(func, false);
+#ifdef DEBUG
+        if (!JitConfig.JitFakeProcedureSplitting())
+#endif // DEBUG
+        {
+            unwindReserveFuncHelper(func, false);
+        }
     }
 }
 
@@ -712,8 +717,8 @@ void Compiler::unwindReserveFuncHelper(FuncInfoDsc* func, bool isHotCode)
         }
     }
 
-    BOOL isFunclet  = (func->funKind != FUNC_ROOT);
-    BOOL isColdCode = isHotCode ? FALSE : TRUE;
+    bool isFunclet  = (func->funKind != FUNC_ROOT);
+    bool isColdCode = !isHotCode;
 
     eeReserveUnwindInfo(isFunclet, isColdCode, unwindCodeBytes);
 }
@@ -805,7 +810,6 @@ void Compiler::unwindEmitFuncHelper(FuncInfoDsc* func, void* pHotCode, void* pCo
     else
     {
         assert(fgFirstColdBlock != nullptr);
-        assert(func->funKind == FUNC_ROOT); // No splitting of funclets.
 
         if (func->coldStartLoc == nullptr)
         {
@@ -849,7 +853,17 @@ void Compiler::unwindEmitFuncHelper(FuncInfoDsc* func, void* pHotCode, void* pCo
 
     if (isHotCode)
     {
-        assert(endOffset <= info.compTotalHotCodeSize);
+#ifdef DEBUG
+        if (JitConfig.JitFakeProcedureSplitting() && (fgFirstColdBlock != nullptr))
+        {
+            assert(endOffset <= info.compNativeCodeSize);
+        }
+        else
+#endif // DEBUG
+        {
+            assert(endOffset <= info.compTotalHotCodeSize);
+        }
+
         pColdCode = nullptr;
     }
     else
@@ -884,7 +898,12 @@ void Compiler::unwindEmitFunc(FuncInfoDsc* func, void* pHotCode, void* pColdCode
 
     if (pColdCode != nullptr)
     {
-        unwindEmitFuncHelper(func, pHotCode, pColdCode, false);
+#ifdef DEBUG
+        if (!JitConfig.JitFakeProcedureSplitting())
+#endif // DEBUG
+        {
+            unwindEmitFuncHelper(func, pHotCode, pColdCode, false);
+        }
     }
 }
 

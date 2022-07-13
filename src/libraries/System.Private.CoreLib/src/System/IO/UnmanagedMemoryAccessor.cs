@@ -12,8 +12,9 @@
 **
 ===========================================================*/
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Internal.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 
 namespace System.IO
 {
@@ -46,10 +47,8 @@ namespace System.IO
 
         protected void Initialize(SafeBuffer buffer, long offset, long capacity, FileAccess access)
         {
-            if (buffer == null)
-            {
-                throw new ArgumentNullException(nameof(buffer));
-            }
+            ArgumentNullException.ThrowIfNull(buffer);
+
             if (offset < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(offset), SR.ArgumentOutOfRange_NeedNonNegNum);
@@ -318,7 +317,7 @@ namespace System.IO
                 }
                 else
                 {
-                    throw new ArgumentException(SR.Format(SR.Argument_NotEnoughBytesToRead, typeof(T)), nameof(position));
+                    throw new ArgumentException(SR.Argument_NotEnoughBytesToRead, nameof(position));
                 }
             }
 
@@ -330,10 +329,8 @@ namespace System.IO
         // be used to modify the private members of a struct.
         public int ReadArray<T>(long position, T[] array, int offset, int count) where T : struct
         {
-            if (array == null)
-            {
-                throw new ArgumentNullException(nameof(array), SR.ArgumentNull_Buffer);
-            }
+            ArgumentNullException.ThrowIfNull(array);
+
             if (offset < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(offset), SR.ArgumentOutOfRange_NeedNonNegNum);
@@ -489,24 +486,22 @@ namespace System.IO
         {
             EnsureSafeToWrite(position, sizeof(decimal));
 
+            Span<int> bits = stackalloc int[4];
+            decimal.TryGetBits(value, bits, out int intsWritten);
+            Debug.Assert(intsWritten == 4);
+
             unsafe
             {
-                int* valuePtr = (int*)(&value);
-                int flags = *valuePtr;
-                int hi = *(valuePtr + 1);
-                int lo = *(valuePtr + 2);
-                int mid = *(valuePtr + 3);
-
                 byte* pointer = null;
                 try
                 {
                     _buffer.AcquirePointer(ref pointer);
                     pointer += (_offset + position);
 
-                    Unsafe.WriteUnaligned<int>(pointer, lo);
-                    Unsafe.WriteUnaligned<int>(pointer + 4, mid);
-                    Unsafe.WriteUnaligned<int>(pointer + 8, hi);
-                    Unsafe.WriteUnaligned<int>(pointer + 12, flags);
+                    Unsafe.WriteUnaligned<int>(pointer, bits[0]);
+                    Unsafe.WriteUnaligned<int>(pointer + 4, bits[1]);
+                    Unsafe.WriteUnaligned<int>(pointer + 8, bits[2]);
+                    Unsafe.WriteUnaligned<int>(pointer + 12, bits[3]);
                 }
                 finally
                 {
@@ -562,7 +557,7 @@ namespace System.IO
                 }
                 else
                 {
-                    throw new ArgumentException(SR.Format(SR.Argument_NotEnoughBytesToWrite, typeof(T)), nameof(position));
+                    throw new ArgumentException(SR.Argument_NotEnoughBytesToWrite, nameof(position));
                 }
             }
 
@@ -572,10 +567,8 @@ namespace System.IO
         // Writes 'count' structs of type T from 'array' (starting at 'offset') into unmanaged memory.
         public void WriteArray<T>(long position, T[] array, int offset, int count) where T : struct
         {
-            if (array == null)
-            {
-                throw new ArgumentNullException(nameof(array), SR.ArgumentNull_Buffer);
-            }
+            ArgumentNullException.ThrowIfNull(array);
+
             if (offset < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(offset), SR.ArgumentOutOfRange_NeedNonNegNum);

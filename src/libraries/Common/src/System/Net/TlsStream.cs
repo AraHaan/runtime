@@ -8,7 +8,7 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace System.Net
 {
-    internal class TlsStream : NetworkStream
+    internal sealed class TlsStream : NetworkStream
     {
         private readonly SslStream _sslStream;
         private readonly string _host;
@@ -80,10 +80,7 @@ namespace System.Net
         {
             base.Close();
 
-            if (_sslStream != null)
-            {
-                _sslStream.Close();
-            }
+            _sslStream?.Close();
         }
     }
 }

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Internal;
 
 namespace Microsoft.Extensions.DependencyInjection.ServiceLookup
 {
-    internal class CallSiteChain
+    internal sealed class CallSiteChain
     {
         private readonly Dictionary<Type, ChainItemInfo> _callSiteChain;
 
@@ -31,7 +31,7 @@ namespace Microsoft.Extensions.DependencyInjection.ServiceLookup
             _callSiteChain.Remove(serviceType);
         }
 
-        public void Add(Type serviceType, Type implementationType = null)
+        public void Add(Type serviceType, Type? implementationType = null)
         {
             _callSiteChain[serviceType] = new ChainItemInfo(_callSiteChain.Count, implementationType);
         }
@@ -39,7 +39,7 @@ namespace Microsoft.Extensions.DependencyInjection.ServiceLookup
         private string CreateCircularDependencyExceptionMessage(Type type)
         {
             var messageBuilder = new StringBuilder();
-            messageBuilder.AppendFormat(SR.CircularDependencyException, TypeNameHelper.GetTypeDisplayName(type));
+            messageBuilder.Append(SR.Format(SR.CircularDependencyException, TypeNameHelper.GetTypeDisplayName(type)));
             messageBuilder.AppendLine();
 
             AppendResolutionPath(messageBuilder, type);
@@ -47,12 +47,15 @@ namespace Microsoft.Extensions.DependencyInjection.ServiceLookup
             return messageBuilder.ToString();
         }
 
-        private void AppendResolutionPath(StringBuilder builder, Type currentlyResolving = null)
+        private void AppendResolutionPath(StringBuilder builder, Type currentlyResolving)
         {
-            foreach (KeyValuePair<Type, ChainItemInfo> pair in _callSiteChain.OrderBy(p => p.Value.Order))
+            var ordered = new List<KeyValuePair<Type, ChainItemInfo>>(_callSiteChain);
+            ordered.Sort((a, b) => a.Value.Order.CompareTo(b.Value.Order));
+
+            foreach (KeyValuePair<Type, ChainItemInfo> pair in ordered)
             {
                 Type serviceType = pair.Key;
-                Type implementationType = pair.Value.ImplementationType;
+                Type? implementationType = pair.Value.ImplementationType;
                 if (implementationType == null || serviceType == implementationType)
                 {
                     builder.Append(TypeNameHelper.GetTypeDisplayName(serviceType));
@@ -70,12 +73,12 @@ namespace Microsoft.Extensions.DependencyInjection.ServiceLookup
             builder.Append(TypeNameHelper.GetTypeDisplayName(currentlyResolving));
         }
 
-        private struct ChainItemInfo
+        private readonly struct ChainItemInfo
         {
             public int Order { get; }
-            public Type ImplementationType { get; }
+            public Type? ImplementationType { get; }
 
-            public ChainItemInfo(int order, Type implementationType)
+            public ChainItemInfo(int order, Type? implementationType)
             {
                 Order = order;
                 ImplementationType = implementationType;

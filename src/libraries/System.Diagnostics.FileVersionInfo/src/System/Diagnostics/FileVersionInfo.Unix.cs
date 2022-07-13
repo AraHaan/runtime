@@ -1,7 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic;
 using System.IO;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
@@ -14,6 +13,15 @@ namespace System.Diagnostics
         {
             _fileName = fileName;
 
+            // First make sure it's a file we can actually read from.  Only regular files are relevant,
+            // and attempting to open and read from a file such as a named pipe file could cause us to
+            // stop responding (waiting for someone else to open and write to the file).
+            if (Interop.Sys.Stat(_fileName, out Interop.Sys.FileStatus fileStatus) != 0 ||
+                (fileStatus.Mode & Interop.Sys.FileTypes.S_IFMT) != Interop.Sys.FileTypes.S_IFREG)
+            {
+                throw new FileNotFoundException(SR.Format(SR.IO_FileNotFound_FileName, _fileName), _fileName);
+            }
+
             // For managed assemblies, read the file version information from the assembly's metadata.
             // This isn't quite what's done on Windows, which uses the Win32 GetFileVersionInfo to read
             // the Win32 resource information from the file, and the managed compiler uses these attributes
@@ -23,33 +31,22 @@ namespace System.Diagnostics
             // that this should match for all intents and purposes.  If this ever becomes a problem,
             // we can implement a full-fledged Win32 resource parser; that would also enable support
             // for native Win32 PE files on Unix, but that should also be an extremely rare case.
-            if (!TryLoadManagedAssemblyMetadata())
-            {
-                // We could try to parse Executable and Linkable Format (ELF) files, but at present
-                // for executables they don't store version information, which is typically just
-                // available in the filename itself.  For now, we won't do anything special, but
-                // we can add more cases here as we find need and opportunity.
-            }
+            _ = TryLoadManagedAssemblyMetadata();
+
+            // If TryLoadManagedAssemblyMetadata returns false, we could try to parse Executable and Linkable
+            // Format (ELF) files, but at present for executables they don't store version information, which
+            // is typically just available in the filename itself. For now, we won't do anything special, but
+            // we can add more cases here as we find need and opportunity.
         }
 
         /// <summary>Attempt to load our fields from the metadata of the file, if it's a managed assembly.</summary>
         /// <returns>true if the file is a managed assembly; otherwise, false.</returns>
         private bool TryLoadManagedAssemblyMetadata()
         {
-            // First make sure it's a file we can actually read from.  Only regular files are relevant,
-            // and attempting to open and read from a file such as a named pipe file could cause us to
-            // stop responding (waiting for someone else to open and write to the file).
-            Interop.Sys.FileStatus fileStatus;
-            if (Interop.Sys.Stat(_fileName, out fileStatus) != 0 ||
-                (fileStatus.Mode & Interop.Sys.FileTypes.S_IFMT) != Interop.Sys.FileTypes.S_IFREG)
-            {
-                throw new FileNotFoundException(SR.Format(SR.IO_FileNotFound_FileName, _fileName), _fileName);
-            }
-
             try
             {
                 // Try to load the file using the managed metadata reader
-                using (FileStream assemblyStream = new FileStream(_fileName, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 0x1000, useAsync: false))
+                using (FileStream assemblyStream = File.OpenRead(_fileName))
                 using (PEReader peReader = new PEReader(assemblyStream))
                 {
                     if (peReader.HasMetadata)
@@ -63,7 +60,14 @@ namespace System.Diagnostics
                     }
                 }
             }
-            catch (BadImageFormatException) { }
+            catch
+            {
+                // Obtaining this information is best effort and should not throw.
+                // Possible exceptions include BadImageFormatException if the file isn't an assembly,
+                // UnauthorizedAccessException if the caller doesn't have permissions to read the file,
+                // and other potential exceptions thrown by the FileStream ctor.
+            }
+
             return false;
         }
 
@@ -229,7 +233,7 @@ namespace System.Diagnostics
             for (int index = 0; index < s.Length; index++)
             {
                 char c = s[index];
-                if (c < '0' || c > '9')
+                if (!char.IsAsciiDigit(c))
                 {
                     endedEarly = true;
                     break;

@@ -20,19 +20,17 @@ namespace System.Text
 
         public EncoderReplacementFallback(string replacement)
         {
-            // Must not be null
-            if (replacement == null)
-                throw new ArgumentNullException(nameof(replacement));
+            ArgumentNullException.ThrowIfNull(replacement);
 
             // Make sure it doesn't have bad surrogate pairs
             bool bFoundHigh = false;
-            for (int i = 0; i < replacement.Length; i++)
+            foreach (char c in replacement)
             {
                 // Found a surrogate?
-                if (char.IsSurrogate(replacement, i))
+                if (char.IsSurrogate(c))
                 {
                     // High or Low?
-                    if (char.IsHighSurrogate(replacement, i))
+                    if (char.IsHighSurrogate(c))
                     {
                         // if already had a high one, stop
                         if (bFoundHigh)
@@ -58,7 +56,7 @@ namespace System.Text
                     break;
             }
             if (bFoundHigh)
-                throw new ArgumentException(SR.Format(SR.Argument_InvalidCharSequenceNoIndex, nameof(replacement)));
+                throw new ArgumentException(SR.Argument_InvalidCharSequenceNoIndex, nameof(replacement));
 
             _strDefault = replacement;
         }

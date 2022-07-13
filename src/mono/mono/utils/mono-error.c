@@ -10,7 +10,7 @@
 #include <glib.h>
 
 #include <config.h>
-#include "mono-error.h"
+#include <mono/utils/mono-error.h>
 #include "mono-error-internals.h"
 
 #include <mono/metadata/exception.h>
@@ -26,7 +26,7 @@
 #define set_error_message() do { \
 	va_list args; \
 	va_start (args, msg_format); \
-	set_error_messagev();	     \
+	set_error_messagev(); \
 	va_end (args); \
 } while (0)
 
@@ -275,7 +275,7 @@ mono_error_set_error (MonoError *oerror, int error_code, const char *msg_format,
 	MonoErrorInternal *error = (MonoErrorInternal*)oerror;
 	mono_error_prepare (error);
 
-	error->error_code = error_code;
+	error->error_code = GINT_TO_UINT16 (error_code);
 	set_error_message ();
 }
 
@@ -311,7 +311,7 @@ mono_error_set_class (MonoError *oerror, MonoClass *klass)
 
 	if (is_managed_exception (error))
 		return;
-	error->exn.klass = klass;	
+	error->exn.klass = klass;
 }
 
 static void
@@ -370,7 +370,7 @@ mono_error_set_specific (MonoError *oerror, int error_code, const char *message)
 	MonoErrorInternal *error = (MonoErrorInternal*)oerror;
 	mono_error_prepare (error);
 
-	error->error_code = error_code;
+	error->error_code = GINT_TO_UINT16 (error_code);
 	error->full_message = message;
 	error->flags |= MONO_ERROR_FREE_STRINGS;
 }
@@ -584,29 +584,29 @@ mono_error_set_not_verifiable (MonoError *oerror, MonoMethod *method, const char
 
 /* Used by mono_error_prepare_exception - it sets its own error on mono_string_new_checked failure. */
 static MonoStringHandle
-string_new_cleanup (MonoDomain *domain, const char *text)
+string_new_cleanup (const char *text)
 {
 	ERROR_DECL (ignored_err);
-	MonoStringHandle result = mono_string_new_handle (domain, text, ignored_err);
+	MonoStringHandle result = mono_string_new_handle (text, ignored_err);
 	mono_error_cleanup (ignored_err);
 	return result;
 }
 
 static MonoStringHandle
-get_type_name_as_mono_string (MonoErrorInternal *error, MonoDomain *domain, MonoError *error_out)
+get_type_name_as_mono_string (MonoErrorInternal *error, MonoError *error_out)
 {
 	HANDLE_FUNCTION_ENTER ();
 
 	MonoStringHandle res = NULL_HANDLE_STRING;
 
 	if (error->type_name) {
-		res = string_new_cleanup (domain, error->type_name);
+		res = string_new_cleanup (error->type_name);
 	} else {
 		MonoClass *klass = get_class (error);
 		if (klass) {
 			char *name = mono_type_full_name (m_class_get_byval_arg (klass));
 			if (name) {
-				res = string_new_cleanup (domain, name);
+				res = string_new_cleanup (name);
 				g_free (name);
 			}
 		}
@@ -636,7 +636,6 @@ mono_error_prepare_exception (MonoError *oerror, MonoError *error_out)
 	MonoErrorInternal *error = (MonoErrorInternal*)oerror;
 
 	MonoExceptionHandle exception = MONO_HANDLE_CAST (MonoException, mono_new_null ());
-	MonoDomain *domain = mono_domain_get ();
 	char *type_name = NULL;
 	char *message = NULL;
 
@@ -667,29 +666,29 @@ mono_error_prepare_exception (MonoError *oerror, MonoError *error_out)
 		break;
 
 	case MONO_ERROR_TYPE_LOAD: {
-		MonoStringHandle assembly_name;
-		MonoStringHandle type_name;
+		MonoStringHandle assembly_name_str;
+		MonoStringHandle type_name_str;
 
 		if ((error->type_name && error->assembly_name) || error->exn.klass) {
-			type_name = get_type_name_as_mono_string (error, domain, error_out);
+			type_name_str = get_type_name_as_mono_string (error, error_out);
 			if (!is_ok (error_out))
 				break;
 
 			if (error->assembly_name) {
-				assembly_name = string_new_cleanup (domain, error->assembly_name);
-				if (MONO_HANDLE_IS_NULL (assembly_name)) {
+				assembly_name_str = string_new_cleanup (error->assembly_name);
+				if (MONO_HANDLE_IS_NULL (assembly_name_str)) {
 					mono_error_set_out_of_memory (error_out, "Could not allocate assembly name");
 					break;
 				}
 			} else {
-				assembly_name = mono_string_empty_handle (domain);
+				assembly_name_str = mono_string_empty_handle ();
 			}
 
-			exception = mono_exception_from_name_two_strings_checked (mono_get_corlib (), "System", "TypeLoadException", type_name, assembly_name, error_out);
+			exception = mono_exception_from_name_two_strings_checked (mono_get_corlib (), "System", "TypeLoadException", type_name_str, assembly_name_str, error_out);
 			if (!MONO_HANDLE_IS_NULL (exception)) {
 				const char *full_message = error->full_message;
 				if (full_message && full_message [0]) {
-					MonoStringHandle msg = string_new_cleanup (mono_domain_get (), full_message);	
+					MonoStringHandle msg = string_new_cleanup (full_message);
 					if (!MONO_HANDLE_IS_NULL (msg))
 						MONO_HANDLE_SET (exception, message, msg);
 					else
@@ -702,13 +701,14 @@ mono_error_prepare_exception (MonoError *oerror, MonoError *error_out)
 	}
 	break;
 
-	case MONO_ERROR_OUT_OF_MEMORY:
+	case MONO_ERROR_OUT_OF_MEMORY: {
+		MonoDomain *domain = mono_domain_get ();
 		if (domain)
 			exception = MONO_HANDLE_NEW (MonoException, domain->out_of_memory_ex);
 		if (MONO_HANDLE_IS_NULL (exception))
 			exception = mono_get_exception_out_of_memory_handle ();
 		break;
-
+	}
 	case MONO_ERROR_ARGUMENT:
 		exception = mono_exception_new_argument (error->first_argument, error->full_message, error_out);
 		break;
@@ -716,9 +716,9 @@ mono_error_prepare_exception (MonoError *oerror, MonoError *error_out)
 	case MONO_ERROR_ARGUMENT_NULL:
 		exception = mono_exception_new_argument_null (error->first_argument, error_out);
 		break;
-	
-	case MONO_ERROR_ARGUMENT_OUT_OF_RANGE: 
-		exception = mono_exception_new_argument_out_of_range(error->first_argument, error->full_message, error_out); 
+
+	case MONO_ERROR_ARGUMENT_OUT_OF_RANGE:
+		exception = mono_exception_new_argument_out_of_range(error->first_argument, error->full_message, error_out);
 		break;
 
 	case MONO_ERROR_NOT_VERIFIABLE:
@@ -852,7 +852,7 @@ mono_error_box (const MonoError *ierror, MonoImage *image)
 	to->exn.klass = from->exn.klass;
 
 #undef DUP_STR
-	
+
 	return box;
 }
 
@@ -896,7 +896,7 @@ mono_error_set_from_boxed (MonoError *oerror, const MonoErrorBoxed *box)
 	DUP_STR (full_message_with_fields);
 	DUP_STR (first_argument);
 	to->exn.klass = from->exn.klass;
-		  
+
 #undef DUP_STR
 	return (to->flags & MONO_ERROR_INCOMPLETE) == 0 ;
 }

@@ -5755,7 +5755,14 @@ namespace System.Xml.Tests
                         w.WriteBinHex(Wbase64, 0, (int)Wbase64len);
                         w.WriteEndElement();
                     }
-                    Assert.True(utils.CompareReader("<root a='610062006300' />"));
+                    if (System.BitConverter.IsLittleEndian)
+                    {
+                        Assert.True(utils.CompareReader("<root a='610062006300' />"));
+                    }
+                    else
+                    {
+                        Assert.True(utils.CompareReader("<root a='006100620063' />"));
+                    }
                 }
 
                 // Call WriteBinHex and verify results can be read as a string
@@ -5777,7 +5784,14 @@ namespace System.Xml.Tests
                         w.WriteBinHex(Wbase64, 0, (int)Wbase64len);
                         w.WriteEndElement();
                     }
-                    Assert.True(utils.CompareReader("<root>610062006300</root>"));
+                    if (System.BitConverter.IsLittleEndian)
+                    {
+                        Assert.True(utils.CompareReader("<root>610062006300</root>"));
+                    }
+                    else
+                    {
+                        Assert.True(utils.CompareReader("<root>006100620063</root>"));
+                    }
                 }
             }
 
@@ -6338,12 +6352,12 @@ namespace System.Xml.Tests
                 [XmlWriterInlineData]
                 public void var_1(XmlWriterUtils utils)
                 {
-                    using (XmlWriter writer = utils.CreateWriter())
-                    {
-                        writer.WriteStartElement("Root");
-                        writer.WriteStartElement("Nesting");
-                        writer.WriteStartElement("SomeDeep");
-                    }
+                    XmlWriter writer = utils.CreateWriter();
+                    writer.WriteStartElement("Root");
+                    writer.WriteStartElement("Nesting");
+                    writer.WriteStartElement("SomeDeep");
+                    writer.Close();
+
                     Assert.True(utils.CompareReader("<Root><Nesting><SomeDeep /></Nesting></Root>"));
                 }
 

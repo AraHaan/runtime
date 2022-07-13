@@ -41,6 +41,18 @@ struct FakeHeapList
     DWORD_PTR           pHdrMap;        // changed from DWORD*
     size_t              maxCodeHeapSize;
     size_t              reserveForJumpStubs;
+#if defined(TARGET_AMD64) || defined(TARGET_ARM64)
+    DWORD_PTR           CLRPersonalityRoutine;
+#endif
+
+    DWORD_PTR GetModuleBase()
+    {
+#if defined(TARGET_AMD64) || defined(TARGET_ARM64)
+        return CLRPersonalityRoutine;
+#else
+        return mapBase;
+#endif
+    }
 };
 
 typedef struct _FakeHpRealCodeHdr
@@ -88,31 +100,6 @@ struct FakeStubUnwindInfoHeapSegment
     FakeStubUnwindInfoHeapSegment *pNext;
 };
 
-#define FAKE_STUB_EXTERNAL_ENTRY_BIT 0x40000000
-#define FAKE_STUB_INTERCEPT_BIT     0x10000000
-#define FAKE_STUB_UNWIND_INFO_BIT   0x08000000
-
-#ifdef _DEBUG
-#define FAKE_STUB_SIGNATURE         0x42555453
-#endif
-
-struct FakeStub
-{
-    ULONG   m_refcount;
-    ULONG   m_patchOffset;
-
-    UINT    m_numCodeBytes;
-#ifdef _DEBUG
-    UINT32  m_signature;
-#else
-#ifdef HOST_64BIT
-    //README ALIGNMENT: in retail mode UINT m_numCodeBytes does not align to 16byte for the code
-    //                   after the Stub struct. This is to pad properly
-    UINT    m_pad_code_bytes;
-#endif // HOST_64BIT
-#endif // _DEBUG
-};
-
 #endif // DEBUGSUPPORT_STUBS_HAVE_UNWIND_INFO
 
 
@@ -155,35 +142,9 @@ class CheckDuplicatedStructLayouts
     CHECK_OFFSET(StubUnwindInfoHeapSegment, pUnwindHeaderList);
     CHECK_OFFSET(StubUnwindInfoHeapSegment, pNext);
 
-
-    CHECK_OFFSET(Stub, m_refcount);
-    CHECK_OFFSET(Stub, m_patchOffset);
-    CHECK_OFFSET(Stub, m_numCodeBytes);
-#ifdef _DEBUG
-    CHECK_OFFSET(Stub, m_signature);
-#endif // _DEBUG
-
 #endif // DEBUGSUPPORT_STUBS_HAVE_UNWIND_INFO
 
 #undef CHECK_OFFSET
-
-#ifdef DEBUGSUPPORT_STUBS_HAVE_UNWIND_INFO
-
-    static_assert_no_msg(       Stub::EXTERNAL_ENTRY_BIT
-             == FAKE_STUB_EXTERNAL_ENTRY_BIT);
-
-    static_assert_no_msg(       Stub::INTERCEPT_BIT
-             == FAKE_STUB_INTERCEPT_BIT);
-
-    static_assert_no_msg(       Stub::UNWIND_INFO_BIT
-             == FAKE_STUB_UNWIND_INFO_BIT);
-
-#ifdef _DEBUG
-    static_assert_no_msg(   FAKE_STUB_SIGNATURE
-             == Stub::kUsedStub);
-#endif
-
-#endif // DEBUGSUPPORT_STUBS_HAVE_UNWIND_INFO
 };
 
 #ifdef DEBUGSUPPORT_STUBS_HAVE_UNWIND_INFO

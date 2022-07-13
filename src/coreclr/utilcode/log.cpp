@@ -47,16 +47,16 @@ VOID InitLogging()
         // <TODO>FIX bit of a workaround for now, check for the log file in the
         // registry and if there, turn on file logging VPM</TODO>
 
-    LogFlags |= REGUTIL::GetConfigFlag_DontUse_(CLRConfig::INTERNAL_LogEnable, LOG_ENABLE);
-    LogFacilityMask = REGUTIL::GetConfigDWORD_DontUse_(CLRConfig::INTERNAL_LogFacility, LogFacilityMask) | LF_ALWAYS;
-    LogVMLevel = REGUTIL::GetConfigDWORD_DontUse_(CLRConfig::EXTERNAL_LogLevel, LogVMLevel);
-    LogFlags |= REGUTIL::GetConfigFlag_DontUse_(CLRConfig::INTERNAL_LogFileAppend, LOG_ENABLE_APPEND_FILE);
-    LogFlags |= REGUTIL::GetConfigFlag_DontUse_(CLRConfig::INTERNAL_LogFlushFile,  LOG_ENABLE_FLUSH_FILE);
-    LogFlags |= REGUTIL::GetConfigFlag_DontUse_(CLRConfig::INTERNAL_LogToDebugger, LOG_ENABLE_DEBUGGER_LOGGING);
-    LogFlags |= REGUTIL::GetConfigFlag_DontUse_(CLRConfig::INTERNAL_LogToFile,     LOG_ENABLE_FILE_LOGGING);
-    LogFlags |= REGUTIL::GetConfigFlag_DontUse_(CLRConfig::INTERNAL_LogToConsole,  LOG_ENABLE_CONSOLE_LOGGING);
+    LogFlags |= (CLRConfig::GetConfigValue(CLRConfig::INTERNAL_LogEnable) != 0) ? LOG_ENABLE : 0;
+    LogFacilityMask = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_LogFacility, LogFacilityMask) | LF_ALWAYS;
+    LogVMLevel = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_LogLevel, LogVMLevel);
+    LogFlags |= (CLRConfig::GetConfigValue(CLRConfig::INTERNAL_LogFileAppend) != 0) ? LOG_ENABLE_APPEND_FILE : 0;
+    LogFlags |= (CLRConfig::GetConfigValue(CLRConfig::INTERNAL_LogFlushFile) != 0) ? LOG_ENABLE_FLUSH_FILE : 0;
+    LogFlags |= (CLRConfig::GetConfigValue(CLRConfig::INTERNAL_LogToDebugger) != 0) ? LOG_ENABLE_DEBUGGER_LOGGING : 0;
+    LogFlags |= (CLRConfig::GetConfigValue(CLRConfig::INTERNAL_LogToFile) != 0) ? LOG_ENABLE_FILE_LOGGING : 0;
+    LogFlags |= (CLRConfig::GetConfigValue(CLRConfig::INTERNAL_LogToConsole) != 0) ? LOG_ENABLE_CONSOLE_LOGGING : 0;
 
-    LogFacilityMask2 = REGUTIL::GetConfigDWORD_DontUse_(CLRConfig::INTERNAL_LogFacility2, LogFacilityMask2) | LF_ALWAYS;
+    LogFacilityMask2 = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_LogFacility2, LogFacilityMask2) | LF_ALWAYS;
 
     if (SUCCEEDED(szLogFileName.ReSizeNoThrow(MAX_LONGPATH)))
     {
@@ -73,11 +73,13 @@ VOID InitLogging()
         delete fileName;
     }
 
-    if (REGUTIL::GetConfigDWORD_DontUse_(CLRConfig::INTERNAL_LogWithPid, FALSE))
+    if (CLRConfig::GetConfigValue(CLRConfig::INTERNAL_LogWithPid))
     {
-        WCHAR szPid[20];
-        swprintf_s(szPid, COUNTOF(szPid), W(".%d"), GetCurrentProcessId());
-        wcscat_s(szLogFileName.Ptr(), szLogFileName.Size(), szPid);
+        WCHAR pidSuffix[ARRAY_SIZE(".") + MaxUnsigned32BitDecString] = W(".");
+        DWORD pid = GetCurrentProcessId();
+        FormatInteger(pidSuffix + 1, ARRAY_SIZE(pidSuffix) - 1, "%u", pid);
+        // Append the format ".%u" to the end of the file name
+        wcscat_s(szLogFileName.Ptr(), szLogFileName.Size(), pidSuffix);
     }
 
     if ((LogFlags & LOG_ENABLE) &&
@@ -136,8 +138,6 @@ VOID InitLogging()
                 WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), msg, (DWORD)strlen(msg), &written, 0);
             }
         }
-        if (LogFileHandle == INVALID_HANDLE_VALUE)
-            UtilMessageBoxNonLocalized(NULL, W("Could not open log file"), W("CLR logging"), MB_OK | MB_ICONINFORMATION, FALSE, TRUE);
         if (LogFileHandle != INVALID_HANDLE_VALUE)
         {
             if (LogFlags & LOG_ENABLE_APPEND_FILE)
@@ -323,7 +323,7 @@ VOID LogSpewAlwaysValist(const char *fmt, va_list args)
     static bool needsPrefix = true;
 
     if (needsPrefix)
-        buflen = sprintf_s(pBuffer, COUNTOF(rgchBuffer), "TID %04x: ", GetCurrentThreadId());
+        buflen = sprintf_s(pBuffer, ARRAY_SIZE(rgchBuffer), "TID %04x: ", GetCurrentThreadId());
 
     needsPrefix = (fmt[strlen(fmt)-1] == '\n');
 

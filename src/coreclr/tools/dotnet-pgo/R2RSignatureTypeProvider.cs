@@ -1,7 +1,9 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection.Metadata;
 using ILCompiler.Reflection.ReadyToRun;
@@ -97,7 +99,11 @@ namespace Microsoft.Diagnostics.Tools.Pgo
         MethodDesc IR2RSignatureTypeProvider<TypeDesc, MethodDesc, R2RSigProviderContext>.GetMethodFromMemberRef(MetadataReader reader, MemberReferenceHandle handle, TypeDesc owningTypeOverride)
         {
             var ecmaModule = (EcmaModule)_tsc.GetModuleForSimpleName(reader.GetString(reader.GetAssemblyDefinition().Name));
-            var method = (MethodDesc)ecmaModule.GetObject(handle);
+            var method = (MethodDesc)ecmaModule.GetObject(handle, NotFoundBehavior.ReturnNull);
+            if (method == null)
+            {
+                return null;
+            }
             if (owningTypeOverride != null)
             {
                 return _tsc.GetMethodForInstantiatedType(method.GetTypicalMethodDefinition(), (InstantiatedType)owningTypeOverride);
@@ -105,15 +111,27 @@ namespace Microsoft.Diagnostics.Tools.Pgo
             return method;
         }
 
-        MethodDesc IR2RSignatureTypeProvider<TypeDesc, MethodDesc, R2RSigProviderContext>.GetMethodFromMethodDef(MetadataReader reader, MethodDefinitionHandle handle, TypeDesc owningTypeOverride)
+        protected MethodDesc GetMethodFromMethodDef(MetadataReader reader, MethodDefinitionHandle handle, TypeDesc owningTypeOverride)
         {
             var ecmaModule = (EcmaModule)_tsc.GetModuleForSimpleName(reader.GetString(reader.GetAssemblyDefinition().Name));
-            var method = (MethodDesc)ecmaModule.GetObject(handle);
+            var method = (MethodDesc)ecmaModule.GetObject(handle, NotFoundBehavior.ReturnNull);
+            if (method == null)
+            {
+                return null;
+            }
             if (owningTypeOverride != null)
             {
-                return _tsc.GetMethodForInstantiatedType(method.GetTypicalMethodDefinition(), (InstantiatedType)owningTypeOverride);
+                if (owningTypeOverride != method.OwningType)
+                {
+                    return _tsc.GetMethodForInstantiatedType(method.GetTypicalMethodDefinition(), (InstantiatedType)owningTypeOverride);
+                }
             }
             return method;
+        }
+
+        MethodDesc IR2RSignatureTypeProvider<TypeDesc, MethodDesc, R2RSigProviderContext>.GetMethodFromMethodDef(MetadataReader reader, MethodDefinitionHandle handle, TypeDesc owningTypeOverride)
+        {
+            return GetMethodFromMethodDef(reader, handle, owningTypeOverride);
         }
 
         MethodDesc IR2RSignatureTypeProvider<TypeDesc, MethodDesc, R2RSigProviderContext>.GetMethodWithFlags(ReadyToRunMethodSigFlags flags, MethodDesc method)
@@ -214,19 +232,42 @@ namespace Microsoft.Diagnostics.Tools.Pgo
         TypeDesc ISimpleTypeProvider<TypeDesc>.GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind)
         {
             var ecmaModule = (EcmaModule)_tsc.GetModuleForSimpleName(reader.GetString(reader.GetAssemblyDefinition().Name));
-            return (TypeDesc)ecmaModule.GetObject(handle);
+            return (TypeDesc)ecmaModule.GetObject(handle, NotFoundBehavior.ReturnNull);
         }
 
         TypeDesc ISimpleTypeProvider<TypeDesc>.GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind)
         {
             var ecmaModule = (EcmaModule)_tsc.GetModuleForSimpleName(reader.GetString(reader.GetAssemblyDefinition().Name));
-            return (TypeDesc)ecmaModule.GetObject(handle);
+            return (TypeDesc)ecmaModule.GetObject(handle, NotFoundBehavior.ReturnNull);
         }
 
         TypeDesc ISignatureTypeProvider<TypeDesc, R2RSigProviderContext>.GetTypeFromSpecification(MetadataReader reader, R2RSigProviderContext genericContext, TypeSpecificationHandle handle, byte rawTypeKind)
         {
             var ecmaModule = (EcmaModule)_tsc.GetModuleForSimpleName(reader.GetString(reader.GetAssemblyDefinition().Name));
-            return (TypeDesc)ecmaModule.GetObject(handle);
+            return (TypeDesc)ecmaModule.GetObject(handle, NotFoundBehavior.ReturnNull);
+        }
+    }
+
+    class R2RSignatureTypeProviderForGlobalTables : R2RSignatureTypeProvider, IR2RSignatureTypeProvider<TypeDesc, MethodDesc, R2RSigProviderContext>
+    {
+        public R2RSignatureTypeProviderForGlobalTables(TraceTypeSystemContext tsc) : base(tsc)
+        {
+        }
+
+        MethodDesc IR2RSignatureTypeProvider<TypeDesc, MethodDesc, R2RSigProviderContext>.GetMethodFromMethodDef(MetadataReader reader, MethodDefinitionHandle handle, TypeDesc owningTypeOverride)
+        {
+            if (owningTypeOverride != null)
+            {
+                reader = ((EcmaModule)((MetadataType)owningTypeOverride.GetTypeDefinition()).Module).MetadataReader;
+            }
+            Debug.Assert(reader != null);
+            return GetMethodFromMethodDef(reader, handle, owningTypeOverride);
+        }
+
+        MethodDesc IR2RSignatureTypeProvider<TypeDesc, MethodDesc, R2RSigProviderContext>.GetMethodFromMemberRef(MetadataReader reader, MemberReferenceHandle handle, TypeDesc owningTypeOverride)
+        {
+            // Global signature cannot have MemberRef entries in them as such things aren't uniquely identifiable
+            throw new NotSupportedException();
         }
     }
 }

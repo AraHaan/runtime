@@ -27,7 +27,7 @@ namespace ILCompiler.DependencyAnalysis
     internal class ReadyToRunObjectWriter
     {
         /// <summary>
-        /// Nodefactory for which ObjectWriter is instantiated for. 
+        /// Nodefactory for which ObjectWriter is instantiated for.
         /// </summary>
         private readonly NodeFactory _nodeFactory;
 
@@ -44,6 +44,12 @@ namespace ILCompiler.DependencyAnalysis
         /// with forwarding information pointing at the composite module with native code.
         /// </summary>
         private readonly EcmaModule _componentModule;
+
+        /// <summary>
+        /// Compilation input files. Input files are emitted as perfmap entries and used
+        /// to calculate the output GUID of the ReadyToRun executable for symbol indexation.
+        /// </summary>
+        private readonly IEnumerable<string> _inputFiles;
 
         /// <summary>
         /// Nodes to emit into the output executable as collected by the dependency analysis.
@@ -101,6 +107,11 @@ namespace ILCompiler.DependencyAnalysis
         private string _perfMapPath;
 
         /// <summary>
+        /// Requested version of the perfmap file format
+        /// </summary>
+        private int _perfMapFormatVersion;
+
+        /// <summary>
         /// If non-zero, the PE file will be laid out such that it can naturally be mapped with a higher alignment than 4KB.
         /// This is used to support loading via large pages on Linux.
         /// </summary>
@@ -127,6 +138,7 @@ namespace ILCompiler.DependencyAnalysis
         public ReadyToRunObjectWriter(
             string objectFilePath,
             EcmaModule componentModule,
+            IEnumerable<string> inputFiles,
             IEnumerable<DependencyNode> nodes,
             NodeFactory factory,
             bool generateMapFile,
@@ -135,12 +147,14 @@ namespace ILCompiler.DependencyAnalysis
             string pdbPath,
             bool generatePerfMapFile,
             string perfMapPath,
+            int perfMapFormatVersion,
             bool generateProfileFile,
             CallChainProfile callChainProfile,
             int customPESectionAlignment)
         {
             _objectFilePath = objectFilePath;
             _componentModule = componentModule;
+            _inputFiles = inputFiles;
             _nodes = nodes;
             _nodeFactory = factory;
             _customPESectionAlignment = customPESectionAlignment;
@@ -150,6 +164,7 @@ namespace ILCompiler.DependencyAnalysis
             _pdbPath = pdbPath;
             _generatePerfMapFile = generatePerfMapFile;
             _perfMapPath = perfMapPath;
+            _perfMapFormatVersion = perfMapFormatVersion;
 
             bool generateMap = (generateMapFile || generateMapCsvFile);
             bool generateSymbols = (generatePdbFile || generatePerfMapFile);
@@ -165,7 +180,7 @@ namespace ILCompiler.DependencyAnalysis
 
                 if (generateSymbols)
                 {
-                    _symbolFileBuilder = new SymbolFileBuilder(_outputInfoBuilder);
+                    _symbolFileBuilder = new SymbolFileBuilder(_outputInfoBuilder, _nodeFactory.Target);
                 }
 
                 if (generateProfileFile)
@@ -191,11 +206,7 @@ namespace ILCompiler.DependencyAnalysis
 
                 if (_nodeFactory.CompilationModuleGroup.IsCompositeBuildMode && _componentModule == null)
                 {
-                    headerBuilder = PEHeaderProvider.Create(
-                        imageCharacteristics: Characteristics.ExecutableImage | Characteristics.Dll,
-                        dllCharacteristics: default(DllCharacteristics),
-                        Subsystem.Unknown,
-                        _nodeFactory.Target);
+                    headerBuilder = PEHeaderProvider.Create(Subsystem.Unknown, _nodeFactory.Target, _nodeFactory.ImageBase);
                     peIdProvider = new Func<IEnumerable<Blob>, BlobContentId>(content => BlobContentId.FromHash(CryptographicHashProvider.ComputeSourceHash(content)));
                     timeDateStamp = null;
                     r2rHeaderExportSymbol = _nodeFactory.Header;
@@ -203,7 +214,7 @@ namespace ILCompiler.DependencyAnalysis
                 else
                 {
                     PEReader inputPeReader = (_componentModule != null ? _componentModule.PEReader : _nodeFactory.CompilationModuleGroup.CompilationModuleSet.First().PEReader);
-                    headerBuilder = PEHeaderProvider.Copy(inputPeReader.PEHeaders, _nodeFactory.Target);
+                    headerBuilder = PEHeaderProvider.Create(inputPeReader.PEHeaders.PEHeader.Subsystem, _nodeFactory.Target, _nodeFactory.ImageBase);
                     timeDateStamp = inputPeReader.PEHeaders.CoffHeader.TimeDateStamp;
                     r2rHeaderExportSymbol = null;
                 }
@@ -223,6 +234,7 @@ namespace ILCompiler.DependencyAnalysis
                     peIdProvider);
 
                 NativeDebugDirectoryEntryNode nativeDebugDirectoryEntryNode = null;
+                PerfMapDebugDirectoryEntryNode perfMapDebugDirectoryEntryNode = null;
                 ISymbolDefinitionNode firstImportThunk = null;
                 ISymbolDefinitionNode lastImportThunk = null;
                 ObjectNode lastWrittenObjectNode = null;
@@ -248,6 +260,13 @@ namespace ILCompiler.DependencyAnalysis
                         // There should be only one NativeDebugDirectoryEntry.
                         Debug.Assert(nativeDebugDirectoryEntryNode == null);
                         nativeDebugDirectoryEntryNode = nddeNode;
+                    }
+
+                    if (node is PerfMapDebugDirectoryEntryNode pmdeNode)
+                    {
+                        // There should be only one PerfMapDebugDirectoryEntryNode.
+                        Debug.Assert(perfMapDebugDirectoryEntryNode is null);
+                        perfMapDebugDirectoryEntryNode = pmdeNode;
                     }
 
                     if (node is ImportThunk importThunkNode)
@@ -294,12 +313,20 @@ namespace ILCompiler.DependencyAnalysis
                 {
                     r2rPeBuilder.AddSymbolForRange(_nodeFactory.DelayLoadMethodCallThunks, firstImportThunk, lastImportThunk);
                 }
-                
+
 
                 if (_nodeFactory.Win32ResourcesNode != null)
                 {
                     Debug.Assert(_nodeFactory.Win32ResourcesNode.Size != 0);
                     r2rPeBuilder.SetWin32Resources(_nodeFactory.Win32ResourcesNode, _nodeFactory.Win32ResourcesNode.Size);
+                }
+
+                if (_outputInfoBuilder != null)
+                {
+                    foreach (string inputFile in _inputFiles)
+                    {
+                        _outputInfoBuilder.AddInputModule(_nodeFactory.TypeSystemContext.GetModuleFromPath(inputFile));
+                    }
                 }
 
                 using (var peStream = File.Create(_objectFilePath))
@@ -311,16 +338,31 @@ namespace ILCompiler.DependencyAnalysis
                         _mapFileBuilder.SetFileSize(peStream.Length);
                     }
 
-                    // Compute MD5 hash of the output image and store that in the native DebugDirectory entry
-                    using (var md5Hash = MD5.Create())
+                    if (nativeDebugDirectoryEntryNode is not null)
                     {
-                        peStream.Seek(0, SeekOrigin.Begin);
-                        byte[] hash = md5Hash.ComputeHash(peStream);
-                        byte[] rsdsEntry = nativeDebugDirectoryEntryNode.GenerateRSDSEntryData(hash);
+                        Debug.Assert(_generatePdbFile);
+                        // Compute hash of the output image and store that in the native DebugDirectory entry
+                        using (var hashAlgorithm = SHA256.Create())
+                        {
+                            peStream.Seek(0, SeekOrigin.Begin);
+                            byte[] hash = hashAlgorithm.ComputeHash(peStream);
+                            byte[] rsdsEntry = nativeDebugDirectoryEntryNode.GenerateRSDSEntryData(hash);
 
-                        int offsetToUpdate = r2rPeBuilder.GetSymbolFilePosition(nativeDebugDirectoryEntryNode);
+                            int offsetToUpdate = r2rPeBuilder.GetSymbolFilePosition(nativeDebugDirectoryEntryNode);
+                            peStream.Seek(offsetToUpdate, SeekOrigin.Begin);
+                            peStream.Write(rsdsEntry);
+                        }
+                    }
+
+                    if (perfMapDebugDirectoryEntryNode is not null)
+                    {
+                        Debug.Assert(_generatePerfMapFile && _outputInfoBuilder is not null && _outputInfoBuilder.EnumerateInputAssemblies().Any());
+                        byte[] perfmapSig = PerfMapWriter.PerfMapV1SignatureHelper(_outputInfoBuilder.EnumerateInputAssemblies(), _nodeFactory.Target);
+                        byte[] perfMapEntry = perfMapDebugDirectoryEntryNode.GeneratePerfMapEntryData(perfmapSig, _perfMapFormatVersion);
+
+                        int offsetToUpdate = r2rPeBuilder.GetSymbolFilePosition(perfMapDebugDirectoryEntryNode);
                         peStream.Seek(offsetToUpdate, SeekOrigin.Begin);
-                        peStream.Write(rsdsEntry);
+                        peStream.Write(perfMapEntry);
                     }
                 }
 
@@ -358,7 +400,7 @@ namespace ILCompiler.DependencyAnalysis
                         {
                             path = Path.GetDirectoryName(_objectFilePath);
                         }
-                        _symbolFileBuilder.SavePerfMap(path, _objectFilePath);
+                        _symbolFileBuilder.SavePerfMap(path, _perfMapFormatVersion, _objectFilePath);
                     }
 
                     if (_profileFileBuilder != null)
@@ -417,7 +459,10 @@ namespace ILCompiler.DependencyAnalysis
                     Debug.Fail("Duplicate node name emitted to file",
                     $"Symbol {definedSymbol.GetMangledName(_nodeFactory.NameMangler)} has already been written to the output object file {_objectFilePath} with symbol {alreadyWrittenSymbol}");
                 }
-                _previouslyWrittenNodeNames.Add(symbolName, new NodeInfo(definedSymbol, nodeIndex, symbolIndex));
+                else
+                {
+                    _previouslyWrittenNodeNames.Add(symbolName, new NodeInfo(definedSymbol, nodeIndex, symbolIndex));
+                }
             }
 #endif
 
@@ -427,6 +472,7 @@ namespace ILCompiler.DependencyAnalysis
         public static void EmitObject(
             string objectFilePath,
             EcmaModule componentModule,
+            IEnumerable<string> inputFiles,
             IEnumerable<DependencyNode> nodes,
             NodeFactory factory,
             bool generateMapFile,
@@ -435,6 +481,7 @@ namespace ILCompiler.DependencyAnalysis
             string pdbPath,
             bool generatePerfMapFile,
             string perfMapPath,
+            int perfMapFormatVersion,
             bool generateProfileFile,
             CallChainProfile callChainProfile,
             int customPESectionAlignment)
@@ -443,6 +490,7 @@ namespace ILCompiler.DependencyAnalysis
             ReadyToRunObjectWriter objectWriter = new ReadyToRunObjectWriter(
                 objectFilePath,
                 componentModule,
+                inputFiles,
                 nodes,
                 factory,
                 generateMapFile: generateMapFile,
@@ -451,6 +499,7 @@ namespace ILCompiler.DependencyAnalysis
                 pdbPath: pdbPath,
                 generatePerfMapFile: generatePerfMapFile,
                 perfMapPath: perfMapPath,
+                perfMapFormatVersion: perfMapFormatVersion,
                 generateProfileFile: generateProfileFile,
                 callChainProfile,
                 customPESectionAlignment);

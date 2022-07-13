@@ -40,7 +40,7 @@ namespace System
     /// - allows for instantiation for ExecutionAndPublication so as to create an object for locking on
     /// - holds exception information.
     /// </summary>
-    internal class LazyHelper
+    internal sealed class LazyHelper
     {
         internal static readonly LazyHelper NoneViaConstructor            = new LazyHelper(LazyState.NoneViaConstructor);
         internal static readonly LazyHelper NoneViaFactory                = new LazyHelper(LazyState.NoneViaFactory);
@@ -296,8 +296,10 @@ namespace System
 
         private Lazy(Func<T>? valueFactory, LazyThreadSafetyMode mode, bool useDefaultConstructor)
         {
-            if (valueFactory == null && !useDefaultConstructor)
-                throw new ArgumentNullException(nameof(valueFactory));
+            if (!useDefaultConstructor)
+            {
+                ArgumentNullException.ThrowIfNull(valueFactory);
+            }
 
             _factory = valueFactory;
             _state = LazyHelper.Create(mode, useDefaultConstructor);

@@ -60,9 +60,9 @@ namespace System.Net.Http.Unit.Tests.HPack
             FillAvailableSpaceWithOnes(buffer);
             string[] headerValues = Array.Empty<string>();
 
-            foreach (KeyValuePair<HeaderDescriptor, object> header in headers.HeaderStore)
+            foreach (HeaderEntry header in headers.GetEntries())
             {
-                int headerValuesCount = HttpHeaders.GetValuesAsStrings(header.Key, header.Value, ref headerValues);
+                int headerValuesCount = HttpHeaders.GetStoreValuesIntoStringArray(header.Key, header.Value, ref headerValues);
                 Assert.InRange(headerValuesCount, 0, int.MaxValue);
                 ReadOnlySpan<string> headerValuesSpan = headerValues.AsSpan(0, headerValuesCount);
 
@@ -147,7 +147,7 @@ namespace System.Net.Http.Unit.Tests.HPack
             return header;
         }
 
-        private class HeaderHandler : IHttpHeadersHandler
+        private class HeaderHandler : IHttpStreamHeadersHandler
         {
             HttpRequestHeaders _headers;
             Encoding? _valueEncoding;
@@ -184,6 +184,11 @@ namespace System.Net.Http.Unit.Tests.HPack
             public void OnStaticIndexedHeader(int index, ReadOnlySpan<byte> value)
             {
                 OnHeader(H2StaticTable.Get(index - 1).Name, value);
+            }
+
+            public void OnDynamicIndexedHeader(int? index, ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
+            {
+                OnHeader(name, value);
             }
         }
     }

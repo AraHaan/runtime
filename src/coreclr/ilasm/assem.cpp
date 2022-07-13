@@ -40,7 +40,6 @@ Assembler::Assembler()
 
     m_fStdMapping   = FALSE;
     m_fDisplayTraceOutput= FALSE;
-    m_fENCMode = FALSE;
     m_fTolerateDupMethods = FALSE;
 
     m_pCurOutputPos = NULL;
@@ -253,16 +252,6 @@ void Assembler::SetDLL(BOOL IsDll)
 
     m_fDLL = IsDll;
 }
-
-void Assembler::SetOBJ(BOOL IsObj)
-{
-    HRESULT OK;
-    OK = m_pCeeFileGen->SetObjSwitch(m_pCeeFile, IsObj);
-    _ASSERTE(SUCCEEDED(OK));
-
-    m_fOBJ = IsObj;
-}
-
 
 void Assembler::ResetArgNameList()
 {
@@ -534,41 +523,21 @@ BOOL Assembler::EmitMethodBody(Method* pMethod, BinStr* pbsOut)
                 BYTE* outBuff;
                 unsigned align = (headerSize == 1)? 1 : 4;
                 ULONG    PEFileOffset, methodRVA;
-                if(m_fENCMode)
-                {
-                    if(pbsOut)
-                    {
-                        PEFileOffset = pbsOut->length();
-                        align--;
-                        while(PEFileOffset & align)
-                        {
-                            pbsOut->appendInt8(0);
-                            PEFileOffset++;
-                        }
-                        pbsOut->append(pbsBody);
-                        outBuff = (BYTE*)(pbsOut->ptr()) + (pbsOut->length() - pbsBody->length());
-                    }
-                    else return FALSE;
 
-                }
-                else
-                {
-                    if (FAILED(m_pCeeFileGen->GetSectionBlock (m_pILSection, totalSize,
-                            align, (void **) &outBuff)))    return FALSE;
-                    memcpy(outBuff,pbsBody->ptr(),totalSize);
-                    // The offset where we start, (not where the alignment bytes start!
-                    if (FAILED(m_pCeeFileGen->GetSectionDataLen (m_pILSection, &PEFileOffset)))
-                        return FALSE;
-                    PEFileOffset -= totalSize;
-                }
+                if (FAILED(m_pCeeFileGen->GetSectionBlock (m_pILSection, totalSize,
+                        align, (void **) &outBuff)))    return FALSE;
+                memcpy(outBuff,pbsBody->ptr(),totalSize);
+                // The offset where we start, (not where the alignment bytes start!
+                if (FAILED(m_pCeeFileGen->GetSectionDataLen (m_pILSection, &PEFileOffset)))
+                    return FALSE;
+                PEFileOffset -= totalSize;
 
                 pMethod->m_pCode = outBuff + headerSize;
                 pMethod->m_headerOffset= PEFileOffset;
                 pMethod->m_methodOffset= PEFileOffset + headerSize;
                 DoDeferredILFixups(pMethod);
 
-                if(m_fENCMode) methodRVA = PEFileOffset;
-                else m_pCeeFileGen->GetMethodRVA(m_pCeeFile, PEFileOffset,&methodRVA);
+                m_pCeeFileGen->GetMethodRVA(m_pCeeFile, PEFileOffset,&methodRVA);
 
                 pMethod->m_headerOffset= methodRVA;
                 pMethod->m_methodOffset= methodRVA + headerSize;
@@ -756,8 +725,6 @@ BOOL Assembler::EmitMethod(Method *pMethod)
     //--------------------------------------------------------------------------------
     if (pMethod->m_fEntryPoint)
     {
-        if(fIsInterface) report->error("Entrypoint in Interface: Method '%s'\n",pszMethodName);
-
         if (FAILED(m_pCeeFileGen->SetEntryPoint(m_pCeeFile, MethodToken)))
         {
             report->error("Failed to set entry point for method '%s'\n",pszMethodName);
@@ -797,7 +764,17 @@ BOOL Assembler::EmitMethod(Method *pMethod)
                 dwCPlusTypeFlag= (DWORD)*(pMethod->m_pRetValue->ptr());
                 pValue = (void const *)(pMethod->m_pRetValue->ptr()+1);
                 cbValue = pMethod->m_pRetValue->length()-1;
-                if(dwCPlusTypeFlag == ELEMENT_TYPE_STRING) cbValue /= sizeof(WCHAR);
+                if(dwCPlusTypeFlag == ELEMENT_TYPE_STRING)
+                {
+                    cbValue /= sizeof(WCHAR);
+#if BIGENDIAN
+                    void* pValueTemp = _alloca(cbValue * sizeof(WCHAR));
+                    memcpy(pValueTemp, pValue, cbValue * sizeof(WCHAR));
+                    pValue = pValueTemp;
+
+                    SwapStringLength((WCHAR*)pValue, cbValue);
+#endif
+                }
             }
             else
             {
@@ -835,7 +812,17 @@ BOOL Assembler::EmitMethod(Method *pMethod)
                 dwCPlusTypeFlag= (DWORD)*(pAN->pValue->ptr());
                 pValue = (void const *)(pAN->pValue->ptr()+1);
                 cbValue = pAN->pValue->length()-1;
-                if(dwCPlusTypeFlag == ELEMENT_TYPE_STRING) cbValue /= sizeof(WCHAR);
+                if(dwCPlusTypeFlag == ELEMENT_TYPE_STRING)
+                {
+                    cbValue /= sizeof(WCHAR);
+#if BIGENDIAN
+                    void* pValueTemp = _alloca(cbValue * sizeof(WCHAR));
+                    memcpy(pValueTemp, pValue, cbValue * sizeof(WCHAR));
+                    pValue = pValueTemp;
+
+                    SwapStringLength((WCHAR*)pValue, cbValue);
+#endif
+                }
             }
             else
             {
@@ -881,7 +868,6 @@ BOOL Assembler::EmitMethodImpls()
     int i;
     for(i=0; (pMID = m_MethodImplDList.PEEK(i)); i++)
     {
-        if(m_fENCMode && (!pMID->m_fNew)) continue;
         pMID->m_tkImplementingMethod = ResolveLocalMemberRef(pMID->m_tkImplementingMethod);
         pMID->m_tkImplementedMethod = ResolveLocalMemberRef(pMID->m_tkImplementedMethod);
         if(FAILED(m_pEmitter->DefineMethodImpl( pMID->m_tkDefiningClass,
@@ -1018,13 +1004,25 @@ BOOL Assembler::EmitProp(PropDescriptor* pPD)
     }
     mdOthers[nOthers] = mdMethodDefNil; // like null-terminator
 
+    void* pValue = pPD->m_pValue;
+#if BIGENDIAN
+    if (pPD->m_dwCPlusTypeFlag == ELEMENT_TYPE_STRING)
+    {
+        void* pValueTemp = _alloca(pPD->m_cbValue * sizeof(WCHAR));
+        memcpy(pValueTemp, pValue, pPD->m_cbValue * sizeof(WCHAR));
+        pValue = pValueTemp;
+
+        SwapStringLength((WCHAR*)pValue, pPD->m_cbValue);
+    }
+#endif
+
     if(FAILED(m_pEmitter->DefineProperty(   pPD->m_tdClass,
                                             wzMemberName,
                                             pPD->m_dwAttr,
                                             pPD->m_pSig,
                                             pPD->m_dwCSig,
                                             pPD->m_dwCPlusTypeFlag,
-                                            pPD->m_pValue,
+                                            pValue,
                                             pPD->m_cbValue,
                                             mdSet,
                                             mdGet,
@@ -1039,7 +1037,7 @@ BOOL Assembler::EmitProp(PropDescriptor* pPD)
     return TRUE;
 }
 
-Class *Assembler::FindCreateClass(__in __nullterminated const char *pszFQN)
+Class *Assembler::FindCreateClass(_In_ __nullterminated const char *pszFQN)
 {
     Class *pSearch = NULL;
 
@@ -1186,7 +1184,7 @@ BOOL Assembler::DoGlobalFixups()
     return TRUE;
 }
 
-state_t Assembler::AddGlobalLabel(__in __nullterminated char *pszName, HCEESECTION section)
+state_t Assembler::AddGlobalLabel(_In_ __nullterminated char *pszName, HCEESECTION section)
 {
     if (FindGlobalLabel(pszName) != NULL)
     {
@@ -1213,7 +1211,7 @@ state_t Assembler::AddGlobalLabel(__in __nullterminated char *pszName, HCEESECTI
     return m_State;
 }
 
-void Assembler::AddLabel(DWORD CurPC, __in __nullterminated char *pszName)
+void Assembler::AddLabel(DWORD CurPC, _In_ __nullterminated char *pszName)
 {
     if (m_pCurMethod->FindLabel(pszName) != NULL)
     {
@@ -1478,7 +1476,7 @@ acceptable.  Do NOT use for cryptographic purposes.
 */
 
 unsigned hash(
-     __in_ecount(length) const BYTE *k,        /* the key */
+     _In_reads_(length) const BYTE *k,        /* the key */
      unsigned  length,   /* the length of the key */
      unsigned  initval)  /* the previous hash, or an arbitrary value */
 {

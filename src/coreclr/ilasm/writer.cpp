@@ -34,15 +34,6 @@ HRESULT Assembler::InitMetaData()
     if (FAILED(hr))
         goto exit;
 
-    if(m_wzMetadataVersion)
-    {
-        VARIANT encOption;
-        BSTR    bstr;
-        V_VT(&encOption) = VT_BSTR;
-        V_BSTR(&encOption) = bstr = ::SysAllocString(m_wzMetadataVersion);
-        hr = m_pDisp->SetOption(MetaDataRuntimeVersion, &encOption);
-        ::SysFreeString(bstr);
-    }
     hr = m_pDisp->DefineScope(CLSID_CorMetaDataRuntime, 0, IID_IMetaDataEmit3,
                         (IUnknown **)&m_pEmitter);
     if (FAILED(hr))
@@ -91,7 +82,7 @@ HRESULT Assembler::CreateTLSDirectory() {
         DWORD offsetofAddressOfIndex         = (DWORD)offsetof(IMAGE_TLS_DIRECTORY32, AddressOfIndex);
         DWORD offsetofAddressOfCallBacks     = (DWORD)offsetof(IMAGE_TLS_DIRECTORY32, AddressOfCallBacks);
 
-            // Get memory for for the TLS directory block,as well as a spot for callback chain
+            // Get memory for the TLS directory block,as well as a spot for callback chain
         IMAGE_TLS_DIRECTORY32* tlsDir;
         if(FAILED(hr=m_pCeeFileGen->GetSectionBlock(tlsDirSec, sizeofdir + sizeofptr, sizeofptr, (void**) &tlsDir))) return(hr);
         DWORD* callBackChain = (DWORD*) &tlsDir[1];
@@ -147,7 +138,7 @@ HRESULT Assembler::CreateTLSDirectory() {
         DWORD offsetofAddressOfIndex         = (DWORD)offsetof(IMAGE_TLS_DIRECTORY64, AddressOfIndex);
         DWORD offsetofAddressOfCallBacks     = (DWORD)offsetof(IMAGE_TLS_DIRECTORY64, AddressOfCallBacks);
 
-            // Get memory for for the TLS directory block,as well as a spot for callback chain
+            // Get memory for the TLS directory block,as well as a spot for callback chain
         IMAGE_TLS_DIRECTORY64* tlsDir;
         if(FAILED(hr=m_pCeeFileGen->GetSectionBlock(tlsDirSec, sizeofdir + sizeofptr, sizeofptr, (void**) &tlsDir))) return(hr);
         __int64* callBackChain = (__int64*) &tlsDir[1];
@@ -221,26 +212,28 @@ HRESULT Assembler::CreateDebugDirectory()
     param.debugDirData = NULL;
 
     // get module ID
-    DWORD rsds = 0x53445352;
-    DWORD pdbAge = 0x1;
+    DWORD rsds = VAL32(0x53445352);
+    DWORD pdbAge = VAL32(0x1);
+    GUID pdbGuid = *m_pPortablePdbWriter->GetGuid();
+    SwapGuid(&pdbGuid);
     DWORD len = sizeof(rsds) + sizeof(GUID) + sizeof(pdbAge) + (DWORD)strlen(m_szPdbFileName) + 1;
     BYTE* dbgDirData = new BYTE[len];
 
     DWORD offset = 0;
     memcpy_s(dbgDirData + offset, len, &rsds, sizeof(rsds));                            // RSDS
     offset += sizeof(rsds);
-    memcpy_s(dbgDirData + offset, len, m_pPortablePdbWriter->GetGuid(), sizeof(GUID)); // PDB GUID
+    memcpy_s(dbgDirData + offset, len, &pdbGuid, sizeof(GUID));                         // PDB GUID
     offset += sizeof(GUID);
     memcpy_s(dbgDirData + offset, len, &pdbAge, sizeof(pdbAge));                        // PDB AGE
     offset += sizeof(pdbAge);
     memcpy_s(dbgDirData + offset, len, m_szPdbFileName, strlen(m_szPdbFileName) + 1);   // PDB PATH
 
     debugDirIDD.Characteristics = 0;
-    debugDirIDD.TimeDateStamp = m_pPortablePdbWriter->GetTimestamp();
-    debugDirIDD.MajorVersion = 0x100;
-    debugDirIDD.MinorVersion = 0x504d;
-    debugDirIDD.Type = IMAGE_DEBUG_TYPE_CODEVIEW;
-    debugDirIDD.SizeOfData = len;
+    debugDirIDD.TimeDateStamp = VAL32(m_pPortablePdbWriter->GetTimestamp());
+    debugDirIDD.MajorVersion = VAL16(0x100);
+    debugDirIDD.MinorVersion = VAL16(0x504d);
+    debugDirIDD.Type = VAL32(IMAGE_DEBUG_TYPE_CODEVIEW);
+    debugDirIDD.SizeOfData = VAL32(len);
     debugDirIDD.AddressOfRawData = 0; // will be updated bellow
     debugDirIDD.PointerToRawData = 0; // will be updated bellow
 
@@ -331,13 +324,12 @@ HRESULT Assembler::CreateExportDirectory()
 
     IMAGE_EXPORT_DIRECTORY  exportDirIDD;
     DWORD                   exportDirDataSize;
-    BYTE                   *exportDirData;
     EATEntry               *pEATE;
     unsigned                i, L, ordBase = 0xFFFFFFFF, Ldllname;
     // get the DLL name from output file name
     char*                   pszDllName;
     Ldllname = (unsigned)wcslen(m_wzOutputFileName)*3+3;
-    char*                   szOutputFileName = new char[Ldllname];
+    NewArrayHolder<char>    szOutputFileName(new char[Ldllname]);
     memset(szOutputFileName,0,wcslen(m_wzOutputFileName)*3+3);
     WszWideCharToMultiByte(CP_ACP,0,m_wzOutputFileName,-1,szOutputFileName,Ldllname,NULL,NULL);
     pszDllName = strrchr(szOutputFileName,DIRECTORY_SEPARATOR_CHAR_A);
@@ -350,11 +342,11 @@ HRESULT Assembler::CreateExportDirectory()
     // Allocate buffer for tables
     for(i = 0, L=0; i < Nentries; i++) L += 1+(unsigned)strlen(m_EATList.PEEK(i)->szAlias);
     exportDirDataSize = Nentries*5*sizeof(WORD) + L + Ldllname;
-    exportDirData = new BYTE[exportDirDataSize];
+    NewArrayHolder<BYTE> exportDirData(new BYTE[exportDirDataSize]);
     memset(exportDirData,0,exportDirDataSize);
 
     // Export address table
-    DWORD*  pEAT = (DWORD*)exportDirData;
+    DWORD*  pEAT = (DWORD*)(BYTE*)exportDirData;
     // Name pointer table
     DWORD*  pNPT = pEAT + Nentries;
     // Ordinal table
@@ -365,7 +357,7 @@ HRESULT Assembler::CreateExportDirectory()
     char*   pDLLName = pENT + L;
 
     // sort the names/ordinals
-    char**  pAlias = new char*[Nentries];
+    NewArrayHolder<char*> pAlias(new char*[Nentries]);
     for(i = 0; i < Nentries; i++)
     {
         pEATE = m_EATList.PEEK(i);
@@ -374,7 +366,6 @@ HRESULT Assembler::CreateExportDirectory()
         pAlias[i] = pEATE->szAlias;
     }
     bool swapped = true;
-    unsigned j;
     char*    pch;
     while(swapped)
     {
@@ -387,14 +378,14 @@ HRESULT Assembler::CreateExportDirectory()
                 pch = pAlias[i-1];
                 pAlias[i-1] = pAlias[i];
                 pAlias[i] = pch;
-                j = pOT[i-1];
+                WORD j = pOT[i-1];
                 pOT[i-1] = pOT[i];
                 pOT[i] = j;
             }
         }
     }
     // normalize ordinals
-    for(i = 0; i < Nentries; i++) pOT[i] -= ordBase;
+    for(i = 0; i < Nentries; i++) pOT[i] -= (WORD)ordBase;
     // fill the export address table
 #ifdef _PREFAST_
 #pragma warning(push)
@@ -409,7 +400,7 @@ HRESULT Assembler::CreateExportDirectory()
 #pragma warning(pop)
 #endif
     // fill the export names table
-    unsigned l;
+    unsigned l, j;
     for(i = 0, j = 0; i < Nentries; i++)
     {
         pNPT[i] = j; // relative offset in the table
@@ -483,8 +474,6 @@ HRESULT Assembler::CreateExportDirectory()
     // Copy the debug directory into the section.
     memcpy(de, &exportDirIDD, sizeof(IMAGE_EXPORT_DIRECTORY));
     memcpy(de + sizeof(IMAGE_EXPORT_DIRECTORY), exportDirData, exportDirDataSize);
-    delete [] pAlias;
-    delete [] exportDirData;
     return S_OK;
 }
 
@@ -573,7 +562,7 @@ DWORD   Assembler::EmitExportStub(DWORD dwVTFSlotRVA)
 }
 //#endif
 
-HRESULT Assembler::GetCAName(mdToken tkCA, __out LPWSTR *ppszName)
+HRESULT Assembler::GetCAName(mdToken tkCA, _Out_ LPWSTR *ppszName)
 {
     HRESULT hr = S_OK;
     DWORD cchName;
@@ -874,8 +863,6 @@ HRESULT Assembler::DoLocalMemberRefFixups()
         int i;
         for(i = 0; (pMRF = m_LocalMemberRefFixupList.PEEK(i)) != NULL; i++)
         {
-            if(m_fENCMode && (!pMRF->m_fNew)) continue;
-
             switch(TypeFromToken(pMRF->tk))
             {
                 case 0x99000000: pList = &m_LocalMethodRefDList; break;
@@ -1016,7 +1003,7 @@ HRESULT Assembler::AllocateStrongNameSignature()
 #pragma warning(push)
 #pragma warning(disable:21000) // Suppress PREFast warning about overly large function
 #endif
-HRESULT Assembler::CreatePEFile(__in __nullterminated WCHAR *pwzOutputFilename)
+HRESULT Assembler::CreatePEFile(_In_ __nullterminated WCHAR *pwzOutputFilename)
 {
     HRESULT             hr;
     DWORD               mresourceSize = 0;
@@ -1077,7 +1064,7 @@ HRESULT Assembler::CreatePEFile(__in __nullterminated WCHAR *pwzOutputFilename)
                 {
                     if(pMD->m_wVTSlot >= 0x8000)
                     {
-                        pMD->m_wVTSlot -= 0x8000 + OrdBase - 1;
+                        pMD->m_wVTSlot -= (WORD)(0x8000 + OrdBase - 1);
                     }
                 }
             }
@@ -1237,12 +1224,12 @@ HRESULT Assembler::CreatePEFile(__in __nullterminated WCHAR *pwzOutputFilename)
                 *pb = ELEMENT_TYPE_TYPEDEF;
                 memcpy(++pb,pTDD->m_szName,namesize);
                 pTDD->m_tkTypeSpec = ResolveLocalMemberRef(pTDD->m_tkTypeSpec);
-                memcpy(pb+namesize,&(pTDD->m_tkTypeSpec),sizeof(mdToken));
+                SET_UNALIGNED_VAL32(pb+namesize, pTDD->m_tkTypeSpec);
                 if(TypeFromToken(pTDD->m_tkTypeSpec)==mdtCustomAttribute)
                 {
                     CustomDescr* pCA = pTDD->m_pCA;
-                    pbs->appendInt32(pCA->tkType);
-                    pbs->appendInt32(pCA->tkOwner);
+                    pbs->appendInt32(VAL32(pCA->tkType));
+                    pbs->appendInt32(VAL32(pCA->tkOwner));
                     if(pCA->pBlob) pbs->append(pCA->pBlob);
                 }
                 ResolveTypeSpec(pbs);
@@ -1328,9 +1315,9 @@ HRESULT Assembler::CreatePEFile(__in __nullterminated WCHAR *pwzOutputFilename)
             {
                 Method* pMD;
                 Class* pClass;
-                m_pVTable->appendInt32(pGlobalLabel->m_GlobalOffset);
-                m_pVTable->appendInt16(pVTFEntry->m_wCount);
-                m_pVTable->appendInt16(pVTFEntry->m_wType);
+                m_pVTable->appendInt32(VAL32(pGlobalLabel->m_GlobalOffset));
+                m_pVTable->appendInt16(VAL16(pVTFEntry->m_wCount));
+                m_pVTable->appendInt16(VAL16(pVTFEntry->m_wType));
                 for(int i=0; (pClass = m_lstClass.PEEK(i)); i++)
                 {
                     for(WORD j = 0; (pMD = pClass->m_MethodList.PEEK(j)); j++)

@@ -34,6 +34,7 @@ namespace System.IO.Tests
                 string subdir = Path.GetRandomFileName();
                 DirectoryInfo info = Create(subdir);
                 Assert.Equal(subdir, info.ToString());
+                Environment.CurrentDirectory = Path.GetTempPath();
             }).Dispose();
         }
 
@@ -85,7 +86,6 @@ namespace System.IO.Tests
         public void PathAlreadyExistsAsDirectory(FileAttributes attributes)
         {
             DirectoryInfo testDir = Create(GetTestFilePath());
-            FileAttributes original = testDir.Attributes;
 
             try
             {
@@ -94,7 +94,7 @@ namespace System.IO.Tests
             }
             finally
             {
-                testDir.Attributes = original;
+                testDir.Attributes = FileAttributes.Normal;
             }
         }
 
@@ -216,7 +216,7 @@ namespace System.IO.Tests
 
         [Theory,
             MemberData(nameof(PathsWithComponentLongerThanMaxComponent))]
-        [PlatformSpecific(~TestPlatforms.Browser)] // Browser does not have a limit on the maximum component length
+        [SkipOnPlatform(TestPlatforms.Browser, "Browser does not have a limit on the maximum component length")]
         public void DirectoryWithComponentLongerThanMaxComponentAsPath_ThrowsException(string path)
         {
             AssertExtensions.ThrowsAny<IOException, DirectoryNotFoundException, PathTooLongException>(() => Create(path));
@@ -269,8 +269,10 @@ namespace System.IO.Tests
         {
             var paths = IOInputs.GetPathsLongerThanMaxLongPath(GetTestFilePath(), useExtendedSyntax: true);
 
+            // Ideally this should be PathTooLongException or DirectoryNotFoundException but on some machines
+            // windows gives us ERROR_INVALID_NAME, producing IOException.
             Assert.All(paths, path =>
-                AssertExtensions.ThrowsAny<PathTooLongException, DirectoryNotFoundException>(() => Create(path)));
+                AssertExtensions.ThrowsAny<PathTooLongException, DirectoryNotFoundException, IOException>(() => Create(path)));
         }
 
         [ConditionalFact(nameof(LongPathsAreNotBlocked), nameof(UsingNewNormalization))]
@@ -414,18 +416,16 @@ namespace System.IO.Tests
             }
         }
 
-        [Theory,
-            MemberData(nameof(PathsWithReservedDeviceNames))]
-        [PlatformSpecific(TestPlatforms.Windows)] // device name prefixes
+        [ConditionalTheory(nameof(ReservedDeviceNamesAreBlocked))] // device name prefixes
+        [MemberData(nameof(PathsWithReservedDeviceNames))]
         public void PathWithReservedDeviceNameAsPath_ThrowsDirectoryNotFoundException(string path)
         {
             // Throws DirectoryNotFoundException, when the behavior really should be an invalid path
             Assert.Throws<DirectoryNotFoundException>(() => Create(path));
         }
 
-        [ConditionalTheory(nameof(UsingNewNormalization)),
-            MemberData(nameof(ReservedDeviceNames))]
-        [PlatformSpecific(TestPlatforms.Windows)] // device name prefixes
+        [ConditionalTheory(nameof(ReservedDeviceNamesAreBlocked), nameof(UsingNewNormalization))] // device name prefixes
+        [MemberData(nameof(ReservedDeviceNames))]
         public void PathWithReservedDeviceNameAsExtendedPath(string path)
         {
             Assert.True(Create(IOInputs.ExtendedPrefix + Path.Combine(TestDirectory, path)).Exists, path);
@@ -468,6 +468,7 @@ namespace System.IO.Tests
 
         [Fact]
         [PlatformSpecific(TestPlatforms.AnyUnix)]  // drive letters casing
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/67853", TestPlatforms.tvOS)]
         public void DriveLetter_Unix()
         {
             // On Unix, there's no special casing for drive letters.  These may or may not be valid names, depending

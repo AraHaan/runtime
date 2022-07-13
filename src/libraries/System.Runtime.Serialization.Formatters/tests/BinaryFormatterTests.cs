@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -22,7 +23,7 @@ namespace System.Runtime.Serialization.Formatters.Tests
     {
         // On 32-bit we can't test these high inputs as they cause OutOfMemoryExceptions.
         [ConditionalTheory(typeof(Environment), nameof(Environment.Is64BitProcess))]
-        [SkipOnCoreClr("Long running tests: https://github.com/dotnet/runtime/issues/11191", RuntimeConfiguration.Checked)]
+        [SkipOnCoreClr("Long running tests: https://github.com/dotnet/runtime/issues/11191", ~RuntimeConfiguration.Release)]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/35915", typeof(PlatformDetection), nameof(PlatformDetection.IsMonoInterpreter))]
         [InlineData(2 * 6_584_983 - 2)] // previous limit
         [InlineData(2 * 7_199_369 - 2)] // last pre-computed prime number
@@ -46,10 +47,10 @@ namespace System.Runtime.Serialization.Formatters.Tests
         }
 
         [Theory]
-        [SkipOnCoreClr("Takes too long on Checked", RuntimeConfiguration.Checked)]
+        [SkipOnCoreClr("Takes too long on Checked", ~RuntimeConfiguration.Release)]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/34008", TestPlatforms.Linux, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/34753", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
-        [PlatformSpecific(~TestPlatforms.Browser)]
+        [SkipOnPlatform(TestPlatforms.Browser, "Takes too long on Browser.")]
         [MemberData(nameof(BasicObjectsRoundtrip_MemberData))]
         public void ValidateBasicObjectsRoundtrip(object obj, FormatterAssemblyStyle assemblyFormat, TypeFilterLevel filterLevel, FormatterTypeStyle typeFormat)
         {
@@ -64,14 +65,14 @@ namespace System.Runtime.Serialization.Formatters.Tests
         }
 
         [Theory]
-        [SkipOnCoreClr("Takes too long on Checked", RuntimeConfiguration.Checked)]
+        [SkipOnCoreClr("Takes too long on Checked", ~RuntimeConfiguration.Release)]
         [ActiveIssue("https://github.com/mono/mono/issues/15115", TestRuntimes.Mono)]
         [MemberData(nameof(SerializableObjects_MemberData))]
         public void ValidateAgainstBlobs(object obj, TypeSerializableValue[] blobs)
             => ValidateAndRoundtrip(obj, blobs, false);
 
         [Theory]
-        [SkipOnCoreClr("Takes too long on Checked", RuntimeConfiguration.Checked)]
+        [SkipOnCoreClr("Takes too long on Checked", ~RuntimeConfiguration.Release)]
         [MemberData(nameof(SerializableEqualityComparers_MemberData))]
         public void ValidateEqualityComparersAgainstBlobs(object obj, TypeSerializableValue[] blobs)
             => ValidateAndRoundtrip(obj, blobs, true);
@@ -93,6 +94,17 @@ namespace System.Runtime.Serialization.Formatters.Tests
             if (obj is ISerializable customSerializableObj && HasObjectTypeIntegrity(customSerializableObj))
             {
                 CheckObjectTypeIntegrity(customSerializableObj);
+            }
+
+            // TimeZoneInfo objects have three properties (DisplayName, StandardName, DaylightName)
+            // that are localized.  Since the blobs were generated from the invariant culture, they
+            // will have English strings embedded.  Thus, we can only test them against English
+            // language cultures or the invariant culture.
+            if (obj is TimeZoneInfo && (
+                CultureInfo.CurrentUICulture.TwoLetterISOLanguageName != "en" ||
+                CultureInfo.CurrentUICulture.Name.Length != 0))
+            {
+                return;
             }
 
             SanityCheckBlob(obj, blobs);
@@ -188,7 +200,7 @@ namespace System.Runtime.Serialization.Formatters.Tests
         [Fact]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/34008", TestPlatforms.Linux, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/34753", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
-        [PlatformSpecific(~TestPlatforms.Browser)]
+        [SkipOnPlatform(TestPlatforms.Browser, "Takes too long on Browser.")]
         public void RoundtripManyObjectsInOneStream()
         {
             object[][] objects = SerializableObjects_MemberData().ToArray();
@@ -554,10 +566,23 @@ namespace System.Runtime.Serialization.Formatters.Tests
         private static void SanityCheckBlob(object obj, TypeSerializableValue[] blobs)
         {
             // These types are unstable during serialization and produce different blobs.
+            string name = obj.GetType().FullName;
             if (obj is WeakReference<Point> ||
                 obj is Collections.Specialized.HybridDictionary ||
                 obj is Color ||
-                obj.GetType().FullName == "System.Collections.SortedList+SyncSortedList")
+                name  == "System.Collections.SortedList+SyncSortedList" ||
+                // Due to non-deterministic field ordering the types below will fail when using IL Emit-based Invoke.
+                // The types above may also be failing for the same reason.
+                // Remove these cases once https://github.com/dotnet/runtime/issues/46272 is fixed.
+                name == "System.Collections.Comparer" ||
+                name == "System.Collections.Hashtable" ||
+                name == "System.Collections.SortedList" ||
+                name == "System.Collections.Specialized.ListDictionary" ||
+                name == "System.CultureAwareComparer" ||
+                name == "System.Globalization.CompareInfo" ||
+                name == "System.Net.Cookie" ||
+                name == "System.Net.CookieCollection" ||
+                name == "System.Net.CookieContainer")
             {
                 return;
             }
@@ -675,8 +700,7 @@ namespace System.Runtime.Serialization.Formatters.Tests
                 }
 
                 Regex regex = new Regex(pattern);
-                Match match = regex.Match(testDataLine);
-                if (match.Success)
+                if (regex.IsMatch(testDataLine))
                 {
                     numberOfFoundBlobs++;
                 }
@@ -702,6 +726,38 @@ namespace System.Runtime.Serialization.Formatters.Tests
         {
             public Func<string, string, Type> BindToTypeDelegate = null;
             public override Type BindToType(string assemblyName, string typeName) => BindToTypeDelegate?.Invoke(assemblyName, typeName);
+        }
+
+        public struct MyStruct
+        {
+            public int A;
+        }
+
+        public static IEnumerable<object[]> NullableComparersTestData()
+        {
+            yield return new object[] { "NullableEqualityComparer`1", EqualityComparer<byte?>.Default };
+            yield return new object[] { "NullableEqualityComparer`1", EqualityComparer<int?>.Default };
+            yield return new object[] { "NullableEqualityComparer`1", EqualityComparer<float?>.Default };
+            yield return new object[] { "NullableEqualityComparer`1", EqualityComparer<Guid?>.Default }; // implements IEquatable<>
+
+            yield return new object[] { "ObjectEqualityComparer`1", EqualityComparer<MyStruct?>.Default };  // doesn't implement IEquatable<>
+            yield return new object[] { "ObjectEqualityComparer`1", EqualityComparer<DayOfWeek?>.Default };
+
+            yield return new object[] { "NullableComparer`1", Comparer<byte?>.Default };
+            yield return new object[] { "NullableComparer`1", Comparer<int?>.Default };
+            yield return new object[] { "NullableComparer`1", Comparer<float?>.Default };
+            yield return new object[] { "NullableComparer`1", Comparer<Guid?>.Default };
+
+            yield return new object[] { "ObjectComparer`1", Comparer<MyStruct?>.Default };
+            yield return new object[] { "ObjectComparer`1", Comparer<DayOfWeek?>.Default };
+        }
+
+        [Theory]
+        [MemberData(nameof(NullableComparersTestData))]
+        public void NullableComparersRoundtrip(string expectedType, object obj)
+        {
+            string serialized = BinaryFormatterHelpers.ToBase64String(obj);
+            Assert.Equal(expectedType, BinaryFormatterHelpers.FromBase64String(serialized).GetType().Name);
         }
     }
 }

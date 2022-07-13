@@ -31,7 +31,10 @@ namespace System.Configuration
 
         protected ConfigurationElementCollection(IComparer comparer)
         {
-            if (comparer == null) throw new ArgumentNullException(nameof(comparer));
+            if (comparer is null)
+            {
+                throw new ArgumentNullException(nameof(comparer));
+            }
 
             _comparer = comparer;
         }
@@ -1237,7 +1240,7 @@ namespace System.Configuration
             Added,
         }
 
-        private class Entry
+        private sealed class Entry
         {
             private readonly object _key;
             internal EntryType EntryType;
@@ -1257,7 +1260,7 @@ namespace System.Configuration
             }
         }
 
-        private class Enumerator : IDictionaryEnumerator
+        private sealed class Enumerator : IDictionaryEnumerator
         {
             private readonly IEnumerator _itemsEnumerator;
             private readonly ConfigurationElementCollection _thisCollection;
@@ -1275,7 +1278,7 @@ namespace System.Configuration
                 {
                     Entry entry = (Entry)_itemsEnumerator.Current;
                     if (entry.EntryType == EntryType.Removed) continue;
-                    _current.Key = entry.GetKey(_thisCollection) != null ? entry.GetKey(_thisCollection) : "key";
+                    _current.Key = entry.GetKey(_thisCollection) ?? "key";
                     _current.Value = entry.Value;
                     return true;
                 }

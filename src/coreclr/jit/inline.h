@@ -233,7 +233,7 @@ public:
     {
         (void)context;
     }
-    virtual void NoteOffset(IL_OFFSETX offset)
+    virtual void NoteOffset(IL_OFFSET offset)
     {
         (void)offset;
     }
@@ -247,6 +247,12 @@ public:
 
     // Policy estimates
     virtual int CodeSizeEstimate() = 0;
+
+    // Does Policy require a more precise IL scan?
+    virtual bool RequiresPreciseScan()
+    {
+        return false;
+    }
 
 #if defined(DEBUG) || defined(INLINE_DATA)
 
@@ -263,6 +269,35 @@ public:
     virtual void DumpSchema(FILE* file) const
     {
     }
+
+#define XATTR_I4(x)                                                                                                    \
+    if ((INT32)x != 0)                                                                                                 \
+    {                                                                                                                  \
+        fprintf(file, " " #x "=\"%d\"", (INT32)x);                                                                     \
+    }
+#define XATTR_R8(x)                                                                                                    \
+    if (fabs(x) > 0.01)                                                                                                \
+    {                                                                                                                  \
+        fprintf(file, " " #x "=\"%.2lf\"", x);                                                                         \
+    }
+#define XATTR_B(x)                                                                                                     \
+    if (x)                                                                                                             \
+    {                                                                                                                  \
+        fprintf(file, " " #x "=\"True\"");                                                                             \
+    }
+
+    // Detailed data value dump as XML
+    void DumpXml(FILE* file, unsigned indent = 0)
+    {
+        fprintf(file, "%*s<%s", indent, "", GetName());
+        OnDumpXml(file);
+        fprintf(file, " />\n");
+    }
+
+    virtual void OnDumpXml(FILE* file, unsigned indent = 0) const
+    {
+    }
+
     // True if this is the inline targeted by data collection
     bool IsDataCollectionTarget()
     {
@@ -309,11 +344,12 @@ class InlineResult
 public:
     // Construct a new InlineResult to help evaluate a
     // particular call for inlining.
-    InlineResult(Compiler* compiler, GenTreeCall* call, Statement* stmt, const char* description);
+    InlineResult(
+        Compiler* compiler, GenTreeCall* call, Statement* stmt, const char* description, bool doNotReport = false);
 
     // Construct a new InlineResult to evaluate a particular
     // method to see if it is inlineable.
-    InlineResult(Compiler* compiler, CORINFO_METHOD_HANDLE method, const char* description);
+    InlineResult(Compiler* compiler, CORINFO_METHOD_HANDLE method, const char* description, bool doNotReport = false);
 
     // Has the policy determined this inline should fail?
     bool IsFailure() const
@@ -448,18 +484,42 @@ public:
     // Result that can be reported back to the runtime
     CorInfoInline Result() const
     {
+        if (m_reportFailureAsVmFailure)
+            return INLINE_CHECK_CAN_INLINE_VMFAIL;
+
+        if (m_successResult != INLINE_PASS)
+            return m_successResult;
+
         return InlGetCorInfoInlineDecision(m_Policy->GetDecision());
     }
 
     // String describing the decision made
     const char* ResultString() const
     {
+        if (m_reportFailureAsVmFailure)
+            return "VM Reported !CanInline";
+
+        if (m_successResult == INLINE_PREJIT_SUCCESS)
+            return "PreJIT Success";
+
+        if (m_successResult == INLINE_CHECK_CAN_INLINE_SUCCESS)
+            return "CheckCanInline Success";
+
         return InlGetDecisionString(m_Policy->GetDecision());
     }
 
     // String describing the reason for the decision
     const char* ReasonString() const
     {
+        if (m_reportFailureAsVmFailure)
+            return "VM Reported !CanInline";
+
+        if (m_successResult == INLINE_PREJIT_SUCCESS)
+            return "PreJIT Success";
+
+        if (m_successResult == INLINE_CHECK_CAN_INLINE_SUCCESS)
+            return "CheckCanInline Success";
+
         return InlGetObservationString(m_Policy->GetObservation());
     }
 
@@ -469,12 +529,15 @@ public:
         return m_Policy;
     }
 
-    // SetReported indicates that this particular result doesn't need
-    // to be reported back to the runtime, either because the runtime
-    // already knows, or we aren't actually inlining yet.
-    void SetReported()
+    // Set the code that shall be reported if the InlineResult is a success
+    void SetSuccessResult(CorInfoInline inlineSuccessCode)
     {
-        m_Reported = true;
+        m_successResult = inlineSuccessCode;
+    }
+
+    void SetVMFailure()
+    {
+        m_reportFailureAsVmFailure = true;
     }
 
     // Get the InlineContext for this inline.
@@ -509,27 +572,30 @@ private:
     CORINFO_METHOD_HANDLE m_Callee;
     unsigned              m_ImportedILSize; // estimated size of imported IL
     const char*           m_Description;
-    bool                  m_Reported;
+    CorInfoInline         m_successResult;
+    bool                  m_DoNotReport;
+    bool                  m_reportFailureAsVmFailure;
 };
 
-// ClassProfileCandidateInfo provides information about
+// HandleHistogramProfileCandidateInfo provides information about
 // profiling an indirect or virtual call.
 //
-struct ClassProfileCandidateInfo
+struct HandleHistogramProfileCandidateInfo
 {
     IL_OFFSET ilOffset;
     unsigned  probeIndex;
-    void*     stubAddr;
 };
 
 // GuardedDevirtualizationCandidateInfo provides information about
 // a potential target of a virtual or interface call.
 //
-struct GuardedDevirtualizationCandidateInfo : ClassProfileCandidateInfo
+struct GuardedDevirtualizationCandidateInfo : HandleHistogramProfileCandidateInfo
 {
     CORINFO_CLASS_HANDLE  guardedClassHandle;
     CORINFO_METHOD_HANDLE guardedMethodHandle;
+    CORINFO_METHOD_HANDLE guardedMethodUnboxedEntryHandle;
     unsigned              likelihood;
+    bool                  requiresInstMethodTableArg;
 };
 
 // InlineCandidateInfo provides basic information about a particular
@@ -545,20 +611,30 @@ struct InlineCandidateInfo : public GuardedDevirtualizationCandidateInfo
     CORINFO_CLASS_HANDLE   clsHandle;
     CORINFO_CONTEXT_HANDLE exactContextHnd;
     GenTree*               retExpr;
-    DWORD                  dwRestrictions;
     unsigned               preexistingSpillTemp;
     unsigned               clsAttr;
     unsigned               methAttr;
+    IL_OFFSET              ilOffset; // actual IL offset of instruction that resulted in this inline candidate
     CorInfoInitClassResult initClassResult;
     var_types              fncRetType;
     bool                   exactContextNeedsRuntimeLookup;
+    InlineContext*         inlinersContext;
+};
+
+// LateDevirtualizationInfo
+//
+// Used to fill in missing contexts during late devirtualization.
+//
+struct LateDevirtualizationInfo
+{
+    CORINFO_CONTEXT_HANDLE exactContextHnd;
 };
 
 // InlArgInfo describes inline candidate argument properties.
 
 struct InlArgInfo
 {
-    GenTree* argNode;                     // caller node for this argument
+    CallArg* arg;                         // the caller argument
     GenTree* argBashTmpNode;              // tmp node created, if it may be replaced with actual arg
     unsigned argTmpNum;                   // the argument tmp number
     unsigned argIsUsed : 1;               // is this arg used at all?
@@ -573,6 +649,7 @@ struct InlArgInfo
     unsigned argHasStargOp : 1;           // Is there STARG(s) operation on this argument?
     unsigned argIsByRefToStructLocal : 1; // Is this arg an address of a struct local or a normed struct local or a
                                           // field in them?
+    unsigned argIsExact : 1;              // Is this arg of an exact class?
 };
 
 // InlLclVarInfo describes inline candidate argument and local variable properties.
@@ -597,6 +674,7 @@ struct InlineInfo
 
     CORINFO_METHOD_HANDLE fncHandle;
     InlineCandidateInfo*  inlineCandidateInfo;
+    InlineContext*        inlineContext;
 
     InlineResult* inlineResult;
 
@@ -620,8 +698,7 @@ struct InlineInfo
         return numberOfGcRefLocals > 0;
     }
 
-    bool     thisDereferencedFirst;
-    unsigned typeContextArg;
+    bool thisDereferencedFirst;
 
 #ifdef FEATURE_SIMD
     bool hasSIMDTypeArgLocalOrReturn;
@@ -630,17 +707,6 @@ struct InlineInfo
     GenTreeCall* iciCall;  // The GT_CALL node to be inlined.
     Statement*   iciStmt;  // The statement iciCall is in.
     BasicBlock*  iciBlock; // The basic block iciStmt is in.
-
-    // Profile support
-    enum class ProfileScaleState
-    {
-        UNDETERMINED,
-        KNOWN,
-        UNAVAILABLE
-    };
-
-    ProfileScaleState profileScaleState;
-    double            profileScaleFactor;
 };
 
 // InlineContext tracks the inline history in a method.
@@ -659,6 +725,8 @@ struct InlineInfo
 // This makes it possible to detect recursion and to keep track of the
 // depth of each inline attempt.
 
+#define FMT_INL_CTX "INL%02u"
+
 class InlineContext
 {
     // InlineContexts are created by InlineStrategies
@@ -668,13 +736,19 @@ public:
 #if defined(DEBUG) || defined(INLINE_DATA)
 
     // Dump the full subtree, including failures
-    void Dump(unsigned indent = 0);
+    void Dump(bool verbose, unsigned indent = 0);
 
     // Dump only the success subtree, with rich data
     void DumpData(unsigned indent = 0);
 
     // Dump full subtree in xml format
     void DumpXml(FILE* file = stderr, unsigned indent = 0);
+#endif // defined(DEBUG) || defined(INLINE_DATA)
+
+    IL_OFFSET GetActualCallOffset()
+    {
+        return m_ActualCallOffset;
+    }
 
     // Get callee handle
     CORINFO_METHOD_HANDLE GetCallee() const
@@ -682,12 +756,27 @@ public:
         return m_Callee;
     }
 
-#endif // defined(DEBUG) || defined(INLINE_DATA)
+    unsigned GetOrdinal() const
+    {
+        return m_Ordinal;
+    }
 
     // Get the parent context for this context.
     InlineContext* GetParent() const
     {
         return m_Parent;
+    }
+
+    // Get the sibling context.
+    InlineContext* GetSibling() const
+    {
+        return m_Sibling;
+    }
+
+    // Get the first child context.
+    InlineContext* GetChild() const
+    {
+        return m_Child;
     }
 
     // Get the code pointer for this context.
@@ -720,10 +809,10 @@ public:
         return m_CodeSizeEstimate;
     }
 
-    // Get the offset of the call site
-    IL_OFFSETX GetOffset() const
+    // Get the loation of the call site within the parent
+    ILLocation GetLocation() const
     {
-        return m_Offset;
+        return m_Location;
     }
 
     // True if this is the root context
@@ -752,33 +841,52 @@ public:
         return m_ImportedILSize;
     }
 
+    void SetSucceeded(const InlineInfo* info);
+    void SetFailed(const InlineResult* result);
+
+#ifdef DEBUG
+    FixedBitVect* GetILInstsSet() const
+    {
+        return m_ILInstsSet;
+    }
+
+    void SetILInstsSet(FixedBitVect* set)
+    {
+        m_ILInstsSet = set;
+    }
+#endif
+
 private:
     InlineContext(InlineStrategy* strategy);
 
-private:
-    InlineStrategy*   m_InlineStrategy;    // overall strategy
-    InlineContext*    m_Parent;            // logical caller (parent)
-    InlineContext*    m_Child;             // first child
-    InlineContext*    m_Sibling;           // next child of the parent
-    const BYTE*       m_Code;              // address of IL buffer for the method
-    unsigned          m_ILSize;            // size of IL buffer for the method
-    unsigned          m_ImportedILSize;    // estimated size of imported IL
-    IL_OFFSETX        m_Offset;            // call site location within parent
-    InlineObservation m_Observation;       // what lead to this inline
-    int               m_CodeSizeEstimate;  // in bytes * 10
-    bool              m_Success : 1;       // true if this was a successful inline
-    bool              m_Devirtualized : 1; // true if this was a devirtualized call
-    bool              m_Guarded : 1;       // true if this was a guarded call
-    bool              m_Unboxed : 1;       // true if this call now invokes the unboxed entry
+    InlineStrategy*       m_InlineStrategy;    // overall strategy
+    InlineContext*        m_Parent;            // logical caller (parent)
+    InlineContext*        m_Child;             // first child
+    InlineContext*        m_Sibling;           // next child of the parent
+    const BYTE*           m_Code;              // address of IL buffer for the method
+    CORINFO_METHOD_HANDLE m_Callee;            // handle to the method
+    unsigned              m_ILSize;            // size of IL buffer for the method
+    unsigned              m_ImportedILSize;    // estimated size of imported IL
+    ILLocation            m_Location;          // inlining statement location within parent
+    IL_OFFSET             m_ActualCallOffset;  // IL offset of actual call instruction leading to the inline
+    InlineObservation     m_Observation;       // what lead to this inline success or failure
+    int                   m_CodeSizeEstimate;  // in bytes * 10
+    unsigned              m_Ordinal;           // Ordinal number of this inline
+    bool                  m_Success : 1;       // true if this was a successful inline
+    bool                  m_Devirtualized : 1; // true if this was a devirtualized call
+    bool                  m_Guarded : 1;       // true if this was a guarded call
+    bool                  m_Unboxed : 1;       // true if this call now invokes the unboxed entry
 
 #if defined(DEBUG) || defined(INLINE_DATA)
 
-    InlinePolicy*         m_Policy;  // policy that evaluated this inline
-    CORINFO_METHOD_HANDLE m_Callee;  // handle to the method
-    unsigned              m_TreeID;  // ID of the GenTreeCall
-    unsigned              m_Ordinal; // Ordinal number of this inline
+    InlinePolicy* m_Policy; // policy that evaluated this inline
+    unsigned      m_TreeID; // ID of the GenTreeCall in the parent
 
 #endif // defined(DEBUG) || defined(INLINE_DATA)
+
+#ifdef DEBUG
+    FixedBitVect* m_ILInstsSet; // Set of offsets where instructions begin
+#endif
 };
 
 // The InlineStrategy holds the per-method persistent inline state.
@@ -787,16 +895,14 @@ private:
 
 class InlineStrategy
 {
+    friend class InlineContext;
 
 public:
     // Construct a new inline strategy.
     InlineStrategy(Compiler* compiler);
 
-    // Create context for a successful inline.
-    InlineContext* NewSuccess(InlineInfo* inlineInfo);
-
-    // Create context for a failing inline.
-    InlineContext* NewFailure(Statement* stmt, InlineResult* inlineResult);
+    // Create context for the specified inline candidate contained in the specified statement.
+    InlineContext* NewContext(InlineContext* parentContext, Statement* stmt, GenTreeCall* call);
 
     // Compiler associated with this strategy
     Compiler* GetCompiler() const
@@ -896,7 +1002,7 @@ public:
 #if defined(DEBUG) || defined(INLINE_DATA)
 
     // Dump textual description of inlines done so far.
-    void Dump(bool showBudget);
+    void Dump(bool verbose);
 
     // Dump data-format description of inlines done so far.
     void DumpData();
@@ -921,7 +1027,7 @@ public:
     }
 
     // Set up or access random state (for use by RandomPolicy)
-    CLRRandom* GetRandom();
+    CLRRandom* GetRandom(int optionalSeed = 0);
 
 #endif // defined(DEBUG) || defined(INLINE_DATA)
 

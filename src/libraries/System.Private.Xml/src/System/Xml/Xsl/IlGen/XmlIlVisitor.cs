@@ -15,11 +15,10 @@ using System.Xml.Xsl;
 using System.Xml.Xsl.Qil;
 using System.Xml.Xsl.Runtime;
 using System.Diagnostics.CodeAnalysis;
+using TypeFactory = System.Xml.Xsl.XmlQueryTypeFactory;
 
 namespace System.Xml.Xsl.IlGen
 {
-    using TypeFactory = System.Xml.Xsl.XmlQueryTypeFactory;
-
     /// <summary>
     /// Creates Msil code for an entire QilExpression graph.  Code is generated in one of two modes: push or
     /// pull.  In push mode, code is generated to push the values in an iterator to the XmlWriter
@@ -27,7 +26,7 @@ namespace System.Xml.Xsl.IlGen
     /// the stack or a local variable by an iterator.  The iterator is passive, and will just wait for
     /// a caller to pull the data and/or instruct the iterator to enumerate the next value.
     /// </summary>
-    internal class XmlILVisitor : QilVisitor
+    internal sealed class XmlILVisitor : QilVisitor
     {
         private QilExpression _qil = null!;
         private GenerateHelper _helper = null!;
@@ -35,6 +34,9 @@ namespace System.Xml.Xsl.IlGen
         private IteratorDescriptor? _iterNested;
         private int _indexId;
 
+        [RequiresUnreferencedCode("Method VisitXsltInvokeEarlyBound will require code that cannot be statically analyzed.")]
+        public XmlILVisitor()
+        { }
 
         //-----------------------------------------------
         // Entry
@@ -329,7 +331,7 @@ namespace System.Xml.Xsl.IlGen
         /// </summary>
         protected override QilNode VisitChildren(QilNode parent)
         {
-            Debug.Fail("Visit" + parent.NodeType + " should never be called");
+            Debug.Fail($"Visit{parent.NodeType} should never be called");
             return parent;
         }
 
@@ -676,7 +678,7 @@ namespace System.Xml.Xsl.IlGen
                     break;
 
                 default:
-                    // If last condition evalutes to false, branch to false label
+                    // If last condition evaluates to false, branch to false label
                     // Else fall through to true code path
                     _iterCurr.SetBranching(BranchingContext.OnFalse, lblOnFalse);
                     break;
@@ -750,7 +752,7 @@ namespace System.Xml.Xsl.IlGen
                     break;
 
                 default:
-                    // If left condition evalutes to true, jump to code that pushes "true"
+                    // If left condition evaluates to true, jump to code that pushes "true"
                     Debug.Assert(_iterCurr.CurrentBranchingContext == BranchingContext.None);
                     lblTemp = _helper.DefineLabel();
                     NestedVisitWithBranch(ndOr.Left, BranchingContext.OnTrue, lblTemp);
@@ -771,7 +773,7 @@ namespace System.Xml.Xsl.IlGen
                     break;
 
                 default:
-                    // If right condition evalutes to true, jump to code that pushes "true".
+                    // If right condition evaluates to true, jump to code that pushes "true".
                     // Otherwise, if both conditions evaluate to false, fall through code path
                     // will push "false".
                     NestedVisitWithBranch(ndOr.Right, BranchingContext.OnTrue, lblTemp);
@@ -1746,7 +1748,7 @@ namespace System.Xml.Xsl.IlGen
                     }
                     else
                     {
-                        Debug.Assert(code != XmlTypeCode.QName, "QName values do not support the " + relOp + " operation");
+                        Debug.Assert(code != XmlTypeCode.QName, $"QName values do not support the {relOp} operation");
 
                         // Push -1, 0, or 1 onto the stack depending upon the result of the comparison
                         _helper.CallCompare(code);
@@ -1765,7 +1767,7 @@ namespace System.Xml.Xsl.IlGen
                     break;
 
                 default:
-                    Debug.Fail("Comparisons for datatype " + code + " are invalid.");
+                    Debug.Fail($"Comparisons for datatype {code} are invalid.");
                     break;
             }
         }
@@ -3437,7 +3439,7 @@ namespace System.Xml.Xsl.IlGen
             // If the expression is a singleton,
             if (ndVal.Child.XmlType.IsSingleton)
             {
-                // Then generate code to push expresion result onto the stack
+                // Then generate code to push expression result onto the stack
                 NestedVisitEnsureStack(ndVal.Child, typeof(XPathNavigator), false);
 
                 // navigator.Value;
@@ -3512,7 +3514,7 @@ namespace System.Xml.Xsl.IlGen
             // If the expression is a singleton,
             if (ndGenId.Child.XmlType!.IsSingleton)
             {
-                // Then generate code to push expresion result onto the stack
+                // Then generate code to push expression result onto the stack
                 NestedVisitEnsureStack(ndGenId.Child, typeof(XPathNavigator), false);
 
                 // runtime.GenerateId(value);
@@ -3597,6 +3599,9 @@ namespace System.Xml.Xsl.IlGen
         /// <summary>
         /// Generate code for QilNodeType.XsltInvokeEarlyBound.
         /// </summary>
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2072:RequiresUnreferencedCode",
+            Justification = "Supressing warning about not having the RequiresUnreferencedCode attribute since we added " +
+            "the attribute to this subclass' constructor. This allows us to not have to annotate the whole QilNode hirerarchy.")]
         protected override QilNode VisitXsltInvokeEarlyBound(QilInvokeEarlyBound ndInvoke)
         {
             QilName ndName = ndInvoke.Name;
@@ -3670,7 +3675,7 @@ namespace System.Xml.Xsl.IlGen
                         NestedVisitEnsureStack(ndActualArg, typeof(XPathItem), false);
                     }
                     else
-                        Debug.Fail("Internal Xslt library may not use parameters of type " + clrTypeFormalArg);
+                        Debug.Fail($"Internal Xslt library may not use parameters of type {clrTypeFormalArg}");
                 }
                 else
                 {
@@ -3800,7 +3805,7 @@ namespace System.Xml.Xsl.IlGen
                 // If a conversion could not be found, then convert the source expression to item or item* and try again
                 NestedVisitEnsureStack(ndConv.Source, typeof(XPathItem), !typSrc.IsSingleton);
                 if (!GetXsltConvertMethod(typSrc.IsSingleton ? TypeFactory.Item : TypeFactory.ItemS, typDst, out meth))
-                    Debug.Fail("Conversion from " + ndConv.Source.XmlType + " to " + ndConv.TargetType + " is not supported.");
+                    Debug.Fail($"Conversion from {ndConv.Source.XmlType} to {ndConv.TargetType} is not supported.");
             }
 
             // XsltConvert.XXXToYYY(value);
@@ -3815,7 +3820,7 @@ namespace System.Xml.Xsl.IlGen
         /// Get the XsltConvert method that converts from "typSrc" to "typDst".  Return false if no
         /// such method exists.  This conversion matrix should match the one in XsltConvert.ExternalValueToExternalValue.
         /// </summary>
-        private bool GetXsltConvertMethod(XmlQueryType typSrc, XmlQueryType typDst, out MethodInfo? meth)
+        private static bool GetXsltConvertMethod(XmlQueryType typSrc, XmlQueryType typDst, out MethodInfo? meth)
         {
             meth = null;
 
@@ -4459,7 +4464,7 @@ namespace System.Xml.Xsl.IlGen
         /// Returns true if the specified node's owner element might have local namespaces added to it
         /// after attributes have already been added.
         /// </summary>
-        private bool MightHaveNamespacesAfterAttributes(XmlILConstructInfo? info)
+        private static bool MightHaveNamespacesAfterAttributes(XmlILConstructInfo? info)
         {
             // Get parent element
             if (info != null)
@@ -4476,7 +4481,7 @@ namespace System.Xml.Xsl.IlGen
         /// <summary>
         /// Returns true if the specified element should cache attributes.
         /// </summary>
-        private bool ElementCachesAttributes(XmlILConstructInfo info)
+        private static bool ElementCachesAttributes(XmlILConstructInfo info)
         {
             // Attributes will be cached if namespaces might be constructed after the attributes
             return info.MightHaveDuplicateAttributes || info.MightHaveNamespacesAfterAttributes;
@@ -4530,7 +4535,7 @@ namespace System.Xml.Xsl.IlGen
         /// <summary>
         /// Return true if a runtime check needs to be made in order to transition into the WithinContent state.
         /// </summary>
-        private bool CheckWithinContent(XmlILConstructInfo info)
+        private static bool CheckWithinContent(XmlILConstructInfo info)
         {
             switch (info.InitialStates)
             {
@@ -4547,7 +4552,7 @@ namespace System.Xml.Xsl.IlGen
         /// <summary>
         /// Return true if a runtime check needs to be made in order to transition into the EnumAttrs state.
         /// </summary>
-        private bool CheckEnumAttrs(XmlILConstructInfo info)
+        private static bool CheckEnumAttrs(XmlILConstructInfo info)
         {
             switch (info.InitialStates)
             {
@@ -4563,7 +4568,7 @@ namespace System.Xml.Xsl.IlGen
         /// <summary>
         /// Map the XmlNodeKindFlags enumeration into the XPathNodeType enumeration.
         /// </summary>
-        private XPathNodeType QilXmlToXPathNodeType(XmlNodeKindFlags xmlTypes)
+        private static XPathNodeType QilXmlToXPathNodeType(XmlNodeKindFlags xmlTypes)
         {
             switch (xmlTypes)
             {
@@ -4579,7 +4584,7 @@ namespace System.Xml.Xsl.IlGen
         /// <summary>
         /// Map a QilExpression constructor type into the XPathNodeType enumeration.
         /// </summary>
-        private XPathNodeType QilConstructorToNodeType(QilNodeType typ)
+        private static XPathNodeType QilConstructorToNodeType(QilNodeType typ)
         {
             switch (typ)
             {
@@ -4687,7 +4692,8 @@ namespace System.Xml.Xsl.IlGen
                          _iterCurr.Storage.ItemStorageType == GetItemStorageType(nd) ||
                          _iterCurr.Storage.ItemStorageType == typeof(XPathItem) ||
                          nd.XmlType!.TypeCode == XmlTypeCode.None,
-                         "QilNodeType " + nd.NodeType + " cannot be stored using type " + _iterCurr.Storage.ItemStorageType + ".");
+                         $"QilNodeType {nd.NodeType} cannot be stored using type {_iterCurr.Storage.ItemStorageType}."
+            );
 
             // If the nested iterator was constructed in branching mode,
             if (_iterCurr.IsBranching)
@@ -4949,7 +4955,7 @@ namespace System.Xml.Xsl.IlGen
         /// <summary>
         /// Shortcut call to XmlILTypeHelper.GetStorageType.
         /// </summary>
-        private Type GetStorageType(QilNode nd)
+        private static Type GetStorageType(QilNode nd)
         {
             return XmlILTypeHelper.GetStorageType(nd.XmlType!);
         }
@@ -4957,7 +4963,7 @@ namespace System.Xml.Xsl.IlGen
         /// <summary>
         /// Shortcut call to XmlILTypeHelper.GetStorageType.
         /// </summary>
-        private Type GetStorageType(XmlQueryType typ)
+        private static Type GetStorageType(XmlQueryType typ)
         {
             return XmlILTypeHelper.GetStorageType(typ);
         }
@@ -4965,7 +4971,7 @@ namespace System.Xml.Xsl.IlGen
         /// <summary>
         /// Shortcut call to XmlILTypeHelper.GetStorageType, using an expression's prime type.
         /// </summary>
-        private Type GetItemStorageType(QilNode nd)
+        private static Type GetItemStorageType(QilNode nd)
         {
             return XmlILTypeHelper.GetStorageType(nd.XmlType!.Prime);
         }
@@ -4973,7 +4979,7 @@ namespace System.Xml.Xsl.IlGen
         /// <summary>
         /// Shortcut call to XmlILTypeHelper.GetStorageType, using the prime type.
         /// </summary>
-        private Type GetItemStorageType(XmlQueryType typ)
+        private static Type GetItemStorageType(XmlQueryType typ)
         {
             return XmlILTypeHelper.GetStorageType(typ.Prime);
         }

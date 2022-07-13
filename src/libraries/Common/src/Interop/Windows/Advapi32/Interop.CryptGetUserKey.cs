@@ -4,11 +4,12 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Advapi32
+    internal static partial class Advapi32
     {
-        [DllImport(Libraries.Advapi32, SetLastError = true)]
-        internal static extern bool CryptGetUserKey(SafeProvHandle hProv, int dwKeySpec, out SafeKeyHandle phUserKey);
+        [LibraryImport(Libraries.Advapi32, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool CryptGetUserKey(SafeProvHandle hProv, int dwKeySpec, out SafeCapiKeyHandle phUserKey);
     }
 }

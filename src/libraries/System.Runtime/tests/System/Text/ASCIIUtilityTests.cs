@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -427,12 +428,13 @@ namespace System.Text.Tests
             }
         }
 
+        [return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)]
         private static Type GetAsciiUtilityType()
         {
-            return typeof(object).Assembly.GetType("System.Text.ASCIIUtility");
+            return Type.GetType("System.Text.ASCIIUtility, System.Private.CoreLib");
         }
 
-        private sealed class UnsafeLazyDelegate<TDelegate> where TDelegate : class
+        private sealed class UnsafeLazyDelegate<TDelegate> where TDelegate : Delegate
         {
             private readonly Lazy<TDelegate> _lazyDelegate;
 
@@ -449,7 +451,7 @@ namespace System.Text.Tests
 
                     // Construct the TDelegate pointing to this method
 
-                    return (TDelegate)Activator.CreateInstance(typeof(TDelegate), new object[] { null, methodInfo.MethodHandle.GetFunctionPointer() });
+                    return methodInfo.CreateDelegate<TDelegate>();
                 });
             }
 

@@ -1,14 +1,14 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+using System.Diagnostics;
+using System.Xml;
+using System.Xml.XPath;
+
 namespace System.Xml.Xsl.XsltOld
 {
-    using System;
-    using System.Diagnostics;
-    using System.Xml;
-    using System.Xml.XPath;
-
-    internal class ValueOfAction : CompiledAction
+    internal sealed class ValueOfAction : CompiledAction
     {
         private const int ResultStored = 2;
 
@@ -87,7 +87,7 @@ namespace System.Xml.Xsl.XsltOld
         }
     }
 
-    internal class BuiltInRuleTextAction : Action
+    internal sealed class BuiltInRuleTextAction : Action
     {
         private const int ResultStored = 2;
         internal override void Execute(Processor processor, ActionFrame frame)

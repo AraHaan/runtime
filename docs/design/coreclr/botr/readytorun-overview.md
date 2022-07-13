@@ -67,7 +67,7 @@ Some of this information can be omitted or stored in more efficient form, e.g.:
 
 Even for IL or unmanaged native code, there are limits to what compatible changes can be made. For example, deleting a public method is sure to be an incompatible change for any extern code using that method.
 
-Since CIL already has a set of [compatibility rules](https://github.com/dotnet/runtime/blob/master/docs/coding-guidelines/breaking-changes.md), ideally the native format would have the same set of compatibility rules as CIL. Unfortunately, that is difficult to do efficiently in all cases. In those cases we have multiple choices:
+Since CIL already has a set of [compatibility rules](https://github.com/dotnet/runtime/blob/main/docs/coding-guidelines/breaking-changes.md), ideally the native format would have the same set of compatibility rules as CIL. Unfortunately, that is difficult to do efficiently in all cases. In those cases we have multiple choices:
 
 1. Change the compatibility rules to disallow some changes
 2. Never generate native structures for the problematic cases (fall back to CIL techniques)
@@ -265,7 +265,7 @@ Experiments with disabled cross-module inlining with the selectively enabled inl
 
 ## Non-Virtual calls as the baseline solution to all other versioning issues
 
-It is important to observe that once you have a mechanism for doing non-virtual function calls in a version resilient way (by having an indirect CALL through a slot that that can be fixed lazily at runtime, all other versioning problems _can_ be solved in that way by calling back to the 'definer' module, and having the operation occur there instead. Issues associated with this technique
+It is important to observe that once you have a mechanism for doing non-virtual function calls in a version resilient way (by having an indirect CALL through a slot that can be fixed lazily at runtime, all other versioning problems _can_ be solved in that way by calling back to the 'definer' module, and having the operation occur there instead. Issues associated with this technique
 
 1. You will pay the cost of a true indirection function call and return, as well as any argument setup cost. This cost may be visible in constructs that do not contain a call naturally, like fetching string literals or other constants. You may be able to get better performance from another technique (for example, we did so with instance field access).
 2. It introduces a lot of indirect calls. It is not friendly to systems that disallow on the fly code generation. A small helper stub has to be created at runtime in the most straightforward implementation, or there has to be a scheme how to pre-create or recycle the stubs.

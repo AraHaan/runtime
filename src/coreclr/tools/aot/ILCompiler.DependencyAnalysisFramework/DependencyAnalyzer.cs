@@ -11,16 +11,16 @@ namespace ILCompiler.DependencyAnalysisFramework
     /// <summary>
     /// Implement a dependency analysis framework. This works much like a Garbage Collector's mark algorithm
     /// in that it finds a set of nodes from an initial root set.
-    /// 
+    ///
     /// However, in contrast to a typical GC in addition to simple edges from a node, there may also
     /// be conditional edges where a node has a dependency if some other specific node exists in the
     /// graph, and dynamic edges in which a node has a dependency if some other node exists in the graph,
     /// but what that other node might be is not known until it may exist in the graph.
-    /// 
+    ///
     /// This analyzer also attempts to maintain a serialized state of why nodes are in the graph
     /// with strings describing the reason a given node was added to the graph. The degree of logging
     /// is configurable via the MarkStrategy
-    /// 
+    ///
     /// </summary>
     public sealed class DependencyAnalyzer<MarkStrategy, DependencyContextType> : DependencyAnalyzerBase<DependencyContextType> where MarkStrategy : struct, IDependencyAnalysisMarkStrategy<DependencyContextType>
     {
@@ -32,7 +32,7 @@ namespace ILCompiler.DependencyAnalysisFramework
         private List<DependencyNodeCore<DependencyContextType>> _markedNodes = new List<DependencyNodeCore<DependencyContextType>>();
         private ImmutableArray<DependencyNodeCore<DependencyContextType>> _markedNodesFinal;
         private List<DependencyNodeCore<DependencyContextType>> _rootNodes = new List<DependencyNodeCore<DependencyContextType>>();
-        private List<DependencyNodeCore<DependencyContextType>> _deferredStaticDependencies = new List<DependencyNodeCore<DependencyContextType>>();
+        private Dictionary<int, List<DependencyNodeCore<DependencyContextType>>> _deferredStaticDependencies = new Dictionary<int, List<DependencyNodeCore<DependencyContextType>>>();
         private List<DependencyNodeCore<DependencyContextType>> _dynamicDependencyInterestingList = new List<DependencyNodeCore<DependencyContextType>>();
         private List<DynamicDependencyNode> _markedNodesWithDynamicDependencies = new List<DynamicDependencyNode>();
         private bool _newDynamicDependenciesMayHaveAppeared = false;
@@ -140,6 +140,7 @@ namespace ILCompiler.DependencyAnalysisFramework
 
         public override sealed event Action<List<DependencyNodeCore<DependencyContextType>>> ComputeDependencyRoutine;
 
+        public override sealed event Action<int> ComputingDependencyPhaseChange;
 
         private IEnumerable<DependencyNodeCore<DependencyContextType>> MarkedNodesEnumerable()
         {
@@ -211,6 +212,8 @@ namespace ILCompiler.DependencyAnalysisFramework
             }
         }
 
+        int _currentDependencyPhase = 0;
+
         private void GetStaticDependencies(DependencyNodeCore<DependencyContextType> node)
         {
             if (node.StaticDependenciesAreComputed)
@@ -219,7 +222,13 @@ namespace ILCompiler.DependencyAnalysisFramework
             }
             else
             {
-                _deferredStaticDependencies.Add(node);
+                int dependencyPhase = Math.Max(node.DependencyPhaseForDeferredStaticComputation, _currentDependencyPhase);
+                if (!_deferredStaticDependencies.TryGetValue(dependencyPhase, out var deferredPerPhaseDependencies))
+                {
+                    deferredPerPhaseDependencies = new List<DependencyNodeCore<DependencyContextType>>();
+                    _deferredStaticDependencies.Add(dependencyPhase, deferredPerPhaseDependencies);
+                }
+                deferredPerPhaseDependencies.Add(node);
             }
         }
 
@@ -235,7 +244,7 @@ namespace ILCompiler.DependencyAnalysisFramework
                     Debug.Assert(currentNode.Marked);
 
                     // Only some marked objects are interesting for dynamic dependencies
-                    // store those in a seperate list to avoid excess scanning over non-interesting
+                    // store those in a separate list to avoid excess scanning over non-interesting
                     // nodes during dynamic dependency discovery
                     if (currentNode.InterestingForDynamicDependencyAnalysis)
                     {
@@ -253,7 +262,7 @@ namespace ILCompiler.DependencyAnalysisFramework
                         _markedNodesWithDynamicDependencies.Add(new DynamicDependencyNode(currentNode));
                     }
 
-                    // If this new node satisfies any stored conditional dependencies, 
+                    // If this new node satisfies any stored conditional dependencies,
                     // add them to the mark stack
                     HashSet<DependencyNodeCore<DependencyContextType>.CombinedDependencyListEntry> storedDependencySet = null;
                     if (_conditional_dependency_store.TryGetValue(currentNode, out storedDependencySet))
@@ -299,15 +308,38 @@ namespace ILCompiler.DependencyAnalysisFramework
                     }
 
                     // Compute all dependencies which were not ready during the ProcessMarkStack step
-                    ComputeDependencies(_deferredStaticDependencies);
-                    foreach (DependencyNodeCore<DependencyContextType> node in _deferredStaticDependencies)
+                    _deferredStaticDependencies.TryGetValue(_currentDependencyPhase, out var deferredDependenciesInCurrentPhase);
+
+                    if (deferredDependenciesInCurrentPhase != null)
                     {
-                        Debug.Assert(node.StaticDependenciesAreComputed);
-                        GetStaticDependenciesImpl(node);
+                        ComputeDependencies(deferredDependenciesInCurrentPhase);
+                        foreach (DependencyNodeCore<DependencyContextType> node in deferredDependenciesInCurrentPhase)
+                        {
+                            Debug.Assert(node.StaticDependenciesAreComputed);
+                            GetStaticDependenciesImpl(node);
+                        }
+
+                        deferredDependenciesInCurrentPhase.Clear();
                     }
 
-                    _deferredStaticDependencies.Clear();
-                } while (_markStack.Count != 0);
+                    if (_markStack.Count == 0)
+                    {
+                        // Time to move to next deferred dependency phase.
+
+                        // 1. Remove old deferred dependency list(if it exists)
+                        if (deferredDependenciesInCurrentPhase != null)
+                        {
+                            _deferredStaticDependencies.Remove(_currentDependencyPhase);
+                        }
+
+                        // 2. Increment current dependency phase
+                        _currentDependencyPhase++;
+
+                        // 3. Notify that new dependency phase has been entered
+                        if (ComputingDependencyPhaseChange != null)
+                            ComputingDependencyPhaseChange(_currentDependencyPhase);
+                    }
+                } while ((_markStack.Count != 0) || (_deferredStaticDependencies.Count != 0));
 
                 if (_resultSorter != null)
                     _markedNodes.MergeSortAllowDuplicates(_resultSorter);

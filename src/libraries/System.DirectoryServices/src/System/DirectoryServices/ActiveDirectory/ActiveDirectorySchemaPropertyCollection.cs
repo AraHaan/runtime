@@ -8,7 +8,7 @@ namespace System.DirectoryServices.ActiveDirectory
 {
     public class ActiveDirectorySchemaPropertyCollection : CollectionBase
     {
-        private DirectoryEntry _classEntry;
+        private DirectoryEntry? _classEntry;
         private readonly string _propertyName;
         private readonly ActiveDirectorySchemaClass _schemaClass;
         private readonly bool _isBound;
@@ -30,7 +30,7 @@ namespace System.DirectoryServices.ActiveDirectory
             {
                 // all properties in writeable property collection are non-defunct
                 // so calling constructor for non-defunct property
-                this.InnerList.Add(new ActiveDirectorySchemaProperty(context, ldapDisplayName, (DirectoryEntry)null, null));
+                this.InnerList.Add(new ActiveDirectorySchemaProperty(context, ldapDisplayName, (DirectoryEntry?)null, null));
             }
         }
 
@@ -53,7 +53,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
         public ActiveDirectorySchemaProperty this[int index]
         {
-            get => (ActiveDirectorySchemaProperty)List[index];
+            get => (ActiveDirectorySchemaProperty)List[index]!;
             set
             {
                 if (value == null)
@@ -77,10 +77,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
         public int Add(ActiveDirectorySchemaProperty schemaProperty)
         {
-            if (schemaProperty == null)
-            {
-                throw new ArgumentNullException(nameof(schemaProperty));
-            }
+            ArgumentNullException.ThrowIfNull(schemaProperty);
 
             if (!schemaProperty.isBound)
             {
@@ -99,10 +96,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
         public void AddRange(ActiveDirectorySchemaProperty[] properties)
         {
-            if (properties == null)
-            {
-                throw new ArgumentNullException(nameof(properties));
-            }
+            ArgumentNullException.ThrowIfNull(properties);
 
             foreach (ActiveDirectorySchemaProperty property in properties)
             {
@@ -120,10 +114,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
         public void AddRange(ActiveDirectorySchemaPropertyCollection properties)
         {
-            if (properties == null)
-            {
-                throw new ArgumentNullException(nameof(properties));
-            }
+            ArgumentNullException.ThrowIfNull(properties);
 
             foreach (ActiveDirectorySchemaProperty property in properties)
             {
@@ -143,10 +134,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
         public void AddRange(ReadOnlyActiveDirectorySchemaPropertyCollection properties)
         {
-            if (properties == null)
-            {
-                throw new ArgumentNullException(nameof(properties));
-            }
+            ArgumentNullException.ThrowIfNull(properties);
 
             foreach (ActiveDirectorySchemaProperty property in properties)
             {
@@ -166,10 +154,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
         public void Remove(ActiveDirectorySchemaProperty schemaProperty)
         {
-            if (schemaProperty == null)
-            {
-                throw new ArgumentNullException(nameof(schemaProperty));
-            }
+            ArgumentNullException.ThrowIfNull(schemaProperty);
 
             if (!schemaProperty.isBound)
             {
@@ -178,7 +163,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
             for (int i = 0; i < InnerList.Count; i++)
             {
-                ActiveDirectorySchemaProperty tmp = (ActiveDirectorySchemaProperty)InnerList[i];
+                ActiveDirectorySchemaProperty tmp = (ActiveDirectorySchemaProperty)InnerList[i]!;
                 if (Utils.Compare(tmp.Name, schemaProperty.Name) == 0)
                 {
                     List.Remove(tmp);
@@ -190,10 +175,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
         public void Insert(int index, ActiveDirectorySchemaProperty schemaProperty)
         {
-            if (schemaProperty == null)
-            {
-                throw new ArgumentNullException(nameof(schemaProperty));
-            }
+            ArgumentNullException.ThrowIfNull(schemaProperty);
 
             if (!schemaProperty.isBound)
             {
@@ -212,10 +194,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
         public bool Contains(ActiveDirectorySchemaProperty schemaProperty)
         {
-            if (schemaProperty == null)
-            {
-                throw new ArgumentNullException(nameof(schemaProperty));
-            }
+            ArgumentNullException.ThrowIfNull(schemaProperty);
 
             if (!schemaProperty.isBound)
             {
@@ -224,7 +203,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
             for (int i = 0; i < InnerList.Count; i++)
             {
-                ActiveDirectorySchemaProperty tmp = (ActiveDirectorySchemaProperty)InnerList[i];
+                ActiveDirectorySchemaProperty tmp = (ActiveDirectorySchemaProperty)InnerList[i]!;
                 if (Utils.Compare(tmp.Name, schemaProperty.Name) == 0)
                 {
                     return true;
@@ -237,7 +216,7 @@ namespace System.DirectoryServices.ActiveDirectory
         {
             for (int i = 0; i < InnerList.Count; i++)
             {
-                ActiveDirectorySchemaProperty tmp = (ActiveDirectorySchemaProperty)InnerList[i];
+                ActiveDirectorySchemaProperty tmp = (ActiveDirectorySchemaProperty)InnerList[i]!;
 
                 if (Utils.Compare(tmp.Name, propertyName) == 0)
                 {
@@ -255,10 +234,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
         public int IndexOf(ActiveDirectorySchemaProperty schemaProperty)
         {
-            if (schemaProperty == null)
-            {
-                throw new ArgumentNullException(nameof(schemaProperty));
-            }
+            ArgumentNullException.ThrowIfNull(schemaProperty);
 
             if (!schemaProperty.isBound)
             {
@@ -267,7 +243,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
             for (int i = 0; i < InnerList.Count; i++)
             {
-                ActiveDirectorySchemaProperty tmp = (ActiveDirectorySchemaProperty)InnerList[i];
+                ActiveDirectorySchemaProperty tmp = (ActiveDirectorySchemaProperty)InnerList[i]!;
                 if (Utils.Compare(tmp.Name, schemaProperty.Name) == 0)
                 {
                     return i;
@@ -280,10 +256,7 @@ namespace System.DirectoryServices.ActiveDirectory
         {
             if (_isBound)
             {
-                if (_classEntry == null)
-                {
-                    _classEntry = _schemaClass.GetSchemaClassDirectoryEntry();
-                }
+                _classEntry ??= _schemaClass.GetSchemaClassDirectoryEntry();
 
                 try
                 {
@@ -299,14 +272,13 @@ namespace System.DirectoryServices.ActiveDirectory
             }
         }
 
+#pragma warning disable CS8765 // Nullability doesn't match overriden member
         protected override void OnInsertComplete(int index, object value)
+#pragma warning restore CS8765
         {
             if (_isBound)
             {
-                if (_classEntry == null)
-                {
-                    _classEntry = _schemaClass.GetSchemaClassDirectoryEntry();
-                }
+                _classEntry ??= _schemaClass.GetSchemaClassDirectoryEntry();
 
                 try
                 {
@@ -319,14 +291,13 @@ namespace System.DirectoryServices.ActiveDirectory
             }
         }
 
+#pragma warning disable CS8765 // Nullability doesn't match overriden member
         protected override void OnRemoveComplete(int index, object value)
+#pragma warning restore CS8765
         {
             if (_isBound)
             {
-                if (_classEntry == null)
-                {
-                    _classEntry = _schemaClass.GetSchemaClassDirectoryEntry();
-                }
+                _classEntry ??= _schemaClass.GetSchemaClassDirectoryEntry();
 
                 // because this collection can contain values from the superior classes,
                 // these values would not exist in the classEntry
@@ -351,7 +322,10 @@ namespace System.DirectoryServices.ActiveDirectory
                 }
             }
         }
+
+#pragma warning disable CS8765 // Nullability doesn't match overriden member
         protected override void OnSetComplete(int index, object oldValue, object newValue)
+#pragma warning restore CS8765
         {
             if (_isBound)
             {
@@ -365,7 +339,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
         protected override void OnValidate(object value)
         {
-            if (value == null) throw new ArgumentNullException(nameof(value));
+            ArgumentNullException.ThrowIfNull(value);
 
             if (!(value is ActiveDirectorySchemaProperty))
                 throw new ArgumentException(null, nameof(value));
@@ -379,7 +353,7 @@ namespace System.DirectoryServices.ActiveDirectory
             string[] values = new string[InnerList.Count];
             for (int i = 0; i < InnerList.Count; i++)
             {
-                values[i] = ((ActiveDirectorySchemaProperty)InnerList[i]).Name;
+                values[i] = ((ActiveDirectorySchemaProperty)InnerList[i]!).Name;
             }
             return values;
         }

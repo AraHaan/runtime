@@ -1,8 +1,8 @@
 /**
  * \file
  * Images created at runtime.
- *   
- * 
+ *
+ *
  * Author:
  *   Paolo Molaro (lupus@ximian.com)
  *
@@ -104,13 +104,12 @@ MonoImage *
 mono_find_dynamic_image_owner (void *ptr)
 {
 	MonoImage *owner = NULL;
-	int i;
 
 	dynamic_images_lock ();
 
 	if (dynamic_images)
 	{
-		for (i = 0; !owner && i < dynamic_images->len; ++i) {
+		for (guint i = 0; !owner && i < dynamic_images->len; ++i) {
 			MonoImage *image = (MonoImage *)g_ptr_array_index (dynamic_images, i);
 			if (mono_mempool_contains_addr (image->mempool, ptr))
 				owner = image;
@@ -213,11 +212,11 @@ mono_dynamic_image_get_registered_token (MonoDynamicImage *dynimage, guint32 tok
 #endif
 
 /**
- * 
+ *
  * mono_dynamic_image_is_valid_token:
- * 
+ *
  * Returns TRUE if token is valid in the given image.
- * 
+ *
  */
 gboolean
 mono_dynamic_image_is_valid_token (MonoDynamicImage *image, guint32 token)
@@ -234,7 +233,7 @@ mono_dynamic_image_is_valid_token (MonoDynamicImage *image, guint32 token)
  * mono_reflection_lookup_dynamic_token:
  *
  * Finish the Builder object pointed to by TOKEN and return the corresponding
- * runtime structure. If HANDLE_CLASS is not NULL, it is set to the class required by 
+ * runtime structure. If HANDLE_CLASS is not NULL, it is set to the class required by
  * mono_ldtoken. If valid_token is TRUE, assert if it is not found in the token->object
  * mapping table.
  *
@@ -250,7 +249,7 @@ mono_reflection_lookup_dynamic_token (MonoImage *image, guint32 token, gboolean 
 	MonoClass *klass;
 
 	error_init (error);
-	
+
 	lookup_dyn_token (assembly, token, &obj);
 	if (MONO_HANDLE_IS_NULL (obj)) {
 		if (valid_token)
@@ -332,18 +331,12 @@ mono_dynamic_image_create (MonoDynamicAssembly *assembly, char *assembly_name, c
 	static const guchar entrycode [16] = {0xff, 0x25, 0};
 	MonoDynamicImage *image;
 	int i;
-
-	const char *version;
-
-	if (!strcmp (mono_get_runtime_info ()->framework_version, "2.1"))
-		version = "v2.0.50727"; /* HACK: SL 2 enforces the .net 2 metadata version */
-	else
-		version = mono_get_runtime_info ()->runtime_version;
+	const char *version = "v4.0.30319";
 
 	image = g_new0 (MonoDynamicImage, 1);
 
 	MONO_PROFILER_RAISE (image_loading, (&image->image));
-	
+
 	/*g_print ("created image %p\n", image);*/
 	/* keep in sync with image.c */
 	image->image.name = assembly_name;
@@ -359,9 +352,6 @@ mono_dynamic_image_create (MonoDynamicAssembly *assembly, char *assembly_name, c
 
 	mono_image_init (&image->image);
 
-	image->token_fixups = mono_g_hash_table_new_type_internal ((GHashFunc)mono_object_hash_internal, NULL, MONO_HASH_KEY_GC, MONO_ROOT_SOURCE_REFLECTION, NULL, "Reflection Dynamic Image Token Fixup Table");
-	image->method_to_table_idx = g_hash_table_new (NULL, NULL);
-	image->field_to_table_idx = g_hash_table_new (NULL, NULL);
 	image->method_aux_hash = g_hash_table_new (NULL, NULL);
 	image->vararg_aux_hash = g_hash_table_new (NULL, NULL);
 	image->handleref = g_hash_table_new (NULL, NULL);
@@ -370,8 +360,6 @@ mono_dynamic_image_create (MonoDynamicAssembly *assembly, char *assembly_name, c
 	image->typespec = g_hash_table_new ((GHashFunc)mono_metadata_type_hash, (GCompareFunc)mono_metadata_type_equal);
 	image->typeref = g_hash_table_new ((GHashFunc)mono_metadata_type_hash, (GCompareFunc)mono_metadata_type_equal);
 	image->blob_cache = g_hash_table_new ((GHashFunc)mono_blob_entry_hash, (GCompareFunc)mono_blob_entry_equal);
-	image->gen_params = g_ptr_array_new ();
-	image->remapped_tokens = mono_g_hash_table_new_type_internal (NULL, NULL, MONO_HASH_VALUE_GC, MONO_ROOT_SOURCE_REFLECTION, NULL, "Reflection Dynamic Image Remapped Token Table");
 
 	/*g_print ("string heap create for image %p (%s)\n", image, module_name);*/
 	string_heap_init (&image->sheap);
@@ -397,7 +385,7 @@ mono_dynamic_image_create (MonoDynamicAssembly *assembly, char *assembly_name, c
 	image->image.assembly = (MonoAssembly*)assembly;
 	image->pe_kind = 0x1; /* ILOnly */
 	image->machine = 0x14c; /* I386 */
-	
+
 	MONO_PROFILER_RAISE (image_loaded, (&image->image));
 
 	dynamic_images_lock ();
@@ -481,9 +469,7 @@ release_hashtable (MonoGHashTable **hash)
 void
 mono_dynamic_image_release_gc_roots (MonoDynamicImage *image)
 {
-	release_hashtable (&image->token_fixups);
 	release_hashtable (&image->tokens);
-	release_hashtable (&image->remapped_tokens);
 	release_hashtable (&image->generic_def_objects);
 }
 
@@ -503,8 +489,6 @@ mono_dynamic_image_free (MonoDynamicImage *image)
 		g_hash_table_destroy (di->handleref);
 	if (di->tokens)
 		mono_g_hash_table_destroy (di->tokens);
-	if (di->remapped_tokens)
-		mono_g_hash_table_destroy (di->remapped_tokens);
 	if (di->generic_def_objects)
 		mono_g_hash_table_destroy (di->generic_def_objects);
 	if (di->blob_cache) {
@@ -518,19 +502,6 @@ mono_dynamic_image_free (MonoDynamicImage *image)
 		mono_sre_array_method_free (am);
 	}
 	g_list_free (di->array_methods);
-	if (di->gen_params) {
-		for (i = 0; i < di->gen_params->len; i++) {
-			GenericParamTableEntry *entry = (GenericParamTableEntry *)g_ptr_array_index (di->gen_params, i);
-			mono_sre_generic_param_table_entry_free (entry);
-		}
-	 	g_ptr_array_free (di->gen_params, TRUE);
-	}
-	if (di->token_fixups)
-		mono_g_hash_table_destroy (di->token_fixups);
-	if (di->method_to_table_idx)
-		g_hash_table_destroy (di->method_to_table_idx);
-	if (di->field_to_table_idx)
-		g_hash_table_destroy (di->field_to_table_idx);
 	if (di->method_aux_hash)
 		g_hash_table_destroy (di->method_aux_hash);
 	if (di->vararg_aux_hash)

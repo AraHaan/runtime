@@ -3,11 +3,14 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using System.Text;
-using Internal.Runtime.CompilerServices;
 
 namespace System
 {
@@ -41,10 +44,7 @@ namespace System
 
         public static string Concat(params object?[] args)
         {
-            if (args == null)
-            {
-                throw new ArgumentNullException(nameof(args));
-            }
+            ArgumentNullException.ThrowIfNull(args);
 
             if (args.Length <= 1)
             {
@@ -106,8 +106,7 @@ namespace System
 
         public static string Concat<T>(IEnumerable<T> values)
         {
-            if (values == null)
-                throw new ArgumentNullException(nameof(values));
+            ArgumentNullException.ThrowIfNull(values);
 
             if (typeof(T) == typeof(char))
             {
@@ -190,8 +189,7 @@ namespace System
 
         public static string Concat(IEnumerable<string?> values)
         {
-            if (values == null)
-                throw new ArgumentNullException(nameof(values));
+            ArgumentNullException.ThrowIfNull(values);
 
             using (IEnumerator<string?> en = values.GetEnumerator())
             {
@@ -371,8 +369,7 @@ namespace System
 
         public static string Concat(params string?[] values)
         {
-            if (values == null)
-                throw new ArgumentNullException(nameof(values));
+            ArgumentNullException.ThrowIfNull(values);
 
             if (values.Length <= 1)
             {
@@ -437,64 +434,67 @@ namespace System
             return copiedLength == totalLength ? result : Concat((string?[])values.Clone());
         }
 
-        public static string Format(string format, object? arg0)
+        public static string Format([StringSyntax(StringSyntaxAttribute.CompositeFormat)] string format, object? arg0)
         {
-            return FormatHelper(null, format, new ParamsArray(arg0));
+            return FormatHelper(null, format, new ReadOnlySpan<object?>(in arg0));
         }
 
-        public static string Format(string format, object? arg0, object? arg1)
+        public static string Format([StringSyntax(StringSyntaxAttribute.CompositeFormat)] string format, object? arg0, object? arg1)
         {
-            return FormatHelper(null, format, new ParamsArray(arg0, arg1));
+            TwoObjects two = new TwoObjects(arg0, arg1);
+            return FormatHelper(null, format, MemoryMarshal.CreateReadOnlySpan(ref two.Arg0, 2));
         }
 
-        public static string Format(string format, object? arg0, object? arg1, object? arg2)
+        public static string Format([StringSyntax(StringSyntaxAttribute.CompositeFormat)] string format, object? arg0, object? arg1, object? arg2)
         {
-            return FormatHelper(null, format, new ParamsArray(arg0, arg1, arg2));
+            ThreeObjects three = new ThreeObjects(arg0, arg1, arg2);
+            return FormatHelper(null, format, MemoryMarshal.CreateReadOnlySpan(ref three.Arg0, 3));
         }
 
-        public static string Format(string format, params object?[] args)
+        public static string Format([StringSyntax(StringSyntaxAttribute.CompositeFormat)] string format, params object?[] args)
         {
-            if (args == null)
+            if (args is null)
             {
                 // To preserve the original exception behavior, throw an exception about format if both
                 // args and format are null. The actual null check for format is in FormatHelper.
-                throw new ArgumentNullException((format == null) ? nameof(format) : nameof(args));
+                ArgumentNullException.Throw(format is null ? nameof(format) : nameof(args));
             }
 
-            return FormatHelper(null, format, new ParamsArray(args));
+            return FormatHelper(null, format, args);
         }
 
-        public static string Format(IFormatProvider? provider, string format, object? arg0)
+        public static string Format(IFormatProvider? provider, [StringSyntax(StringSyntaxAttribute.CompositeFormat)] string format, object? arg0)
         {
-            return FormatHelper(provider, format, new ParamsArray(arg0));
+            return FormatHelper(provider, format, new ReadOnlySpan<object?>(in arg0));
         }
 
-        public static string Format(IFormatProvider? provider, string format, object? arg0, object? arg1)
+        public static string Format(IFormatProvider? provider, [StringSyntax(StringSyntaxAttribute.CompositeFormat)] string format, object? arg0, object? arg1)
         {
-            return FormatHelper(provider, format, new ParamsArray(arg0, arg1));
+            TwoObjects two = new TwoObjects(arg0, arg1);
+            return FormatHelper(provider, format, MemoryMarshal.CreateReadOnlySpan(ref two.Arg0, 2));
         }
 
-        public static string Format(IFormatProvider? provider, string format, object? arg0, object? arg1, object? arg2)
+        public static string Format(IFormatProvider? provider, [StringSyntax(StringSyntaxAttribute.CompositeFormat)] string format, object? arg0, object? arg1, object? arg2)
         {
-            return FormatHelper(provider, format, new ParamsArray(arg0, arg1, arg2));
+            ThreeObjects three = new ThreeObjects(arg0, arg1, arg2);
+            return FormatHelper(provider, format, MemoryMarshal.CreateReadOnlySpan(ref three.Arg0, 3));
         }
 
-        public static string Format(IFormatProvider? provider, string format, params object?[] args)
+        public static string Format(IFormatProvider? provider, [StringSyntax(StringSyntaxAttribute.CompositeFormat)] string format, params object?[] args)
         {
-            if (args == null)
+            if (args is null)
             {
                 // To preserve the original exception behavior, throw an exception about format if both
                 // args and format are null. The actual null check for format is in FormatHelper.
-                throw new ArgumentNullException((format == null) ? nameof(format) : nameof(args));
+                ArgumentNullException.Throw(format is null ? nameof(format) : nameof(args));
             }
 
-            return FormatHelper(provider, format, new ParamsArray(args));
+            return FormatHelper(provider, format, args);
         }
 
-        private static string FormatHelper(IFormatProvider? provider, string format, ParamsArray args)
+        private static string FormatHelper(IFormatProvider? provider, string format, ReadOnlySpan<object?> args)
         {
-            if (format == null)
-                throw new ArgumentNullException(nameof(format));
+            ArgumentNullException.ThrowIfNull(format);
 
             var sb = new ValueStringBuilder(stackalloc char[256]);
             sb.EnsureCapacity(format.Length + args.Length * 8);
@@ -504,8 +504,8 @@ namespace System
 
         public string Insert(int startIndex, string value)
         {
-            if (value == null)
-                throw new ArgumentNullException(nameof(value));
+            ArgumentNullException.ThrowIfNull(value);
+
             if ((uint)startIndex > Length)
                 throw new ArgumentOutOfRangeException(nameof(startIndex));
 
@@ -535,7 +535,7 @@ namespace System
                 ThrowHelper.ThrowArgumentNullException(ExceptionArgument.value);
             }
 
-            return JoinCore(MemoryMarshal.CreateReadOnlySpan(ref separator, 1), new ReadOnlySpan<string?>(value));
+            return JoinCore(new ReadOnlySpan<char>(in separator), new ReadOnlySpan<string?>(value));
         }
 
         public static string Join(string? separator, params string?[] value)
@@ -549,17 +549,15 @@ namespace System
         }
 
         public static string Join(char separator, string?[] value, int startIndex, int count) =>
-            JoinCore(MemoryMarshal.CreateReadOnlySpan(ref separator, 1), value, startIndex, count);
+            JoinCore(new ReadOnlySpan<char>(in separator), value, startIndex, count);
 
         public static string Join(string? separator, string?[] value, int startIndex, int count) =>
             JoinCore(separator.AsSpan(), value, startIndex, count);
 
         private static string JoinCore(ReadOnlySpan<char> separator, string?[] value, int startIndex, int count)
         {
-            if (value == null)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
+            ArgumentNullException.ThrowIfNull(value);
+
             if (startIndex < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(startIndex), SR.ArgumentOutOfRange_StartIndex);
@@ -578,9 +576,9 @@ namespace System
 
         public static string Join(string? separator, IEnumerable<string?> values)
         {
-            if (values is List<string?> valuesIList)
+            if (values is List<string?> valuesList)
             {
-                return JoinCore(separator.AsSpan(), CollectionsMarshal.AsSpan(valuesIList));
+                return JoinCore(separator.AsSpan(), CollectionsMarshal.AsSpan(valuesList));
             }
 
             if (values is string?[] valuesArray)
@@ -625,7 +623,7 @@ namespace System
         }
 
         public static string Join(char separator, params object?[] values) =>
-            JoinCore(MemoryMarshal.CreateReadOnlySpan(ref separator, 1), values);
+            JoinCore(new ReadOnlySpan<char>(in separator), values);
 
         public static string Join(string? separator, params object?[] values) =>
             JoinCore(separator.AsSpan(), values);
@@ -667,13 +665,26 @@ namespace System
         }
 
         public static string Join<T>(char separator, IEnumerable<T> values) =>
-            JoinCore(MemoryMarshal.CreateReadOnlySpan(ref separator, 1), values);
+            JoinCore(new ReadOnlySpan<char>(in separator), values);
 
         public static string Join<T>(string? separator, IEnumerable<T> values) =>
             JoinCore(separator.AsSpan(), values);
 
         private static string JoinCore<T>(ReadOnlySpan<char> separator, IEnumerable<T> values)
         {
+            if (typeof(T) == typeof(string))
+            {
+                if (values is List<string?> valuesList)
+                {
+                    return JoinCore(separator, CollectionsMarshal.AsSpan(valuesList));
+                }
+
+                if (values is string?[] valuesArray)
+                {
+                    return JoinCore(separator, new ReadOnlySpan<string?>(valuesArray));
+                }
+            }
+
             if (values == null)
             {
                 ThrowHelper.ThrowArgumentNullException(ExceptionArgument.values);
@@ -874,11 +885,8 @@ namespace System
         // a remove that just takes a startindex.
         public string Remove(int startIndex)
         {
-            if (startIndex < 0)
-                throw new ArgumentOutOfRangeException(nameof(startIndex), SR.ArgumentOutOfRange_StartIndex);
-
-            if (startIndex >= Length)
-                throw new ArgumentOutOfRangeException(nameof(startIndex), SR.ArgumentOutOfRange_StartIndexLessThanLength);
+            if ((uint)startIndex > Length)
+                throw new ArgumentOutOfRangeException(nameof(startIndex), startIndex < 0 ? SR.ArgumentOutOfRange_StartIndex : SR.ArgumentOutOfRange_StartIndexLargerThanLength);
 
             return Substring(0, startIndex);
         }
@@ -913,15 +921,7 @@ namespace System
 
         private string ReplaceCore(string oldValue, string? newValue, CompareInfo? ci, CompareOptions options)
         {
-            if (oldValue is null)
-            {
-                throw new ArgumentNullException(nameof(oldValue));
-            }
-
-            if (oldValue.Length == 0)
-            {
-                throw new ArgumentException(SR.Argument_StringZeroLength, nameof(oldValue));
-            }
+            ArgumentException.ThrowIfNullOrEmpty(oldValue);
 
             // If they asked to replace oldValue with a null, replace all occurrences
             // with the empty string. AsSpan() will normalize appropriately.
@@ -1042,14 +1042,7 @@ namespace System
 
         public string Replace(string oldValue, string? newValue)
         {
-            if (oldValue is null)
-            {
-                throw new ArgumentNullException(nameof(oldValue));
-            }
-            if (oldValue.Length == 0)
-            {
-                throw new ArgumentException(SR.Argument_StringZeroLength, nameof(oldValue));
-            }
+            ArgumentException.ThrowIfNullOrEmpty(oldValue);
 
             // If newValue is null, treat it as an empty string.  Callers use this to remove the oldValue.
             newValue ??= Empty;
@@ -1075,7 +1068,7 @@ namespace System
                 while (true)
                 {
                     int pos = SpanHelpers.IndexOf(ref Unsafe.Add(ref _firstChar, i), c, Length - i);
-                    if (pos == -1)
+                    if (pos < 0)
                     {
                         break;
                     }
@@ -1090,7 +1083,7 @@ namespace System
                 while (true)
                 {
                     int pos = SpanHelpers.IndexOf(ref Unsafe.Add(ref _firstChar, i), Length - i, ref oldValue._firstChar, oldValue.Length);
-                    if (pos == -1)
+                    if (pos < 0)
                     {
                         break;
                     }
@@ -1142,7 +1135,7 @@ namespace System
                 thisIdx = replacementIdx + oldValueLength;
 
                 // Copy over newValue to replace the oldValue.
-                newValue.AsSpan().CopyTo(dstSpan.Slice(dstIdx));
+                newValue.CopyTo(dstSpan.Slice(dstIdx));
                 dstIdx += newValue.Length;
             }
 
@@ -1153,14 +1146,144 @@ namespace System
             return dst;
         }
 
+        /// <summary>
+        /// Replaces all newline sequences in the current string with <see cref="Environment.NewLine"/>.
+        /// </summary>
+        /// <returns>
+        /// A string whose contents match the current string, but with all newline sequences replaced
+        /// with <see cref="Environment.NewLine"/>.
+        /// </returns>
+        /// <remarks>
+        /// This method searches for all newline sequences within the string and canonicalizes them to match
+        /// the newline sequence for the current environment. For example, when running on Windows, all
+        /// occurrences of non-Windows newline sequences will be replaced with the sequence CRLF. When
+        /// running on Unix, all occurrences of non-Unix newline sequences will be replaced with
+        /// a single LF character.
+        ///
+        /// It is not recommended that protocol parsers utilize this API. Protocol specifications often
+        /// mandate specific newline sequences. For example, HTTP/1.1 (RFC 8615) mandates that the request
+        /// line, status line, and headers lines end with CRLF. Since this API operates over a wide range
+        /// of newline sequences, a protocol parser utilizing this API could exhibit behaviors unintended
+        /// by the protocol's authors.
+        ///
+        /// This overload is equivalent to calling <see cref="ReplaceLineEndings(string)"/>, passing
+        /// <see cref="Environment.NewLine"/> as the <em>replacementText</em> parameter.
+        ///
+        /// This method is guaranteed O(n) complexity, where <em>n</em> is the length of the input string.
+        /// </remarks>
+        public string ReplaceLineEndings() => ReplaceLineEndings(Environment.NewLineConst);
+
+        /// <summary>
+        /// Replaces all newline sequences in the current string with <paramref name="replacementText"/>.
+        /// </summary>
+        /// <returns>
+        /// A string whose contents match the current string, but with all newline sequences replaced
+        /// with <paramref name="replacementText"/>.
+        /// </returns>
+        /// <remarks>
+        /// This method searches for all newline sequences within the string and canonicalizes them to the
+        /// newline sequence provided by <paramref name="replacementText"/>. If <paramref name="replacementText"/>
+        /// is <see cref="string.Empty"/>, all newline sequences within the string will be removed.
+        ///
+        /// It is not recommended that protocol parsers utilize this API. Protocol specifications often
+        /// mandate specific newline sequences. For example, HTTP/1.1 (RFC 8615) mandates that the request
+        /// line, status line, and headers lines end with CRLF. Since this API operates over a wide range
+        /// of newline sequences, a protocol parser utilizing this API could exhibit behaviors unintended
+        /// by the protocol's authors.
+        ///
+        /// The list of recognized newline sequences is CR (U+000D), LF (U+000A), CRLF (U+000D U+000A),
+        /// NEL (U+0085), LS (U+2028), FF (U+000C), and PS (U+2029). This list is given by the Unicode
+        /// Standard, Sec. 5.8, Recommendation R4 and Table 5-2.
+        ///
+        /// This method is guaranteed O(n * r) complexity, where <em>n</em> is the length of the input string,
+        /// and where <em>r</em> is the length of <paramref name="replacementText"/>.
+        /// </remarks>
+        public string ReplaceLineEndings(string replacementText)
+        {
+            ArgumentNullException.ThrowIfNull(replacementText);
+
+            // Early-exit: do we need to do anything at all?
+            // If not, return this string as-is.
+
+            int idxOfFirstNewlineChar = IndexOfNewlineChar(this, out int stride);
+            if (idxOfFirstNewlineChar < 0)
+            {
+                return this;
+            }
+
+            // While writing to the builder, we don't bother memcpying the first
+            // or the last segment into the builder. We'll use the builder only
+            // for the intermediate segments, then we'll sandwich everything together
+            // with one final string.Concat call.
+
+            ReadOnlySpan<char> firstSegment = this.AsSpan(0, idxOfFirstNewlineChar);
+            ReadOnlySpan<char> remaining = this.AsSpan(idxOfFirstNewlineChar + stride);
+
+            ValueStringBuilder builder = new ValueStringBuilder(stackalloc char[256]);
+            while (true)
+            {
+                int idx = IndexOfNewlineChar(remaining, out stride);
+                if (idx < 0) { break; } // no more newline chars
+                builder.Append(replacementText);
+                builder.Append(remaining.Slice(0, idx));
+                remaining = remaining.Slice(idx + stride);
+            }
+
+            string retVal = Concat(firstSegment, builder.AsSpan(), replacementText, remaining);
+            builder.Dispose();
+            return retVal;
+        }
+
+        // Scans the input text, returning the index of the first newline char.
+        // Newline chars are given by the Unicode Standard, Sec. 5.8.
+        internal static int IndexOfNewlineChar(ReadOnlySpan<char> text, out int stride)
+        {
+            // !! IMPORTANT !!
+            //
+            // We expect this method may be called with untrusted input, which means we need to
+            // bound the worst-case runtime of this method. We rely on MemoryExtensions.IndexOfAny
+            // having worst-case runtime O(i), where i is the index of the first needle match within
+            // the haystack; or O(n) if no needle is found. This ensures that in the common case
+            // of this method being called within a loop, the worst-case runtime is O(n) rather than
+            // O(n^2), where n is the length of the input text.
+            //
+            // The Unicode Standard, Sec. 5.8, Recommendation R4 and Table 5-2 state that the CR, LF,
+            // CRLF, NEL, LS, FF, and PS sequences are considered newline functions. That section
+            // also specifically excludes VT from the list of newline functions, so we do not include
+            // it in the needle list.
+
+            const string needles = "\r\n\f\u0085\u2028\u2029";
+
+            stride = default;
+            int idx = text.IndexOfAny(needles);
+            if ((uint)idx < (uint)text.Length)
+            {
+                stride = 1; // needle found
+
+                // Did we match CR? If so, and if it's followed by LF, then we need
+                // to consume both chars as a single newline function match.
+
+                if (text[idx] == '\r')
+                {
+                    int nextCharIdx = idx + 1;
+                    if ((uint)nextCharIdx < (uint)text.Length && text[nextCharIdx] == '\n')
+                    {
+                        stride = 2;
+                    }
+                }
+            }
+
+            return idx;
+        }
+
         public string[] Split(char separator, StringSplitOptions options = StringSplitOptions.None)
         {
-            return SplitInternal(new ReadOnlySpan<char>(ref separator, 1), int.MaxValue, options);
+            return SplitInternal(new ReadOnlySpan<char>(in separator), int.MaxValue, options);
         }
 
         public string[] Split(char separator, int count, StringSplitOptions options = StringSplitOptions.None)
         {
-            return SplitInternal(new ReadOnlySpan<char>(ref separator, 1), count, options);
+            return SplitInternal(new ReadOnlySpan<char>(in separator), count, options);
         }
 
         // Creates an array of strings by splitting this string at each
@@ -1494,78 +1617,116 @@ namespace System
         /// <param name="sepListBuilder"><see cref="ValueListBuilder{T}"/> to store indexes</param>
         private void MakeSeparatorList(ReadOnlySpan<char> separators, ref ValueListBuilder<int> sepListBuilder)
         {
-            char sep0, sep1, sep2;
-
-            switch (separators.Length)
+            // Special-case no separators to mean any whitespace is a separator.
+            if (separators.Length == 0)
             {
-                // Special-case no separators to mean any whitespace is a separator.
-                case 0:
-                    for (int i = 0; i < Length; i++)
+                for (int i = 0; i < Length; i++)
+                {
+                    if (char.IsWhiteSpace(this[i]))
                     {
-                        if (char.IsWhiteSpace(this[i]))
-                        {
-                            sepListBuilder.Append(i);
-                        }
+                        sepListBuilder.Append(i);
                     }
-                    break;
+                }
+            }
 
-                // Special-case the common cases of 1, 2, and 3 separators, with manual comparisons against each separator.
-                case 1:
-                    sep0 = separators[0];
-                    for (int i = 0; i < Length; i++)
+            // Special-case the common cases of 1, 2, and 3 separators, with manual comparisons against each separator.
+            else if (separators.Length <= 3)
+            {
+                char sep0, sep1, sep2;
+                sep0 = separators[0];
+                sep1 = separators.Length > 1 ? separators[1] : sep0;
+                sep2 = separators.Length > 2 ? separators[2] : sep1;
+                if (Vector128.IsHardwareAccelerated && Length >= Vector128<ushort>.Count * 2)
+                {
+                    MakeSeparatorListVectorized(ref sepListBuilder, sep0, sep1, sep2);
+                    return;
+                }
+
+                for (int i = 0; i < Length; i++)
+                {
+                    char c = this[i];
+                    if (c == sep0 || c == sep1 || c == sep2)
                     {
-                        if (this[i] == sep0)
-                        {
-                            sepListBuilder.Append(i);
-                        }
+                        sepListBuilder.Append(i);
                     }
-                    break;
-                case 2:
-                    sep0 = separators[0];
-                    sep1 = separators[1];
+                }
+            }
+
+            // Handle > 3 separators with a probabilistic map, ala IndexOfAny.
+            // This optimizes for chars being unlikely to match a separator.
+            else
+            {
+                unsafe
+                {
+                    ProbabilisticMap map = default;
+                    uint* charMap = (uint*)&map;
+                    ProbabilisticMap.Initialize(charMap, separators);
+
                     for (int i = 0; i < Length; i++)
                     {
                         char c = this[i];
-                        if (c == sep0 || c == sep1)
+                        if (ProbabilisticMap.IsCharBitSet(charMap, (byte)c) &&
+                            ProbabilisticMap.IsCharBitSet(charMap, (byte)(c >> 8)) &&
+                            separators.Contains(c))
                         {
                             sepListBuilder.Append(i);
                         }
                     }
-                    break;
-                case 3:
-                    sep0 = separators[0];
-                    sep1 = separators[1];
-                    sep2 = separators[2];
-                    for (int i = 0; i < Length; i++)
-                    {
-                        char c = this[i];
-                        if (c == sep0 || c == sep1 || c == sep2)
-                        {
-                            sepListBuilder.Append(i);
-                        }
-                    }
-                    break;
+                }
+            }
+        }
 
-                // Handle > 3 separators with a probabilistic map, ala IndexOfAny.
-                // This optimizes for chars being unlikely to match a separator.
-                default:
-                    unsafe
-                    {
-                        ProbabilisticMap map = default;
-                        uint* charMap = (uint*)&map;
-                        InitializeProbabilisticMap(charMap, separators);
+        private void MakeSeparatorListVectorized(ref ValueListBuilder<int> sepListBuilder, char c, char c2, char c3)
+        {
+            // Redundant test so we won't prejit remainder of this method
+            // on platforms where it is not supported
+            if (!Vector128.IsHardwareAccelerated)
+            {
+                throw new PlatformNotSupportedException();
+            }
 
-                        for (int i = 0; i < Length; i++)
-                        {
-                            char c = this[i];
-                            if (IsCharBitSet(charMap, (byte)c) && IsCharBitSet(charMap, (byte)(c >> 8)) &&
-                                separators.Contains(c))
-                            {
-                                sepListBuilder.Append(i);
-                            }
-                        }
-                    }
-                    break;
+            Debug.Assert(Length >= Vector128<ushort>.Count);
+
+            nuint offset = 0;
+            nuint lengthToExamine = (nuint)(uint)Length;
+
+            ref ushort source = ref Unsafe.As<char, ushort>(ref _firstChar);
+
+            Vector128<ushort> v1 = Vector128.Create((ushort)c);
+            Vector128<ushort> v2 = Vector128.Create((ushort)c2);
+            Vector128<ushort> v3 = Vector128.Create((ushort)c3);
+
+            do
+            {
+                Vector128<ushort> vector = Vector128.LoadUnsafe(ref source, offset);
+                Vector128<ushort> v1Eq = Vector128.Equals(vector, v1);
+                Vector128<ushort> v2Eq = Vector128.Equals(vector, v2);
+                Vector128<ushort> v3Eq = Vector128.Equals(vector, v3);
+                Vector128<byte> cmp = (v1Eq | v2Eq | v3Eq).AsByte();
+
+                if (cmp != Vector128<byte>.Zero)
+                {
+                    // Skip every other bit
+                    uint mask = cmp.ExtractMostSignificantBits() & 0x5555;
+                    do
+                    {
+                        uint bitPos = (uint)BitOperations.TrailingZeroCount(mask) / sizeof(char);
+                        sepListBuilder.Append((int)(offset + bitPos));
+                        mask = BitOperations.ResetLowestSetBit(mask);
+                    } while (mask != 0);
+                }
+
+                offset += (nuint)Vector128<ushort>.Count;
+            } while (offset <= lengthToExamine - (nuint)Vector128<ushort>.Count);
+
+            while (offset < lengthToExamine)
+            {
+                char curr = (char)Unsafe.Add(ref source, offset);
+                if (curr == c || curr == c2 || curr == c3)
+                {
+                    sepListBuilder.Append((int)offset);
+                }
+                offset++;
             }
         }
 
@@ -1689,7 +1850,7 @@ namespace System
             Buffer.Memmove(
                 elementCount: (uint)result.Length, // derefing Length now allows JIT to prove 'result' not null below
                 destination: ref result._firstChar,
-                source: ref Unsafe.Add(ref _firstChar, startIndex));
+                source: ref Unsafe.Add(ref _firstChar, (nint)(uint)startIndex /* force zero-extension */));
 
             return result;
         }

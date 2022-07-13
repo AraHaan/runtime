@@ -27,8 +27,7 @@ namespace System.DirectoryServices.ActiveDirectory
 
         public static ActiveDirectoryInterSiteTransport FindByTransportType(DirectoryContext context, ActiveDirectoryTransportType transport)
         {
-            if (context == null)
-                throw new ArgumentNullException(nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
 
             // if target is not specified, then we determin the target from the logon credential, so if it is a local user context, it should fail
             if ((context.Name == null) && (!context.isRootDomain()))
@@ -55,7 +54,7 @@ namespace System.DirectoryServices.ActiveDirectory
             try
             {
                 de = DirectoryEntryManager.GetDirectoryEntry(context, WellKnownDN.RootDSE);
-                string config = (string)PropertyManager.GetPropertyValue(context, de, PropertyManager.ConfigurationNamingContext);
+                string config = (string)PropertyManager.GetPropertyValue(context, de, PropertyManager.ConfigurationNamingContext)!;
                 string containerDN = "CN=Inter-Site Transports,CN=Sites," + config;
                 if (transport == ActiveDirectoryTransportType.Rpc)
                     containerDN = "CN=IP," + containerDN;
@@ -119,7 +118,7 @@ namespace System.DirectoryServices.ActiveDirectory
                 try
                 {
                     if (_cachedEntry.Properties.Contains("options"))
-                        option = (int)_cachedEntry.Properties["options"][0];
+                        option = (int)_cachedEntry.Properties["options"][0]!;
                 }
                 catch (COMException e)
                 {
@@ -141,7 +140,7 @@ namespace System.DirectoryServices.ActiveDirectory
                 try
                 {
                     if (_cachedEntry.Properties.Contains("options"))
-                        option = (int)_cachedEntry.Properties["options"][0];
+                        option = (int)_cachedEntry.Properties["options"][0]!;
 
                     // NTDSTRANSPORT_OPT_IGNORE_SCHEDULES ( 1 << 0 )  Schedules disabled
                     if (value)
@@ -169,7 +168,7 @@ namespace System.DirectoryServices.ActiveDirectory
                 try
                 {
                     if (_cachedEntry.Properties.Contains("options"))
-                        option = (int)_cachedEntry.Properties["options"][0];
+                        option = (int)_cachedEntry.Properties["options"][0]!;
                 }
                 catch (COMException e)
                 {
@@ -192,7 +191,7 @@ namespace System.DirectoryServices.ActiveDirectory
                 try
                 {
                     if (_cachedEntry.Properties.Contains("options"))
-                        option = (int)_cachedEntry.Properties["options"][0];
+                        option = (int)_cachedEntry.Properties["options"][0]!;
 
                     // NTDSTRANSPORT_OPT_BRIDGES_REQUIRED (1 << 1 ) siteLink bridges are required, all site links are not bridged
                     // That is to say, if this bit is set, it means that all site links are not bridged and user needs to create specific bridge
@@ -226,7 +225,7 @@ namespace System.DirectoryServices.ActiveDirectory
                                                              "(&(objectClass=siteLink)(objectCategory=SiteLink))",
                                                              new string[] { "cn" },
                                                              SearchScope.OneLevel);
-                    SearchResultCollection results = null;
+                    SearchResultCollection? results = null;
 
                     try
                     {
@@ -242,7 +241,7 @@ namespace System.DirectoryServices.ActiveDirectory
                         foreach (SearchResult result in results)
                         {
                             DirectoryEntry connectionEntry = result.GetDirectoryEntry();
-                            string cn = (string)PropertyManager.GetSearchResultPropertyValue(result, PropertyManager.Cn);
+                            string cn = (string)PropertyManager.GetSearchResultPropertyValue(result, PropertyManager.Cn)!;
                             ActiveDirectorySiteLink link = new ActiveDirectorySiteLink(_context, cn, _transport, true, connectionEntry);
                             _siteLinkCollection.Add(link);
                         }
@@ -274,7 +273,7 @@ namespace System.DirectoryServices.ActiveDirectory
                                                              "(&(objectClass=siteLinkBridge)(objectCategory=SiteLinkBridge))",
                                                              new string[] { "cn" },
                                                              SearchScope.OneLevel);
-                    SearchResultCollection results = null;
+                    SearchResultCollection? results = null;
 
                     try
                     {
@@ -290,7 +289,7 @@ namespace System.DirectoryServices.ActiveDirectory
                         foreach (SearchResult result in results)
                         {
                             DirectoryEntry connectionEntry = result.GetDirectoryEntry();
-                            string cn = (string)PropertyManager.GetSearchResultPropertyValue(result, PropertyManager.Cn);
+                            string cn = (string)PropertyManager.GetSearchResultPropertyValue(result, PropertyManager.Cn)!;
                             ActiveDirectorySiteLinkBridge bridge = new ActiveDirectorySiteLinkBridge(_context, cn, _transport, true);
                             bridge.cachedEntry = connectionEntry;
                             _bridgeCollection.Add(bridge);
@@ -350,8 +349,7 @@ namespace System.DirectoryServices.ActiveDirectory
             if (disposing)
             {
                 // free other state (managed objects)
-                if (_cachedEntry != null)
-                    _cachedEntry.Dispose();
+                _cachedEntry?.Dispose();
             }
 
             // free your own state (unmanaged objects)

@@ -6,9 +6,9 @@ namespace System.Composition.Hosting.Util
     // Extremely performance-sensitive.
     // Always safe for reading, even under concurrent writes,
     // only one writer at a time allowed.
-    internal class SmallSparseInitonlyArray
+    internal sealed class SmallSparseInitonlyArray
     {
-        private class Element { public int Index; public object Value; }
+        private sealed class Element { public int Index; public object Value; }
 
         private const int ElementsCapacity = 128;
         private const int ElementIndexMask = 127;
@@ -19,8 +19,7 @@ namespace System.Composition.Hosting.Util
 
         public void Add(int index, object value)
         {
-            if (_elements == null)
-                _elements = new Element[ElementsCapacity];
+            _elements ??= new Element[ElementsCapacity];
 
             var newElement = new Element { Index = index, Value = value };
 
@@ -53,8 +52,7 @@ namespace System.Composition.Hosting.Util
                 }
             }
 
-            if (_overflow == null)
-                _overflow = new SmallSparseInitonlyArray();
+            _overflow ??= new SmallSparseInitonlyArray();
 
             _overflow.Add(index, value);
         }

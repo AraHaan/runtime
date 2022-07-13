@@ -90,7 +90,7 @@ namespace System.Data.OleDb
         internal OleDbConnectionString(string connectionString, bool validate) : base(connectionString)
         {
             string? prompt = this[KEY.Prompt];
-            PossiblePrompt = ((!ADP.IsEmpty(prompt) && (0 != string.Compare(prompt, VALUES.NoPrompt, StringComparison.OrdinalIgnoreCase)))
+            PossiblePrompt = ((!ADP.IsEmpty(prompt) && (!string.Equals(prompt, VALUES.NoPrompt, StringComparison.OrdinalIgnoreCase)))
                               || !ADP.IsEmpty(this[KEY.WindowHandle]));
 
             if (!IsEmpty)
@@ -243,7 +243,7 @@ namespace System.Data.OleDb
 
         private static string? LoadStringFromStorage(string udlfilename)
         {
-            string? udlConnectionString = null;
+            string? udlConnectionString;
             Dictionary<string, string>? udlcache = UDL._Pool;
 
             if ((null == udlcache) || !udlcache.TryGetValue(udlfilename, out udlConnectionString))
@@ -413,13 +413,7 @@ namespace System.Data.OleDb
                         }
                         _oledbServices &= ~(ODB.DBPROPVAL_OS_AGR_AFTERSESSION | ODB.DBPROPVAL_OS_CLIENTCURSOR);
 
-                        StringBuilder builder = new StringBuilder();
-                        builder.Append(KEY.Ole_DB_Services);
-                        builder.Append('=');
-                        builder.Append(_oledbServices.ToString(CultureInfo.InvariantCulture));
-                        builder.Append(';');
-                        builder.Append(connectionString);
-                        connectionString = builder.ToString();
+                        connectionString = $"{KEY.Ole_DB_Services}={_oledbServices.ToString(CultureInfo.InvariantCulture)};{connectionString}";
                     }
                 }
             }

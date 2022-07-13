@@ -13,7 +13,7 @@ namespace System.Net.Mime
     /// buffer as the data being encoded will most likely grow.
     /// Encoding and decoding is done transparently to the caller.
     /// </summary>
-    internal class QEncodedStream : DelegatedStream, IEncodableStream
+    internal sealed class QEncodedStream : DelegatedStream, IEncodableStream
     {
 
         private static ReadOnlySpan<byte> HexDecodeMap => new byte[] // rely on C# compiler optimization to eliminate allocation
@@ -47,7 +47,7 @@ namespace System.Net.Mime
             _encoder = new QEncoder(_writeState);
         }
 
-        private ReadStateInfo ReadState => _readState ?? (_readState = new ReadStateInfo());
+        private ReadStateInfo ReadState => _readState ??= new ReadStateInfo();
 
         internal WriteStateInfoBase WriteState => _writeState;
 
@@ -232,7 +232,7 @@ namespace System.Net.Mime
             internal short Byte { get; set; } = -1;
         }
 
-        private class WriteAsyncResult : LazyAsyncResult
+        private sealed class WriteAsyncResult : LazyAsyncResult
         {
             private static readonly AsyncCallback s_onWrite = OnWrite;
 

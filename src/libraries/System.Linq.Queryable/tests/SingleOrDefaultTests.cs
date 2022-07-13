@@ -23,9 +23,23 @@ namespace System.Linq.Tests
         }
 
         [Fact]
+        public void EmptyDefault()
+        {
+            int[] source = { };
+            int defaultValue = 5;
+            Assert.Equal(defaultValue, source.AsQueryable().SingleOrDefault(5));
+        }
+
+        [Fact]
         public void EmptySourceWithPredicate()
         {
             Assert.Null(Enumerable.Empty<int?>().AsQueryable().SingleOrDefault(i => i % 2 == 0));
+        }
+
+        [Fact]
+        public void EmptySourceWithPredicateDefault()
+        {
+            Assert.Equal(5, Enumerable.Empty<int?>().AsQueryable().SingleOrDefault(i => i % 2 == 0, 5));
         }
 
         [Theory]
@@ -64,6 +78,17 @@ namespace System.Linq.Tests
         {
             var val = (new int[] { 2 }).AsQueryable().SingleOrDefault(n => n > 1);
             Assert.Equal(2, val);
+        }
+
+        [Fact]
+        public void SingleOrDefault_OverloadResolution_Regression()
+        {
+            // Regression test for https://github.com/dotnet/runtime/issues/65419
+            object? result = new object[] { 1, "" }.AsQueryable().SingleOrDefault(x => x is string);
+            Assert.IsType<string>(result);
+
+            result = Array.Empty<object>().AsQueryable().SingleOrDefault(1);
+            Assert.IsType<int>(result);
         }
     }
 }

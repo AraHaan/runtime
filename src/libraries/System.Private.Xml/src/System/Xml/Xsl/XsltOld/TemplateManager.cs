@@ -1,21 +1,21 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+using System.Diagnostics;
+using System.Xml;
+using System.Xml.XPath;
+using System.Collections;
+
 namespace System.Xml.Xsl.XsltOld
 {
-    using System;
-    using System.Diagnostics;
-    using System.Xml;
-    using System.Xml.XPath;
-    using System.Collections;
-
-    internal class TemplateManager
+    internal sealed class TemplateManager
     {
         private readonly XmlQualifiedName _mode;
         internal ArrayList? templates;
         private readonly Stylesheet _stylesheet;    // Owning stylesheet
 
-        private class TemplateComparer : IComparer
+        private sealed class TemplateComparer : IComparer
         {
             public int Compare(object? x, object? y)
             {
@@ -62,20 +62,14 @@ namespace System.Xml.Xsl.XsltOld
                 _mode.Equals(template.Mode)
             );
 
-            if (this.templates == null)
-            {
-                this.templates = new ArrayList();
-            }
+            this.templates ??= new ArrayList();
 
             this.templates.Add(template);
         }
 
         internal void ProcessTemplates()
         {
-            if (this.templates != null)
-            {
-                this.templates.Sort(s_TemplateComparer);
-            }
+            this.templates?.Sort(s_TemplateComparer);
         }
 
         internal TemplateAction? FindTemplate(Processor processor, XPathNavigator navigator)

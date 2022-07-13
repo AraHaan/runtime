@@ -71,6 +71,40 @@ bool GetVersionResilientTypeHashCode(IMDInternalImport *pMDImport, mdExportedTyp
     return true;
 }
 
+bool GetVersionResilientMethodDefHashCode(IMDInternalImport *pMDImport, mdMethodDef token, int * pdwHashCode)
+{
+    CONTRACTL
+    {
+        NOTHROW;
+        GC_NOTRIGGER;
+        MODE_ANY;
+        PRECONDITION(CheckPointer(pdwHashCode));
+    }
+    CONTRACTL_END
+
+    _ASSERTE(TypeFromToken(token) == mdtMethodDef);
+    _ASSERTE(!IsNilToken(token));
+
+    LPCUTF8 szName;
+
+    if (FAILED(pMDImport->GetNameOfMethodDef(token, &szName)))
+        return false;
+
+    mdTypeDef tkTypeDef;
+
+    if (FAILED(pMDImport->GetParentToken(token, &tkTypeDef)))
+        return false;
+
+    int hashCode;
+    if (!GetVersionResilientTypeHashCode(pMDImport, tkTypeDef, &hashCode))
+        return false;
+
+    hashCode ^= ComputeNameHashCode(szName);
+
+    *pdwHashCode = hashCode;
+    return true;
+}
+
 #ifndef DACCESS_COMPILE
 int GetVersionResilientTypeHashCode(TypeHandle type)
 {
@@ -164,6 +198,7 @@ public:
         {
             *data = *_pCode;
             _cbCode--;
+            _pCode++;
             return true;
         }
         return false;
@@ -175,6 +210,7 @@ public:
         {
             *data = *(uint16_t UNALIGNED*)_pCode;
             _cbCode -= 2;
+            _pCode += 2;
             return true;
         }
         return false;
@@ -186,6 +222,7 @@ public:
         {
             *data = *(uint32_t UNALIGNED*)_pCode;
             _cbCode -= 4;
+            _pCode += 4;
             return true;
         }
         return false;
@@ -237,7 +274,7 @@ bool AddVersionResilientHashCodeForInstruction(ILInstructionParser *parser, xxHa
     switch (opcodeFormat)
     {
         case InlineNone: // no inline args
-            return opcodeValue;
+            break;
 
         case ShortInlineI:
         case ShortInlineBrTarget:
@@ -355,7 +392,7 @@ bool GetVersionResilientILCodeHashCode(MethodDesc *pMD, int* hashCode, unsigned*
     {
         COR_ILMETHOD_DECODER header(pMD->GetILHeader(TRUE), pMD->GetMDImport(), NULL);
 
-        pILCode = header.GetCode();
+        pILCode = header.Code;
         cbILCode = header.GetCodeSize();
         maxStack = header.GetMaxStack();
         EHCount = header.EHCount();

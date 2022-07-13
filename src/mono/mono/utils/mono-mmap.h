@@ -28,7 +28,7 @@ enum {
 typedef enum {
 	MONO_MEM_ACCOUNT_CODE,
 	MONO_MEM_ACCOUNT_HAZARD_POINTERS,
-	MONO_MEM_ACCOUNT_DOMAIN,
+	MONO_MEM_ACCOUNT_MEM_MANAGER,
 	MONO_MEM_ACCOUNT_SGEN_INTERNAL,
 	MONO_MEM_ACCOUNT_SGEN_NURSERY,
 	MONO_MEM_ACCOUNT_SGEN_LOS,
@@ -77,12 +77,6 @@ MONO_API int   mono_mprotect   (void *addr, size_t length, int flags);
 
 MONO_API const char* mono_mem_account_type_name (MonoMemAccountType type);
 MONO_API void  mono_mem_account_register_counters (void);
-
-MONO_API void* mono_shared_area         (void);
-MONO_API void  mono_shared_area_remove  (void);
-MONO_API void* mono_shared_area_for_pid (void *pid);
-MONO_API void  mono_shared_area_unload  (void *area);
-MONO_API int   mono_shared_area_instances (void **array, int count);
 
 /*
  * On systems where we have to load code into memory instead of mmaping

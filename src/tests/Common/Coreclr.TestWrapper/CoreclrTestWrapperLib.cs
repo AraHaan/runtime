@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 //
+#nullable disable
 
 using System;
 using System.Collections.Generic;
@@ -60,7 +61,7 @@ namespace CoreclrTestLib
         public static extern bool Process32NextW(IntPtr snapshot, ref ProcessEntry32W entry);
     }
 
-    static class libproc
+    static class @libproc
     {
         [DllImport(nameof(libproc))]
         private static extern int proc_listchildpids(int ppid, int[] buffer, int byteSize);
@@ -78,15 +79,15 @@ namespace CoreclrTestLib
         public unsafe static IEnumerable<Process> GetChildren(this Process process)
         {
             var children = new List<Process>();
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (OperatingSystem.IsWindows())
             {
                 return Windows_GetChildren(process);
             }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            else if (OperatingSystem.IsLinux())
             {
                 return Linux_GetChildren(process);
             }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            else if (OperatingSystem.IsMacOS())
             {
                 return MacOS_GetChildren(process);
             }
@@ -196,7 +197,7 @@ namespace CoreclrTestLib
     {
         public const int EXIT_SUCCESS_CODE = 0;
         public const string TIMEOUT_ENVIRONMENT_VAR = "__TestTimeout";
-        
+
         // Default timeout set to 10 minutes
         public const int DEFAULT_TIMEOUT_MS = 1000 * 60 * 10;
 
@@ -210,12 +211,12 @@ namespace CoreclrTestLib
             string arguments = $"--name \"{path}\" {process.Id} --withheap";
             Process createdump = new Process();
 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (OperatingSystem.IsWindows())
             {
                 createdump.StartInfo.FileName = createdumpPath + ".exe";
                 createdump.StartInfo.Arguments = arguments;
             }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
             {
                 createdump.StartInfo.FileName = "sudo";
                 createdump.StartInfo.Arguments = $"{createdumpPath} " + arguments;
@@ -284,12 +285,12 @@ namespace CoreclrTestLib
             return children;
         }
 
-        public int RunTest(string executable, string outputFile, string errorFile, string category, string testBinaryBase)
+        public int RunTest(string executable, string outputFile, string errorFile, string category, string testBinaryBase, string outputDir)
         {
             Debug.Assert(outputFile != errorFile);
 
             int exitCode = -100;
-            
+
             // If a timeout was given to us by an environment variable, use it instead of the default
             // timeout.
             string environmentVar = Environment.GetEnvironmentVariable(TIMEOUT_ENVIRONMENT_VAR);
@@ -304,89 +305,94 @@ namespace CoreclrTestLib
             using (var errorWriter = new StreamWriter(errorStream))
             using (Process process = new Process())
             {
-                // Windows can run the executable implicitly
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                if (MobileAppHandler.IsRetryRequested(testBinaryBase))
                 {
-                    process.StartInfo.FileName = executable;
-                }
-                // Non-windows needs to be told explicitly to run through /bin/bash shell
-                else
-                {
-                    process.StartInfo.FileName = "/bin/bash";
-                    process.StartInfo.Arguments = executable;
-                }
-
-                process.StartInfo.UseShellExecute = false;
-                process.StartInfo.RedirectStandardOutput = true;
-                process.StartInfo.RedirectStandardError = true;
-                process.StartInfo.EnvironmentVariables.Add("__Category", category);
-                process.StartInfo.EnvironmentVariables.Add("__TestBinaryBase", testBinaryBase);
-
-                DateTime startTime = DateTime.Now;
-                process.Start();
-
-                var cts = new CancellationTokenSource();
-                Task copyOutput = process.StandardOutput.BaseStream.CopyToAsync(outputStream, 4096, cts.Token);
-                Task copyError = process.StandardError.BaseStream.CopyToAsync(errorStream, 4096, cts.Token);
-
-                if (process.WaitForExit(timeout))
-                {
-                    // Process completed. Check process.ExitCode here.
-                    exitCode = process.ExitCode;
-                    Task.WaitAll(copyOutput, copyError);
+                    outputWriter.WriteLine("\nWork item retry had been requested earlier - skipping test...");
                 }
                 else
                 {
-                    // Timed out.
-
-                    DateTime endTime = DateTime.Now;
-
-                    try
+                    // Windows can run the executable implicitly
+                    if (OperatingSystem.IsWindows())
                     {
-                        cts.Cancel();
+                        process.StartInfo.FileName = executable;
                     }
-                    catch {}
-
-                    outputWriter.WriteLine("\ncmdLine:{0} Timed Out (timeout in milliseconds: {1}{2}{3}, start: {4}, end: {5})",
-                            executable, timeout, (environmentVar != null) ? " from variable " : "", (environmentVar != null) ? TIMEOUT_ENVIRONMENT_VAR : "",
-                            startTime.ToString(), endTime.ToString());
-                    errorWriter.WriteLine("\ncmdLine:{0} Timed Out (timeout in milliseconds: {1}{2}{3}, start: {4}, end: {5})",
-                            executable, timeout, (environmentVar != null) ? " from variable " : "", (environmentVar != null) ? TIMEOUT_ENVIRONMENT_VAR : "",
-                            startTime.ToString(), endTime.ToString());
-
-                    if (collectCrashDumps)
+                    // Non-windows needs to be told explicitly to run through /bin/bash shell
+                    else
                     {
-                        if (crashDumpFolder != null)
+                        process.StartInfo.FileName = "/bin/bash";
+                        process.StartInfo.Arguments = executable;
+                    }
+
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.RedirectStandardOutput = true;
+                    process.StartInfo.RedirectStandardError = true;
+                    process.StartInfo.EnvironmentVariables.Add("__Category", category);
+                    process.StartInfo.EnvironmentVariables.Add("__TestBinaryBase", testBinaryBase);
+                    process.StartInfo.EnvironmentVariables.Add("__OutputDir", outputDir);
+
+                    DateTime startTime = DateTime.Now;
+                    process.Start();
+
+                    var cts = new CancellationTokenSource();
+                    Task copyOutput = process.StandardOutput.BaseStream.CopyToAsync(outputStream, 4096, cts.Token);
+                    Task copyError = process.StandardError.BaseStream.CopyToAsync(errorStream, 4096, cts.Token);
+
+                    if (process.WaitForExit(timeout))
+                    {
+                        // Process completed. Check process.ExitCode here.
+                        exitCode = process.ExitCode;
+                        MobileAppHandler.CheckExitCode(exitCode, testBinaryBase, category, outputWriter);
+                        Task.WaitAll(copyOutput, copyError);
+                    }
+                    else
+                    {
+                        // Timed out.
+                        DateTime endTime = DateTime.Now;
+
+                        try
                         {
-                            foreach (var child in FindChildProcessesByName(process, "corerun"))
+                            cts.Cancel();
+                        }
+                        catch {}
+
+                        outputWriter.WriteLine("\ncmdLine:{0} Timed Out (timeout in milliseconds: {1}{2}{3}, start: {4}, end: {5})",
+                                executable, timeout, (environmentVar != null) ? " from variable " : "", (environmentVar != null) ? TIMEOUT_ENVIRONMENT_VAR : "",
+                                startTime.ToString(), endTime.ToString());
+                        errorWriter.WriteLine("\ncmdLine:{0} Timed Out (timeout in milliseconds: {1}{2}{3}, start: {4}, end: {5})",
+                                executable, timeout, (environmentVar != null) ? " from variable " : "", (environmentVar != null) ? TIMEOUT_ENVIRONMENT_VAR : "",
+                                startTime.ToString(), endTime.ToString());
+
+                        if (collectCrashDumps)
+                        {
+                            if (crashDumpFolder != null)
                             {
-                                string crashDumpPath = Path.Combine(Path.GetFullPath(crashDumpFolder), string.Format("crashdump_{0}.dmp", child.Id));
-                                Console.WriteLine($"Attempting to collect crash dump: {crashDumpPath}");
-                                if (CollectCrashDump(child, crashDumpPath))
+                                foreach (var child in FindChildProcessesByName(process, "corerun"))
                                 {
-                                    Console.WriteLine("Collected crash dump: {0}", crashDumpPath);
-                                }
-                                else
-                                {
-                                    Console.WriteLine("Failed to collect crash dump");
+                                    string crashDumpPath = Path.Combine(Path.GetFullPath(crashDumpFolder), string.Format("crashdump_{0}.dmp", child.Id));
+                                    Console.WriteLine($"Attempting to collect crash dump: {crashDumpPath}");
+                                    if (CollectCrashDump(child, crashDumpPath))
+                                    {
+                                        Console.WriteLine("Collected crash dump: {0}", crashDumpPath);
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine("Failed to collect crash dump");
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // kill the timed out processes after we've collected dumps
-                    process.Kill(entireProcessTree: true);
+                        // kill the timed out processes after we've collected dumps
+                        process.Kill(entireProcessTree: true);
+                    }
                 }
 
-               outputWriter.WriteLine("Test Harness Exitcode is : " + exitCode.ToString());
-               outputWriter.Flush();
-
-               errorWriter.Flush();
+                outputWriter.WriteLine("Test Harness Exitcode is : " + exitCode.ToString());
+                outputWriter.Flush();
+                errorWriter.Flush();
             }
 
             return exitCode;
         }
-
-        
     }
 }

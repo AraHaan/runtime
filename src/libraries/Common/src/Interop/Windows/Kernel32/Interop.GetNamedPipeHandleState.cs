@@ -4,12 +4,13 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Kernel32
+    internal static partial class Kernel32
     {
-        [DllImport(Libraries.Kernel32, CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
-        internal static extern unsafe bool GetNamedPipeHandleStateW(
+        [LibraryImport(Libraries.Kernel32, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static unsafe partial bool GetNamedPipeHandleStateW(
             SafePipeHandle hNamedPipe,
             uint* lpState,
             uint* lpCurInstances,

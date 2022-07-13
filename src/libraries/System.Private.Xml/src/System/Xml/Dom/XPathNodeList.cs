@@ -1,14 +1,14 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics;
+using System.Collections;
+using System.Collections.Generic;
+using System.Xml.XPath;
+
 namespace System.Xml
 {
-    using System.Xml.XPath;
-    using System.Diagnostics;
-    using System.Collections;
-    using System.Collections.Generic;
-
-    internal class XPathNodeList : XmlNodeList
+    internal sealed class XPathNodeList : XmlNodeList
     {
         private readonly List<XmlNode?> _list;
         private readonly XPathNodeIterator _nodeIterator;
@@ -33,7 +33,7 @@ namespace System.Xml
             }
         }
 
-        private XmlNode? GetNode(XPathNavigator n)
+        private static XmlNode? GetNode(XPathNavigator n)
         {
             IHasXmlNode iHasNode = (IHasXmlNode)n;
             return iHasNode.GetNode();
@@ -83,7 +83,7 @@ namespace System.Xml
         }
     }
 
-    internal class XmlNodeListEnumerator : IEnumerator
+    internal sealed class XmlNodeListEnumerator : IEnumerator
     {
         private readonly XPathNodeList _list;
         private int _index;

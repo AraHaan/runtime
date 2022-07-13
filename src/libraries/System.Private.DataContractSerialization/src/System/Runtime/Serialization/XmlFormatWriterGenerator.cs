@@ -12,6 +12,7 @@ using System.Globalization;
 using System.Security;
 using System.Runtime.CompilerServices;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 namespace System.Runtime.Serialization
 {
@@ -26,11 +27,13 @@ namespace System.Runtime.Serialization
             _helper = new CriticalHelper();
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal XmlFormatClassWriterDelegate GenerateClassWriter(ClassDataContract classContract)
         {
             return _helper.GenerateClassWriter(classContract);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal XmlFormatCollectionWriterDelegate GenerateCollectionWriter(CollectionDataContract collectionContract)
         {
             return _helper.GenerateCollectionWriter(collectionContract);
@@ -41,7 +44,7 @@ namespace System.Runtime.Serialization
         ///          changes to how IL generated could affect how data is serialized and what gets access to data,
         ///          therefore we mark it for review so that changes to generation logic are reviewed.
         /// </SecurityNote>
-        private class CriticalHelper
+        private sealed class CriticalHelper
         {
             private CodeGenerator _ilg = null!; // initialized in GenerateXXXWriter
             private ArgBuilder _xmlWriterArg = null!; // initialized in InitArgs
@@ -56,11 +59,13 @@ namespace System.Runtime.Serialization
             private int _typeIndex = 1;
             private int _childElementIndex;
 
-            private XmlFormatClassWriterDelegate CreateReflectionXmlFormatClassWriterDelegate()
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
+            private static XmlFormatClassWriterDelegate CreateReflectionXmlFormatClassWriterDelegate()
             {
                 return new ReflectionXmlFormatWriter().ReflectionWriteClass;
             }
 
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             internal XmlFormatClassWriterDelegate GenerateClassWriter(ClassDataContract classContract)
             {
                 if (DataContractSerializer.Option == SerializationOption.ReflectionOnly)
@@ -92,11 +97,13 @@ namespace System.Runtime.Serialization
                 }
             }
 
-            private XmlFormatCollectionWriterDelegate CreateReflectionXmlFormatCollectionWriterDelegate()
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
+            private static XmlFormatCollectionWriterDelegate CreateReflectionXmlFormatCollectionWriterDelegate()
             {
-                return new ReflectionXmlFormatWriter().ReflectionWriteCollection;
+                return ReflectionXmlFormatWriter.ReflectionWriteCollection;
             }
 
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             internal XmlFormatCollectionWriterDelegate GenerateCollectionWriter(CollectionDataContract collectionContract)
             {
                 if (DataContractSerializer.Option == SerializationOption.ReflectionOnly)
@@ -128,6 +135,7 @@ namespace System.Runtime.Serialization
                 }
             }
 
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             private void InitArgs(Type objType)
             {
                 _xmlWriterArg = _ilg.GetArg(0);
@@ -146,6 +154,11 @@ namespace System.Runtime.Serialization
                 {
                     _ilg.ConvertValue(objectArg.ArgType, Globals.TypeOfDateTimeOffset);
                     _ilg.Call(XmlFormatGeneratorStatics.GetDateTimeOffsetAdapterMethod);
+                }
+                else if (objType == Globals.TypeOfMemoryStreamAdapter)
+                {
+                    _ilg.ConvertValue(objectArg.ArgType, Globals.TypeOfMemoryStream);
+                    _ilg.Call(XmlFormatGeneratorStatics.GetMemoryStreamAdapterMethod);
                 }
                 //Copy the KeyValuePair<K,T> to a KeyValuePairAdapter<K,T>.
                 else if (objType.IsGenericType && objType.GetGenericTypeDefinition() == Globals.TypeOfKeyValuePairAdapter)
@@ -188,6 +201,7 @@ namespace System.Runtime.Serialization
                 }
             }
 
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             private void WriteClass(ClassDataContract classContract)
             {
                 InvokeOnSerializing(classContract);
@@ -240,6 +254,7 @@ namespace System.Runtime.Serialization
                 InvokeOnSerialized(classContract);
             }
 
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             private int WriteMembers(ClassDataContract classContract, LocalBuilder? extensionDataLocal, ClassDataContract derivedMostClassContract)
             {
                 int memberCount = (classContract.BaseContract == null) ? 0 :
@@ -287,8 +302,8 @@ namespace System.Runtime.Serialization
                             _ilg.LoadArrayElement(_childElementNamespacesLocal!, i + _childElementIndex);
                             _ilg.Call(methodInfo: XmlFormatGeneratorStatics.WriteNamespaceDeclMethod);
                         }
-                        if (memberValue == null)
-                            memberValue = LoadMemberValue(member);
+
+                        memberValue ??= LoadMemberValue(member);
                         WriteValue(memberValue, writeXsiType);
                         WriteEndElement();
                     }
@@ -323,6 +338,7 @@ namespace System.Runtime.Serialization
                 return memberValue;
             }
 
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             private void WriteCollection(CollectionDataContract collectionContract)
             {
                 LocalBuilder itemNamespace = _ilg.DeclareLocal(typeof(XmlDictionaryString), "itemNamespace");
@@ -391,7 +407,7 @@ namespace System.Runtime.Serialization
                     }
 
                     bool isDictionary = false, isGenericDictionary = false;
-                    Type? enumeratorType = null;
+                    Type? enumeratorType;
                     Type[]? keyValueTypes = null;
                     if (collectionContract.Kind == CollectionKind.GenericDictionary)
                     {
@@ -415,10 +431,8 @@ namespace System.Runtime.Serialization
                     {
                         if (enumeratorType.IsInterface)
                         {
-                            if (moveNextMethod == null)
-                                moveNextMethod = XmlFormatGeneratorStatics.MoveNextMethod;
-                            if (getCurrentMethod == null)
-                                getCurrentMethod = XmlFormatGeneratorStatics.GetCurrentMethod;
+                            moveNextMethod ??= XmlFormatGeneratorStatics.MoveNextMethod;
+                            getCurrentMethod ??= XmlFormatGeneratorStatics.GetCurrentMethod;
                         }
                         else
                         {
@@ -438,10 +452,9 @@ namespace System.Runtime.Serialization
                                     }
                                 }
                             }
-                            if (moveNextMethod == null)
-                                moveNextMethod = CollectionDataContract.GetTargetMethodWithName(Globals.MoveNextMethodName, enumeratorType, ienumeratorInterface)!;
-                            if (getCurrentMethod == null)
-                                getCurrentMethod = CollectionDataContract.GetTargetMethodWithName(Globals.GetCurrentMethodName, enumeratorType, ienumeratorInterface)!;
+
+                            moveNextMethod ??= CollectionDataContract.GetTargetMethodWithName(Globals.MoveNextMethodName, enumeratorType, ienumeratorInterface)!;
+                            getCurrentMethod ??= CollectionDataContract.GetTargetMethodWithName(Globals.GetCurrentMethodName, enumeratorType, ienumeratorInterface)!;
                         }
                     }
                     Type elementType = getCurrentMethod.ReturnType;
@@ -491,6 +504,7 @@ namespace System.Runtime.Serialization
                 }
             }
 
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             private bool TryWritePrimitive(Type type, LocalBuilder? value, MemberInfo? memberInfo, LocalBuilder? arrayItemIndex, LocalBuilder ns, LocalBuilder? name, int nameIndex)
             {
                 PrimitiveDataContract? primitiveContract = PrimitiveDataContract.GetPrimitiveDataContract(type);
@@ -537,6 +551,7 @@ namespace System.Runtime.Serialization
                 return true;
             }
 
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             private bool TryWritePrimitiveArray(Type type, Type itemType, LocalBuilder value, LocalBuilder itemName, LocalBuilder itemNamespace)
             {
                 PrimitiveDataContract? primitiveContract = PrimitiveDataContract.GetPrimitiveDataContract(itemType);
@@ -582,6 +597,7 @@ namespace System.Runtime.Serialization
                 return false;
             }
 
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             private void WriteValue(LocalBuilder memberValue, bool writeXsiType)
             {
                 Type memberType = memberValue.LocalType;
@@ -665,6 +681,7 @@ namespace System.Runtime.Serialization
             }
 
 
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             private LocalBuilder UnwrapNullableObject(LocalBuilder memberValue)// Leaves !HasValue on stack
             {
                 Type memberType = memberValue.LocalType;
@@ -693,7 +710,7 @@ namespace System.Runtime.Serialization
                 return memberValue;
             }
 
-            private bool NeedsPrefix(Type type, XmlDictionaryString ns)
+            private static bool NeedsPrefix(Type type, XmlDictionaryString ns)
             {
                 return type == Globals.TypeOfXmlQualifiedName && (ns != null && ns.Value != null && ns.Value.Length > 0);
             }
@@ -723,7 +740,7 @@ namespace System.Runtime.Serialization
                 _ilg.Call(_xmlWriterArg, XmlFormatGeneratorStatics.WriteEndElementMethod);
             }
 
-            private bool CheckIfMemberHasConflict(DataMember member, ClassDataContract classContract, ClassDataContract derivedMostClassContract)
+            private static bool CheckIfMemberHasConflict(DataMember member, ClassDataContract classContract, ClassDataContract derivedMostClassContract)
             {
                 // Check for conflict with base type members
                 if (CheckIfConflictingMembersHaveDifferentTypes(member))
@@ -750,7 +767,7 @@ namespace System.Runtime.Serialization
                 return false;
             }
 
-            private bool CheckIfConflictingMembersHaveDifferentTypes(DataMember member)
+            private static bool CheckIfConflictingMembersHaveDifferentTypes(DataMember member)
             {
                 while (member.ConflictingMember != null)
                 {

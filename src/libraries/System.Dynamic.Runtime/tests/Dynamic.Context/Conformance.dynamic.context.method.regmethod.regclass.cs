@@ -302,13 +302,13 @@ namespace ManagedTests.DynamicCSharp.Conformance.dynamic.context.method.regmetho
         {
             p1 = 2;
             p3 = 3;
-            return new MyClass { Field = (int)p2 }; ;
+            return new MyClass { Field = (int)p2 };
         }
 
         public MyClass Method_ReturnMyClass(out ulong l)
         {
             l = 3;
-            return  new MyClass { Field = (int)l }; ;
+            return  new MyClass { Field = (int)l };
         }
 
         public MyClass Method_ReturnMyClass(params MyStruct[] arr) => new MyClass { Field = 1 };
@@ -1011,7 +1011,7 @@ namespace System.Dynamic.Runtime.Tests
 
         // ManagedTests.DynamicCSharp.Conformance.dynamic.context.method.regmethod.regclass.regclass034.regclass034
         [Fact]
-        public static void CalledFrom_ImplicitlyTypeArrayInitalizer()
+        public static void CalledFrom_ImplicitlyTypeArrayInitializer()
         {
             string p1 = "Test";
             dynamic mc = new MemberClass();

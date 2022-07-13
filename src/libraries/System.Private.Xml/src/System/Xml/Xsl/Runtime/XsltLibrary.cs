@@ -10,6 +10,7 @@ using System.Reflection;
 using System.Xml.XPath;
 using System.Xml.Xsl.Xslt;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 
 namespace System.Xml.Xsl.Runtime
 {
@@ -59,7 +60,11 @@ namespace System.Xml.Xsl.Runtime
 
         // XSLT functions and helper methods (non-static)
         public static readonly MethodInfo CheckScriptNamespace = typeof(XsltLibrary).GetMethod("CheckScriptNamespace");
-        public static readonly MethodInfo FunctionAvailable = typeof(XsltLibrary).GetMethod("FunctionAvailable");
+        public static readonly MethodInfo FunctionAvailable = GetFunctionAvailableMethod();
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode",
+            Justification = "Supressing warning about not having the RequiresUnreferencedCode attribute since this code path " +
+            "will only be emitting IL that will later be called by Transform() method which is already annotated as RequiresUnreferencedCode")]
+        private static MethodInfo GetFunctionAvailableMethod() => typeof(XsltLibrary).GetMethod("FunctionAvailable");
         public static readonly MethodInfo ElementAvailable = typeof(XsltLibrary).GetMethod("ElementAvailable");
         public static readonly MethodInfo RegisterDecimalFormat = typeof(XsltLibrary).GetMethod("RegisterDecimalFormat");
         public static readonly MethodInfo RegisterDecimalFormatter = typeof(XsltLibrary).GetMethod("RegisterDecimalFormatter");
@@ -110,6 +115,7 @@ namespace System.Xml.Xsl.Runtime
         }
 
         // Spec: http://www.w3.org/TR/xslt#function-function-available
+        [RequiresUnreferencedCode(Scripts.ExtensionFunctionCannotBeStaticallyAnalyzed)]
         public bool FunctionAvailable(XmlQualifiedName name)
         {
             if (_functionsAvail == null)
@@ -130,6 +136,7 @@ namespace System.Xml.Xsl.Runtime
             return result;
         }
 
+        [RequiresUnreferencedCode(Scripts.ExtensionFunctionCannotBeStaticallyAnalyzed)]
         private bool FunctionAvailableHelper(XmlQualifiedName name)
         {
             // Is this an XPath or an XSLT function?
@@ -156,15 +163,12 @@ namespace System.Xml.Xsl.Runtime
 
         public int RegisterDecimalFormat(XmlQualifiedName name, string infinitySymbol, string nanSymbol, string characters)
         {
-            if (_decimalFormats == null)
-            {
-                _decimalFormats = new Dictionary<XmlQualifiedName, DecimalFormat>();
-            }
+            _decimalFormats ??= new Dictionary<XmlQualifiedName, DecimalFormat>();
             _decimalFormats.Add(name, CreateDecimalFormat(infinitySymbol, nanSymbol, characters));
             return 0;   // have to return something
         }
 
-        private DecimalFormat CreateDecimalFormat(string infinitySymbol, string nanSymbol, string characters)
+        private static DecimalFormat CreateDecimalFormat(string infinitySymbol, string nanSymbol, string characters)
         {
             // BUGBUG: Fallback to the old XSLT implementation
             NumberFormatInfo info = new NumberFormatInfo();
@@ -182,10 +186,7 @@ namespace System.Xml.Xsl.Runtime
 
         public double RegisterDecimalFormatter(string formatPicture, string infinitySymbol, string nanSymbol, string characters)
         {
-            if (_decimalFormatters == null)
-            {
-                _decimalFormatters = new List<DecimalFormatter>();
-            }
+            _decimalFormatters ??= new List<DecimalFormatter>();
             _decimalFormatters.Add(new DecimalFormatter(formatPicture, CreateDecimalFormat(infinitySymbol, nanSymbol, characters)));
             return _decimalFormatters.Count - 1;
         }
@@ -346,7 +347,7 @@ namespace System.Xml.Xsl.Runtime
             }
             else
             {
-                Debug.Assert(itemType == XsltConvert.BooleanType, "Unexpected type of atomic value " + itemType.ToString());
+                Debug.Assert(itemType == XsltConvert.BooleanType, $"Unexpected type of atomic value {itemType}");
                 return TypeCode.Boolean;
             }
         }

@@ -241,10 +241,7 @@ namespace System.Drawing.Internal
             HandleRef hdc = new HandleRef(this, _hDC);
             int state = Interop.Gdi32.SaveDC(hdc);
 
-            if (_contextStack == null)
-            {
-                _contextStack = new Stack();
-            }
+            _contextStack ??= new Stack();
 
             GraphicsState g = new GraphicsState();
             g.hBitmap = _hCurrentBmp;
@@ -342,7 +339,7 @@ namespace System.Drawing.Internal
         /// </summary>
         public override int GetHashCode() => _hDC.GetHashCode();
 
-        internal class GraphicsState
+        internal sealed class GraphicsState
         {
             internal IntPtr hBrush;
             internal IntPtr hFont;

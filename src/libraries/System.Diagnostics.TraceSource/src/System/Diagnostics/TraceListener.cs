@@ -42,15 +42,7 @@ namespace System.Diagnostics
             _listenerName = name;
         }
 
-        public StringDictionary Attributes
-        {
-            get
-            {
-                if (_attributes == null)
-                    _attributes = new StringDictionary();
-                return _attributes;
-            }
-        }
+        public StringDictionary Attributes => _attributes ??= new StringDictionary();
 
         /// <devdoc>
         /// <para> Gets or sets a name for this <see cref='System.Diagnostics.TraceListener'/>.</para>
@@ -184,7 +176,7 @@ namespace System.Diagnostics
 
         public virtual void TraceTransfer(TraceEventCache? eventCache, string source, int id, string? message, Guid relatedActivityId)
         {
-            TraceEvent(eventCache, source, TraceEventType.Transfer, id, message + ", relatedActivityId=" + relatedActivityId.ToString());
+            TraceEvent(eventCache, source, TraceEventType.Transfer, id, string.Create(null, stackalloc char[256], $"{message}, relatedActivityId={relatedActivityId}"));
         }
 
         /// <devdoc>
@@ -200,17 +192,9 @@ namespace System.Diagnostics
         /// </devdoc>
         public virtual void Fail(string? message, string? detailMessage)
         {
-            StringBuilder failMessage = new StringBuilder();
-            failMessage.Append(SR.TraceListenerFail);
-            failMessage.Append(' ');
-            failMessage.Append(message);
-            if (detailMessage != null)
-            {
-                failMessage.Append(' ');
-                failMessage.Append(detailMessage);
-            }
-
-            WriteLine(failMessage.ToString());
+            WriteLine(detailMessage is null ?
+                $"{SR.TraceListenerFail} {message}" :
+                $"{SR.TraceListenerFail} {message} {detailMessage}");
         }
 
         /// <devdoc>
@@ -245,7 +229,7 @@ namespace System.Diagnostics
             if (category == null)
                 Write(message);
             else
-                Write(category + ": " + ((message == null) ? string.Empty : message));
+                Write(category + ": " + (message ?? string.Empty));
         }
 
         /// <devdoc>
@@ -318,7 +302,7 @@ namespace System.Diagnostics
             if (category == null)
                 WriteLine(message);
             else
-                WriteLine(category + ": " + ((message == null) ? string.Empty : message));
+                WriteLine(category + ": " + (message ?? string.Empty));
         }
 
         /// <devdoc>
@@ -360,19 +344,7 @@ namespace System.Diagnostics
 
             WriteHeader(source, eventType, id);
 
-            StringBuilder sb = new StringBuilder();
-            if (data != null)
-            {
-                for (int i = 0; i < data.Length; i++)
-                {
-                    if (i != 0)
-                        sb.Append(", ");
-
-                    if (data[i] != null)
-                        sb.Append(data[i]!.ToString());
-                }
-            }
-            WriteLine(sb.ToString());
+            WriteLine(data != null ? string.Join(", ", data) : string.Empty);
 
             WriteFooter(eventCache);
         }
@@ -394,14 +366,14 @@ namespace System.Diagnostics
             WriteFooter(eventCache);
         }
 
-        public virtual void TraceEvent(TraceEventCache? eventCache, string source, TraceEventType eventType, int id, string format, params object?[]? args)
+        public virtual void TraceEvent(TraceEventCache? eventCache, string source, TraceEventType eventType, int id, [StringSyntax(StringSyntaxAttribute.CompositeFormat)] string? format, params object?[]? args)
         {
             if (Filter != null && !Filter.ShouldTrace(eventCache, source, eventType, id, format, args))
                 return;
 
             WriteHeader(source, eventType, id);
             if (args != null)
-                WriteLine(string.Format(CultureInfo.InvariantCulture, format, args));
+                WriteLine(string.Format(CultureInfo.InvariantCulture, format!, args));
             else
                 WriteLine(format);
 
@@ -410,7 +382,7 @@ namespace System.Diagnostics
 
         private void WriteHeader(string source, TraceEventType eventType, int id)
         {
-            Write(string.Format(CultureInfo.InvariantCulture, "{0} {1}: {2} : ", source, eventType.ToString(), id.ToString(CultureInfo.InvariantCulture)));
+            Write(string.Create(CultureInfo.InvariantCulture, stackalloc char[256], $"{source} {eventType}: {id} : "));
         }
 
         private void WriteFooter(TraceEventCache? eventCache)
@@ -445,14 +417,16 @@ namespace System.Diagnostics
                 WriteLine(string.Empty);
             }
 
+            Span<char> stackBuffer = stackalloc char[128];
+
             if (IsEnabled(TraceOptions.ThreadId))
                 WriteLine("ThreadId=" + eventCache.ThreadId);
 
             if (IsEnabled(TraceOptions.DateTime))
-                WriteLine("DateTime=" + eventCache.DateTime.ToString("o", CultureInfo.InvariantCulture));
+                WriteLine(string.Create(null, stackBuffer, $"DateTime={eventCache.DateTime:o}"));
 
             if (IsEnabled(TraceOptions.Timestamp))
-                WriteLine("Timestamp=" + eventCache.Timestamp);
+                WriteLine(string.Create(null, stackBuffer, $"Timestamp={eventCache.Timestamp}"));
 
             if (IsEnabled(TraceOptions.Callstack))
                 WriteLine("Callstack=" + eventCache.Callstack);

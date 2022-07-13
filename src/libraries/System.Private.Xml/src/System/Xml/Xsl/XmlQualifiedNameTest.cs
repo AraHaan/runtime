@@ -21,7 +21,7 @@ namespace System.Xml.Xsl
     ///     ~{A}:*    XmlQualifiedNameTest.New("B", "A")        Match QName with namespace not A    and any local name
     ///     {~A}:B    only as a result of the intersection      Match QName with namespace not A    and local name B
     /// </summary>
-    internal class XmlQualifiedNameTest : XmlQualifiedName
+    internal sealed class XmlQualifiedNameTest : XmlQualifiedName
     {
         private readonly bool _exclude;
         private const string wildcard = "*";
@@ -54,7 +54,7 @@ namespace System.Xml.Xsl
             }
             else
             {
-                return new XmlQualifiedNameTest(name == null ? wildcard : name, ns == null ? wildcard : ns, false);
+                return new XmlQualifiedNameTest(name ?? wildcard, ns ?? wildcard, false);
             }
         }
 
@@ -128,15 +128,15 @@ namespace System.Xml.Xsl
                 }
                 else if ((object)this.Namespace == (object)wildcard)
                 {
-                    return "*:" + this.Name;
+                    return $"*:{this.Name}";
                 }
                 else if (_exclude)
                 {
-                    return "{~" + this.Namespace + "}:" + this.Name;
+                    return $"{{~{this.Namespace}}}:{this.Name}";
                 }
                 else
                 {
-                    return "{" + this.Namespace + "}:" + this.Name;
+                    return $"{{{this.Namespace}}}:{this.Name}";
                 }
             }
         }

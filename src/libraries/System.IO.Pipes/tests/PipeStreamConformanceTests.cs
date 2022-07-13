@@ -20,7 +20,7 @@ namespace System.IO.Pipes.Tests
         protected override Type UnsupportedConcurrentExceptionType => null;
         protected override bool UsableAfterCanceledReads => false;
         protected override bool CansReturnFalseAfterDispose => false;
-        protected override bool FullyCancelableOperations => false;
+        protected override bool FullyCancelableOperations => !OperatingSystem.IsWindows();
 
         [PlatformSpecific(TestPlatforms.Windows)] // WaitForPipeDrain isn't supported on Unix
         [Fact]
@@ -63,7 +63,16 @@ namespace System.IO.Pipes.Tests
     {
         protected override bool BrokenPipePropagatedImmediately => OperatingSystem.IsWindows(); // On Unix, implemented on Sockets, where it won't propagate immediate
 
-        protected abstract (NamedPipeServerStream Server, NamedPipeClientStream Client) CreateServerAndClientStreams();
+        protected abstract NamedPipeServerStream CreateServerStream(string pipeName, int maxInstances = 1);
+        protected abstract NamedPipeClientStream CreateClientStream(string pipeName);
+
+        protected (NamedPipeServerStream Server, NamedPipeClientStream Client) CreateServerAndClientStreams()
+        {
+            string pipeName = GetUniquePipeName();
+            NamedPipeServerStream server = CreateServerStream(pipeName);
+            NamedPipeClientStream client = CreateClientStream(pipeName);
+            return (server, client);
+        }
 
         protected sealed override async Task<StreamPair> CreateConnectedStreamsAsync()
         {
@@ -88,6 +97,15 @@ namespace System.IO.Pipes.Tests
             return ((NamedPipeServerStream)streams.Stream2, (NamedPipeClientStream)streams.Stream1);
         }
 
+        protected async Task ValidateDisposedExceptionsAsync(NamedPipeServerStream server)
+        {
+            Assert.Throws<ObjectDisposedException>(() => server.Disconnect());
+            Assert.Throws<ObjectDisposedException>(() => server.GetImpersonationUserName());
+            Assert.Throws<ObjectDisposedException>(() => server.WaitForConnection());
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => server.WaitForConnectionAsync());
+            await ValidateDisposedExceptionsAsync(server as Stream);
+        }
+
         /// <summary>
         /// Yields every combination of testing options for the OneWayReadWrites test
         /// </summary>
@@ -100,6 +118,7 @@ namespace System.IO.Pipes.Tests
             select new object[] { serverOption, clientOption, asyncServerOps, asyncClientOps };
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public async Task ClonedServer_ActsAsOriginalServer()
         {
             byte[] msg1 = new byte[] { 5, 7, 9, 10 };
@@ -137,6 +156,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public async Task ClonedClient_ActsAsOriginalClient()
         {
             byte[] msg1 = new byte[] { 5, 7, 9, 10 };
@@ -174,6 +194,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public async Task ConnectOnAlreadyConnectedClient_Throws_InvalidOperationException()
         {
             using StreamPair streams = await CreateConnectedStreamsAsync();
@@ -184,6 +205,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public async Task WaitForConnectionOnAlreadyConnectedServer_Throws_InvalidOperationException()
         {
             using StreamPair streams = await CreateConnectedStreamsAsync();
@@ -194,6 +216,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public async Task CancelTokenOn_ServerWaitForConnectionAsync_Throws_OperationCanceledException()
         {
             (NamedPipeServerStream server, NamedPipeClientStream client) = CreateServerAndClientStreams();
@@ -201,14 +224,10 @@ namespace System.IO.Pipes.Tests
 
             var ctx = new CancellationTokenSource();
 
-            if (OperatingSystem.IsWindows()) // cancellation token after the operation has been initiated
-            {
-                Task serverWaitTimeout = server.WaitForConnectionAsync(ctx.Token);
-                ctx.Cancel();
-                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => serverWaitTimeout);
-            }
-
+            Task serverWaitTimeout = server.WaitForConnectionAsync(ctx.Token);
             ctx.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => serverWaitTimeout);
+
             Assert.True(server.WaitForConnectionAsync(ctx.Token).IsCanceled);
         }
 
@@ -241,6 +260,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public async Task OperationsOnDisconnectedServer()
         {
             using StreamPair streams = await CreateConnectedStreamsAsync();
@@ -277,6 +297,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public virtual async Task OperationsOnDisconnectedClient()
         {
             using StreamPair streams = await CreateConnectedStreamsAsync();
@@ -321,6 +342,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public async Task Windows_OperationsOnNamedServerWithDisposedClient()
         {
             using StreamPair streams = await CreateConnectedStreamsAsync();
@@ -344,6 +366,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public void OperationsOnUnconnectedServer()
         {
             (NamedPipeServerStream server, NamedPipeClientStream client) = CreateServerAndClientStreams();
@@ -379,6 +402,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public void OperationsOnUnconnectedClient()
         {
             (NamedPipeServerStream server, NamedPipeClientStream client) = CreateServerAndClientStreams();
@@ -410,6 +434,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public async Task DisposedServerPipe_Throws_ObjectDisposedException()
         {
             (NamedPipeServerStream server, NamedPipeClientStream client) = CreateServerAndClientStreams();
@@ -422,6 +447,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public async Task DisposedClientPipe_Throws_ObjectDisposedException()
         {
             using StreamPair streams = await CreateConnectedStreamsAsync();
@@ -434,6 +460,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public async Task ReadAsync_DisconnectDuringRead_Returns0()
         {
             using StreamPair streams = await CreateConnectedStreamsAsync();
@@ -445,6 +472,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [PlatformSpecific(TestPlatforms.Windows)] // Unix named pipes are on sockets, where small writes with an empty buffer will succeed immediately
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         [Fact]
         public async Task WriteAsync_DisconnectDuringWrite_Throws()
         {
@@ -457,6 +485,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public async Task Server_ReadWriteCancelledToken_Throws_OperationCanceledException()
         {
             using StreamPair streams = await CreateConnectedStreamsAsync();
@@ -546,6 +575,7 @@ namespace System.IO.Pipes.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
         public async Task Client_ReadWriteCancelledToken_Throws_OperationCanceledException()
         {
             using StreamPair streams = await CreateConnectedStreamsAsync();
@@ -633,6 +663,38 @@ namespace System.IO.Pipes.Tests
                 await Assert.ThrowsAnyAsync<OperationCanceledException>(() => clientWriteToken);
             }
         }
+
+        [Fact]
+        [SkipOnPlatform(TestPlatforms.LinuxBionic, "SElinux blocks UNIX sockets")]
+        public async Task TwoServerInstances_OnceDisposed_Throws()
+        {
+            string pipeName = GetUniquePipeName();
+            NamedPipeServerStream server1 = CreateServerStream(pipeName, 2);
+            using NamedPipeServerStream server2 = CreateServerStream(pipeName, 2);
+
+            Task wait1 = server1.WaitForConnectionAsync();
+            Task wait2 = server2.WaitForConnectionAsync();
+            server1.Dispose();
+            await ValidateDisposedExceptionsAsync(server1);
+
+            using NamedPipeClientStream client = CreateClientStream(pipeName);
+            await client.ConnectAsync();
+
+            await Assert.ThrowsAsync<IOException>(() => wait1);
+
+            await wait2;
+
+            foreach ((Stream writeable, Stream readable) in GetReadWritePairs((server2, client)))
+            {
+                byte[] sent = new byte[] { 123 };
+                byte[] received = new byte[] { 0 };
+
+                Task t = Task.Run(() => writeable.Write(sent, 0, sent.Length));
+                Assert.Equal(sent.Length, readable.Read(received, 0, sent.Length));
+                Assert.Equal(sent, received);
+                await t;
+            }
+        }
     }
 
     public sealed class AnonymousPipeTest_ServerIn_ClientOut : AnonymousPipeStreamConformanceTests
@@ -657,34 +719,28 @@ namespace System.IO.Pipes.Tests
 
     public sealed class NamedPipeTest_ServerOut_ClientIn : NamedPipeStreamConformanceTests
     {
-        protected override (NamedPipeServerStream Server, NamedPipeClientStream Client) CreateServerAndClientStreams()
-        {
-            string pipeName = PipeStreamConformanceTests.GetUniquePipeName();
-            var server = new NamedPipeServerStream(pipeName, PipeDirection.Out, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-            var client = new NamedPipeClientStream(".", pipeName, PipeDirection.In, PipeOptions.Asynchronous);
-            return (server, client);
-        }
+        protected override NamedPipeServerStream CreateServerStream(string pipeName, int maxInstances = 1) =>
+            new NamedPipeServerStream(pipeName, PipeDirection.Out, maxInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+
+        protected override NamedPipeClientStream CreateClientStream(string pipeName) =>
+            new NamedPipeClientStream(".", pipeName, PipeDirection.In, PipeOptions.Asynchronous);
     }
 
     public sealed class NamedPipeTest_ServerIn_ClientOut : NamedPipeStreamConformanceTests
     {
-        protected override (NamedPipeServerStream Server, NamedPipeClientStream Client) CreateServerAndClientStreams()
-        {
-            string pipeName = PipeStreamConformanceTests.GetUniquePipeName();
-            var server = new NamedPipeServerStream(pipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-            var client = new NamedPipeClientStream(".", pipeName, PipeDirection.Out, PipeOptions.Asynchronous);
-            return (server, client);
-        }
+        protected override NamedPipeServerStream CreateServerStream(string pipeName, int maxInstances = 1) =>
+            new NamedPipeServerStream(pipeName, PipeDirection.In, maxInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+
+        protected override NamedPipeClientStream CreateClientStream(string pipeName) =>
+            new NamedPipeClientStream(".", pipeName, PipeDirection.Out, PipeOptions.Asynchronous);
     }
 
     public sealed class NamedPipeTest_ServerInOut_ClientInOut : NamedPipeStreamConformanceTests
     {
-        protected override (NamedPipeServerStream Server, NamedPipeClientStream Client) CreateServerAndClientStreams()
-        {
-            string pipeName = PipeStreamConformanceTests.GetUniquePipeName();
-            var server = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-            var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-            return (server, client);
-        }
+        protected override NamedPipeServerStream CreateServerStream(string pipeName, int maxInstances = 1) =>
+            new NamedPipeServerStream(pipeName, PipeDirection.InOut, maxInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+
+        protected override NamedPipeClientStream CreateClientStream(string pipeName) =>
+            new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
     }
 }

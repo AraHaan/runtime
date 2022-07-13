@@ -43,7 +43,7 @@ namespace System.Net
 {
     public sealed partial class HttpListenerRequest
     {
-        private class Context : TransportContext
+        private sealed class Context : TransportContext
         {
             public override ChannelBinding? GetChannelBinding(ChannelBindingKind kind)
             {
@@ -64,7 +64,7 @@ namespace System.Net
         private HttpListenerContext _context;
         private bool _isChunked;
 
-        private static byte[] s_100continue = Encoding.ASCII.GetBytes("HTTP/1.1 100 Continue\r\n\r\n");
+        private static byte[] s_100continue = "HTTP/1.1 100 Continue\r\n\r\n"u8.ToArray();
 
         internal HttpListenerRequest(HttpListenerContext context)
         {
@@ -87,10 +87,8 @@ namespace System.Net
             _method = parts[0];
             foreach (char c in _method)
             {
-                int ic = (int)c;
-
-                if ((ic >= 'A' && ic <= 'Z') ||
-                    (ic > 32 && c < 127 && c != '(' && c != ')' && c != '<' &&
+                if (char.IsAsciiLetterUpper(c) ||
+                    (c > 32 && c < 127 && c != '(' && c != ')' && c != '<' &&
                      c != '<' && c != '>' && c != '@' && c != ',' && c != ';' &&
                      c != ':' && c != '\\' && c != '"' && c != '/' && c != '[' &&
                      c != ']' && c != '?' && c != '=' && c != '{' && c != '}'))
@@ -195,7 +193,7 @@ namespace System.Net
             if (colon >= 0)
                 host = host.Substring(0, colon);
 
-            string base_uri = string.Format("{0}://{1}:{2}", RequestScheme, host, LocalEndPoint!.Port);
+            string base_uri = $"{RequestScheme}://{host}:{LocalEndPoint!.Port}";
 
             if (!Uri.TryCreate(base_uri + path, UriKind.Absolute, out _requestUri))
             {
@@ -394,8 +392,7 @@ namespace System.Net
 
         public X509Certificate2? EndGetClientCertificate(IAsyncResult asyncResult)
         {
-            if (asyncResult == null)
-                throw new ArgumentNullException(nameof(asyncResult));
+            ArgumentNullException.ThrowIfNull(asyncResult);
 
             GetClientCertificateAsyncResult? clientCertAsyncResult = asyncResult as GetClientCertificateAsyncResult;
             if (clientCertAsyncResult == null || clientCertAsyncResult.AsyncObject != this)
@@ -416,9 +413,9 @@ namespace System.Net
         public TransportContext TransportContext => new Context();
 
         private Uri? RequestUri => _requestUri;
-        private bool SupportsWebSockets => true;
+        private static bool SupportsWebSockets => true;
 
-        private class GetClientCertificateAsyncResult : LazyAsyncResult
+        private sealed class GetClientCertificateAsyncResult : LazyAsyncResult
         {
             public GetClientCertificateAsyncResult(object myObject, object? myState, AsyncCallback? myCallBack) : base(myObject, myState, myCallBack) { }
         }

@@ -16,10 +16,6 @@
 #include <mdlog.h>
 #include <mdcommon.h>
 
-#ifdef EnC_SUPPORTED
-#define ENC_DELTA_HACK
-#endif
-
 //*****************************************************************************
 // Ctor.
 //*****************************************************************************
@@ -94,54 +90,6 @@ Disp::DefineScope(
         // If it is a version we don't understand, then we cannot continue.
         IfFailGo(CLDB_E_FILE_OLDVER);
     }
-
-#ifdef ENC_DELTA_HACK
-// Testers need this flag for their tests.
-
-    DWORD len;
-    EX_TRY{
-    len = WszGetEnvironmentVariable(W("COMP_ENC_OPENSCOPE"), szFileNameSuffix);
-    szFileName.Append(szFileNameSuffix);
-    }
-    EX_CATCH_HRESULT(hr);
-
-    if (len > 0)
-    {
-        // _ASSERTE(!"ENC override on DefineScope");
-//        m_OptionValue.m_UpdateMode = MDUpdateENC;
-//        m_OptionValue.m_ErrorIfEmitOutOfOrder = MDErrorOutOfOrderDefault;
-//        hr = OpenScope(szFileName, ofWrite, riid, ppIUnk);
-
-        IMetaDataEmit *pMetaEmit;
-        hr = OpenScope(szFileName, ofWrite, IID_IMetaDataEmit, (IUnknown **)&pMetaEmit);
-        DWORD cb;
-        CQuickBytes pbMetadata;
-        hr = pMetaEmit->GetSaveSize(cssAccurate,&cb);
-        _ASSERTE(SUCCEEDED(hr));
-
-        IfFailGo(pbMetadata.ReSizeNoThrow(cb));
-
-        hr = pMetaEmit->SaveToMemory(pbMetadata.Ptr(),cb);
-        _ASSERTE(SUCCEEDED(hr));
-//        hr = OpenScopeOnMemory( pbMetadata.Ptr(), cb, ofWrite|MDUpdateENC|MDUpdateDelta, riid, ppIUnk);
-
-
-        VARIANT encOption;
-        V_VT(&encOption) = VT_UI4;
-        V_UI4(&encOption) = MDUpdateENC;
-        SetOption(MetaDataSetENC, &encOption);
-        V_UI4(&encOption) = MDErrorOutOfOrderDefault;
-        SetOption(MetaDataErrorIfEmitOutOfOrder, &encOption);
-        hr = OpenScopeOnMemory( pbMetadata.Ptr(), cb, ofWrite, riid, ppIUnk);
-        _ASSERTE(SUCCEEDED(hr));
-        BOOL fResult = SUCCEEDED(hr);
-        // print out a message so people know what's happening
-        printf("Defining scope for EnC using %S %s\n",
-                            static_cast<LPCWSTR>(szFileNameSuffix), fResult ? "succeeded" : "failed");
-
-        goto ErrExit;
-    }
-#endif // ENC_DELTA_HACK
 
     // Create a new coclass for this.
     pMeta = new (nothrow) RegMeta();
@@ -421,7 +369,7 @@ ErrExit:
 //*****************************************************************************
 HRESULT
 Disp::GetCORSystemDirectory(
-    __out_ecount (cchBuffer) LPWSTR szBuffer,      // [out] Buffer for the directory name
+    _Out_writes_ (cchBuffer) LPWSTR szBuffer,      // [out] Buffer for the directory name
     DWORD                           cchBuffer,     // [in] Size of the buffer
     DWORD                          *pcchBuffer)    // [out] Number of characters returned
 {
@@ -453,7 +401,7 @@ HRESULT Disp::FindAssemblyModule(           // S_OK or error
     LPCWSTR     szGlobalBin,                // [IN] optional - can be NULL
     LPCWSTR     szAssemblyName,             // [IN] The assembly name or code base of the assembly
     LPCWSTR     szModuleName,               // [IN] required - the name of the module
-    __out_ecount (cchName) LPWSTR  szName,  // [OUT] buffer - to hold name
+    _Out_writes_ (cchName) LPWSTR  szName,  // [OUT] buffer - to hold name
     ULONG       cchName,                    // [IN]  the name buffer's size
     ULONG       *pcName)                    // [OUT] the number of characters returend in the buffer
 {
@@ -482,7 +430,7 @@ HRESULT Disp::OpenScopeOnITypeInfo(     // Return code.
 //*****************************************************************************
 // Create a brand new scope which will be used for portable PDB metadata.
 // This is based on the CLSID that was used to get the dispenser.
-// 
+//
 // The existing DefineScope method cannot be used for the purpose of PDB
 // metadata generation, since it internally creates module and type def table
 // entries.
@@ -497,7 +445,7 @@ Disp::DefinePortablePdbScope(
 {
 #ifdef FEATURE_METADATA_EMIT
     HRESULT     hr = S_OK;
-    
+
     BEGIN_ENTRYPOINT_NOTHROW;
 
     RegMeta* pMeta = 0;
@@ -509,7 +457,7 @@ Disp::DefinePortablePdbScope(
         IfFailGo(E_INVALIDARG);
 
     // Currently the portable PDB tables are treated as an extension to the MDVersion2
-    // TODO: this extension might deserve its own version number e.g. 'MDVersion3'  
+    // TODO: this extension might deserve its own version number e.g. 'MDVersion3'
     if (rclsid == CLSID_CLR_v2_MetaData)
     {
         optionForNewScope.m_MetadataVersion = MDVersion2;
@@ -928,7 +876,7 @@ HRESULT Disp::GetOption(                // Return code.
     {   // Note: This is not used in CLR sources anymore, but we store the value and return it here,
         // so we keep it for backward-compat.
         V_VT(pvalue) = VT_BOOL;
-        V_BOOL(pvalue) = m_OptionValue.m_GenerateTCEAdapters;
+        V_BOOL(pvalue) = !!m_OptionValue.m_GenerateTCEAdapters ? VARIANT_TRUE : VARIANT_FALSE;
     }
 #endif //FEATURE_METADATA_EMIT_ALL || FEATURE_METADATA_EMIT_IN_DEBUGGER
     else

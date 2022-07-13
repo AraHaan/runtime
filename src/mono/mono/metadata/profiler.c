@@ -6,7 +6,6 @@
 #include <config.h>
 #include <mono/metadata/assembly.h>
 #include <mono/metadata/gc-internals.h>
-#include <mono/metadata/mono-config-dirs.h>
 #include <mono/metadata/mono-debug.h>
 #include <mono/metadata/profiler-legacy.h>
 #include <mono/metadata/profiler-private.h>
@@ -28,22 +27,28 @@ load_profiler (MonoDl *module, const char *name, const char *desc)
 {
 	g_assert (module);
 
-	char *err, *old_name = g_strdup_printf (OLD_INITIALIZER_NAME);
+	char *old_name = g_strdup_printf (OLD_INITIALIZER_NAME);
 	MonoProfilerInitializer func;
 
-	if (!(err = mono_dl_symbol (module, old_name, (gpointer*) &func))) {
+	ERROR_DECL (symbol_error);
+	func = (MonoProfilerInitializer)mono_dl_symbol (module, old_name, symbol_error);
+	mono_error_cleanup (symbol_error);
+
+	if (func) {
 		mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_PROFILER, "Found old-style startup symbol '%s' for the '%s' profiler; it has not been migrated to the new API.", old_name, name);
 		g_free (old_name);
 		return FALSE;
 	}
 
-	g_free (err);
 	g_free (old_name);
 
 	char *new_name = g_strdup_printf (NEW_INITIALIZER_NAME "_%s", name);
 
-	if ((err = mono_dl_symbol (module, new_name, (gpointer *) &func))) {
-		g_free (err);
+	error_init_reuse (symbol_error);
+	func = (MonoProfilerInitializer)mono_dl_symbol (module, new_name, symbol_error);
+	mono_error_cleanup (symbol_error);
+
+	if (!func) {
 		g_free (new_name);
 		return FALSE;
 	}
@@ -58,7 +63,7 @@ load_profiler (MonoDl *module, const char *name, const char *desc)
 static gboolean
 load_profiler_from_executable (const char *name, const char *desc)
 {
-	char *err;
+	ERROR_DECL (load_error);
 
 	/*
 	 * Some profilers (such as ours) may need to call back into the runtime
@@ -68,35 +73,37 @@ load_profiler_from_executable (const char *name, const char *desc)
 	 * invoking the dynamic linker which is not async-signal-safe. Passing
 	 * MONO_DL_EAGER will ask the dynamic linker to resolve everything upfront.
 	 */
-	MonoDl *module = mono_dl_open (NULL, MONO_DL_EAGER, &err);
+	MonoDl *module = mono_dl_open (NULL, MONO_DL_EAGER, load_error);
 
 	if (!module) {
-		mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_PROFILER, "Could not open main executable: %s", err);
-		g_free (err);
+		mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_PROFILER, "Could not open main executable: %s", mono_error_get_message_without_fields (load_error));
+		mono_error_cleanup (load_error);
 		return FALSE;
 	}
 
+	mono_error_assert_ok (load_error);
 	return load_profiler (module, name, desc);
 }
 
 static gboolean
 load_profiler_from_directory (const char *directory, const char *libname, const char *name, const char *desc)
 {
-	char *path, *err;
+	char *path;
 	void *iter = NULL;
 
 	while ((path = mono_dl_build_path (directory, libname, &iter))) {
-		MonoDl *module = mono_dl_open (path, MONO_DL_EAGER, &err);
+		ERROR_DECL (load_error);
+		MonoDl *module = mono_dl_open (path, MONO_DL_EAGER, load_error);
 
 		if (!module) {
-			mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_PROFILER, "Could not open from directory \"%s\": %s", path, err);
-			g_free (err);
+			mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_PROFILER, "Could not open from directory \"%s\": %s", path, mono_error_get_message_without_fields (load_error));
+			mono_error_cleanup (load_error);
 			g_free (path);
 			continue;
 		}
+		mono_error_assert_ok (load_error);
 
 		g_free (path);
-
 		return load_profiler (module, name, desc);
 	}
 
@@ -106,15 +113,17 @@ load_profiler_from_directory (const char *directory, const char *libname, const 
 static gboolean
 load_profiler_from_installation (const char *libname, const char *name, const char *desc)
 {
-	char *err;
-	MonoDl *module = mono_dl_open_runtime_lib (libname, MONO_DL_EAGER, &err);
+	ERROR_DECL (load_error);
+
+	MonoDl *module = mono_dl_open_runtime_lib (libname, MONO_DL_EAGER, load_error);
 
 	if (!module) {
-		mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_PROFILER, "Could not open from installation: %s", err);
-		g_free (err);
+		mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_PROFILER, "Could not open from installation: %s", mono_error_get_message_without_fields (load_error));
+		mono_error_cleanup (load_error);
 		return FALSE;
 	}
 
+	mono_error_assert_ok (load_error);
 	return load_profiler (module, name, desc);
 }
 
@@ -156,7 +165,7 @@ mono_profiler_load (const char *desc)
 #endif
 
 	if ((col = strchr (desc, ':')) != NULL) {
-		mname = (char *) g_memdup (desc, col - desc + 1);
+		mname = (char *) g_memdup (desc, GPTRDIFF_TO_UINT (col - desc + 1));
 		mname [col - desc] = 0;
 	} else {
 		mname = g_strdup (desc);
@@ -168,9 +177,6 @@ mono_profiler_load (const char *desc)
 	libname = g_strdup_printf ("mono-profiler-%s", mname);
 
 	if (load_profiler_from_installation (libname, mname, desc))
-		goto done;
-
-	if (mono_config_get_assemblies_dir () && load_profiler_from_directory (mono_assembly_getrootdir (), libname, mname, desc))
 		goto done;
 
 	if (load_profiler_from_directory (NULL, libname, mname, desc))
@@ -382,7 +388,7 @@ mono_profiler_get_coverage_data (MonoProfilerHandle handle, MonoMethod *method, 
 		guchar *cil_code = info->data [i].cil_code;
 
 		if (cil_code && cil_code >= start && cil_code < end) {
-			guint32 offset = cil_code - start;
+			guint32 offset = GPTRDIFF_TO_UINT32 (cil_code - start);
 
 			MonoProfilerCoverageData data;
 			memset (&data, 0, sizeof (data));
@@ -595,6 +601,12 @@ mono_profiler_enable_clauses (void)
 	return mono_profiler_state.clauses = TRUE;
 }
 
+gboolean
+mono_component_profiler_clauses_enabled (void)
+{
+	return mono_profiler_clauses_enabled ();
+}
+
 /**
  * mono_profiler_set_call_instrumentation_filter_callback:
  *
@@ -788,91 +800,6 @@ mono_profiler_started (void)
 	mono_profiler_state.startup_done = TRUE;
 }
 
-void
-mono_profiler_cleanup (void)
-{
-	for (MonoProfilerHandle handle = mono_profiler_state.profilers; handle; handle = handle->next) {
-#define _MONO_PROFILER_EVENT(name) \
-	mono_profiler_set_ ## name ## _callback (handle, NULL); \
-	g_assert (!handle->name ## _cb);
-#define MONO_PROFILER_EVENT_0(name, type) \
-	_MONO_PROFILER_EVENT(name)
-#define MONO_PROFILER_EVENT_1(name, type, arg1_type, arg1_name) \
-	_MONO_PROFILER_EVENT(name)
-#define MONO_PROFILER_EVENT_2(name, type, arg1_type, arg1_name, arg2_type, arg2_name) \
-	_MONO_PROFILER_EVENT(name)
-#define MONO_PROFILER_EVENT_3(name, type, arg1_type, arg1_name, arg2_type, arg2_name, arg3_type, arg3_name) \
-	_MONO_PROFILER_EVENT(name)
-#define MONO_PROFILER_EVENT_4(name, type, arg1_type, arg1_name, arg2_type, arg2_name, arg3_type, arg3_name, arg4_type, arg4_name) \
-	_MONO_PROFILER_EVENT(name)
-#define MONO_PROFILER_EVENT_5(name, type, arg1_type, arg1_name, arg2_type, arg2_name, arg3_type, arg3_name, arg4_type, arg4_name, arg5_type, arg5_name) \
-	_MONO_PROFILER_EVENT(name)
-#include <mono/metadata/profiler-events.h>
-#undef MONO_PROFILER_EVENT_0
-#undef MONO_PROFILER_EVENT_1
-#undef MONO_PROFILER_EVENT_2
-#undef MONO_PROFILER_EVENT_3
-#undef MONO_PROFILER_EVENT_4
-#undef MONO_PROFILER_EVENT_5
-#undef _MONO_PROFILER_EVENT
-	}
-
-#define _MONO_PROFILER_EVENT(name, type) \
-	g_assert (!mono_profiler_state.name ## _count);
-#define MONO_PROFILER_EVENT_0(name, type) \
-	_MONO_PROFILER_EVENT(name, type)
-#define MONO_PROFILER_EVENT_1(name, type, arg1_type, arg1_name) \
-	_MONO_PROFILER_EVENT(name, type)
-#define MONO_PROFILER_EVENT_2(name, type, arg1_type, arg1_name, arg2_type, arg2_name) \
-	_MONO_PROFILER_EVENT(name, type)
-#define MONO_PROFILER_EVENT_3(name, type, arg1_type, arg1_name, arg2_type, arg2_name, arg3_type, arg3_name) \
-	_MONO_PROFILER_EVENT(name, type)
-#define MONO_PROFILER_EVENT_4(name, type, arg1_type, arg1_name, arg2_type, arg2_name, arg3_type, arg3_name, arg4_type, arg4_name) \
-	_MONO_PROFILER_EVENT(name, type)
-#define MONO_PROFILER_EVENT_5(name, type, arg1_type, arg1_name, arg2_type, arg2_name, arg3_type, arg3_name, arg4_type, arg4_name, arg5_type, arg5_name)	\
-		_MONO_PROFILER_EVENT(name, type)
-#include <mono/metadata/profiler-events.h>
-#undef MONO_PROFILER_EVENT_0
-#undef MONO_PROFILER_EVENT_1
-#undef MONO_PROFILER_EVENT_2
-#undef MONO_PROFILER_EVENT_3
-#undef MONO_PROFILER_EVENT_4
-#undef MONO_PROFILER_EVENT_5
-#undef _MONO_PROFILER_EVENT
-
-	MonoProfilerHandle head = mono_profiler_state.profilers;
-
-	while (head) {
-		MonoProfilerCleanupCallback cb = (MonoProfilerCleanupCallback)head->cleanup_callback;
-
-		if (cb)
-			cb (head->prof);
-
-		MonoProfilerHandle cur = head;
-		head = head->next;
-
-		g_free (cur);
-	}
-
-	if (mono_profiler_state.code_coverage) {
-		mono_os_mutex_destroy (&mono_profiler_state.coverage_mutex);
-
-		GHashTableIter iter;
-
-		g_hash_table_iter_init (&iter, mono_profiler_state.coverage_hash);
-
-		MonoProfilerCoverageInfo *info;
-
-		while (g_hash_table_iter_next (&iter, NULL, (gpointer *) &info))
-			g_free (info);
-
-		g_hash_table_destroy (mono_profiler_state.coverage_hash);
-	}
-
-	if (mono_profiler_state.sampling_owner)
-		mono_os_sem_destroy (&mono_profiler_state.sampling_semaphore);
-}
-
 static void
 update_callback (volatile gpointer *location, gpointer new_, volatile gint32 *counter)
 {
@@ -976,12 +903,6 @@ struct _MonoProfiler {
 
 static MonoProfiler *current;
 
-static void
-shutdown_cb (MonoProfiler *prof)
-{
-	prof->shutdown_callback (prof->profiler);
-}
-
 void
 mono_profiler_install (MonoLegacyProfiler *prof, MonoLegacyProfileFunc callback)
 {
@@ -989,9 +910,6 @@ mono_profiler_install (MonoLegacyProfiler *prof, MonoLegacyProfileFunc callback)
 	current->handle = mono_profiler_create (current);
 	current->profiler = prof;
 	current->shutdown_callback = callback;
-
-	if (callback)
-		mono_profiler_set_runtime_shutdown_end_callback (current->handle, shutdown_cb);
 }
 
 static void

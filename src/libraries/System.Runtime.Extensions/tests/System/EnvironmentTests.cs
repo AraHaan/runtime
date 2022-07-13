@@ -96,6 +96,7 @@ namespace System.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "Throws PNSE")]
         public void ProcessPath_MatchesExpectedValue()
         {
             string expectedProcessPath = PlatformDetection.IsBrowser ? null : Process.GetCurrentProcess().MainModule.FileName;
@@ -161,7 +162,7 @@ namespace System.Tests
 
         // On non-OSX Unix, we must parse the version from uname -r
         [Theory]
-        [PlatformSpecific(TestPlatforms.AnyUnix & ~TestPlatforms.OSX & ~TestPlatforms.Browser)]
+        [PlatformSpecific(TestPlatforms.AnyUnix & ~TestPlatforms.OSX & ~TestPlatforms.Browser & ~TestPlatforms.iOS & ~TestPlatforms.tvOS & ~TestPlatforms.MacCatalyst)]
         [InlineData("2.6.19-1.2895.fc6", 2, 6, 19, 1)]
         [InlineData("xxx1yyy2zzz3aaa4bbb", 1, 2, 3, 4)]
         [InlineData("2147483647.2147483647.2147483647.2147483647", int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue)]
@@ -188,8 +189,10 @@ namespace System.Tests
             Version version = Environment.OSVersion.Version;
 
             // verify that the Environment.OSVersion.Version matches the current RID
-            Assert.Contains(version.ToString(2), RuntimeInformation.RuntimeIdentifier);
+            // As of 12.0, only major version numbers are included in the RID
+            Assert.Contains(version.ToString(1), RuntimeInformation.RuntimeIdentifier);
 
+            Assert.True(version.Minor >= 0, "OSVersion Minor should be non-negative");
             Assert.True(version.Build >= 0, "OSVersion Build should be non-negative");
             Assert.Equal(-1, version.Revision); // Revision is never set on OSX
         }
@@ -234,7 +237,7 @@ namespace System.Tests
         [Fact]
         public void WorkingSet_Valid()
         {
-            if (PlatformDetection.IsBrowser)
+            if (PlatformDetection.IsBrowser || (PlatformDetection.IsiOS && !PlatformDetection.IsMacCatalyst) || PlatformDetection.IstvOS)
                 Assert.Equal(0, Environment.WorkingSet);
             else
                 Assert.True(Environment.WorkingSet > 0, "Expected positive WorkingSet value");
@@ -330,11 +333,22 @@ namespace System.Tests
         }
 
         [Fact]
+        [PlatformSpecific(TestPlatforms.AnyUnix | TestPlatforms.Browser)]
+        public void GetFolderPath_Unix_PersonalExists()
+        {
+            Assert.True(Directory.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Personal)));
+        }
+
+        [Fact]
         [PlatformSpecific(TestPlatforms.AnyUnix | TestPlatforms.Browser)]  // Tests OS-specific environment
         public void GetFolderPath_Unix_PersonalIsHomeAndUserProfile()
         {
-            Assert.Equal(Environment.GetEnvironmentVariable("HOME"), Environment.GetFolderPath(Environment.SpecialFolder.Personal));
-            Assert.Equal(Environment.GetEnvironmentVariable("HOME"), Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));
+            if (!PlatformDetection.IsiOS && !PlatformDetection.IstvOS && !PlatformDetection.IsMacCatalyst)
+            {
+                Assert.Equal(Environment.GetEnvironmentVariable("HOME"), Environment.GetFolderPath(Environment.SpecialFolder.Personal));
+                Assert.Equal(Environment.GetEnvironmentVariable("HOME"), Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));
+            }
+
             Assert.Equal(Environment.GetEnvironmentVariable("HOME"), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         }
 
@@ -393,6 +407,7 @@ namespace System.Tests
         [InlineData(Environment.SpecialFolder.MyMusic, Environment.SpecialFolderOption.DoNotVerify)]
         [InlineData(Environment.SpecialFolder.MyPictures, Environment.SpecialFolderOption.DoNotVerify)]
         [InlineData(Environment.SpecialFolder.Fonts, Environment.SpecialFolderOption.DoNotVerify)]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/49868", TestPlatforms.Android)]
         public void GetFolderPath_Unix_NonEmptyFolderPaths(Environment.SpecialFolder folder, Environment.SpecialFolderOption option)
         {
             Assert.NotEmpty(Environment.GetFolderPath(folder, option));
@@ -468,7 +483,7 @@ namespace System.Tests
             FileAttributes attributes = GetFileAttributesW(path);
             if (attributes == (FileAttributes)(-1))
             {
-                int error = Marshal.GetLastWin32Error();
+                int error = Marshal.GetLastPInvokeError();
                 Assert.False(true, $"error {error} getting attributes for {path}");
             }
 

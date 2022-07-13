@@ -17,6 +17,7 @@ Param(
   [ValidateSet("Debug","Release")][string][Alias('lc')]$librariesConfiguration,
   [ValidateSet("CoreCLR","Mono")][string][Alias('rf')]$runtimeFlavor,
   [switch]$ninja,
+  [switch]$msbuild,
   [string]$cmakeargs,
   [switch]$pgoinstrument,
   [Parameter(ValueFromRemainingArguments=$true)][String[]]$properties
@@ -51,7 +52,7 @@ function Get-Help() {
   Write-Host "                                 [Default: Minimal]"
   Write-Host "  -vs                            Open the solution with Visual Studio using the locally acquired SDK."
   Write-Host "                                 Path or any project or solution name is accepted."
-  Write-Host "                                 (Example: -vs Microsoft.CSharp)"
+  Write-Host "                                 (Example: -vs Microsoft.CSharp or -vs CoreCLR.sln)"
   Write-Host ""
 
   Write-Host "Actions (defaults to -restore -build):"
@@ -71,15 +72,16 @@ function Get-Help() {
   Write-Host "Libraries settings:"
   Write-Host "  -allconfigurations      Build packages for all build configurations."
   Write-Host "  -coverage               Collect code coverage when testing."
-  Write-Host "  -framework (-f)         Build framework: net6.0 or net48."
-  Write-Host "                          [Default: net6.0]"
+  Write-Host "  -framework (-f)         Build framework: net7.0 or net48."
+  Write-Host "                          [Default: net7.0]"
   Write-Host "  -testnobuild            Skip building tests when invoking -test."
   Write-Host "  -testscope              Scope tests, allowed values: innerloop, outerloop, all."
   Write-Host ""
 
   Write-Host "Native build settings:"
   Write-Host "  -cmakeargs              User-settable additional arguments passed to CMake."
-  Write-Host "  -ninja                  Use Ninja instead of MSBuild to run the native build."
+  Write-Host "  -ninja                  Use Ninja to drive the native build. (default)"
+  Write-Host "  -msbuild                Use MSBuild to drive the native build. This is a no-op for Mono."
   Write-Host "  -pgoinstrument          Build the CLR with PGO instrumentation."
 
   Write-Host "Command-line arguments not listed above are passed through to MSBuild."
@@ -111,7 +113,7 @@ function Get-Help() {
   Write-Host ".\build.cmd mono.corelib+libs.pretest -rc debug -c release"
   Write-Host ""
   Write-Host ""
-  Write-Host "For more information, check out https://github.com/dotnet/runtime/blob/master/docs/workflow/README.md"
+  Write-Host "For more information, check out https://github.com/dotnet/runtime/blob/main/docs/workflow/README.md"
 }
 
 if ($help) {
@@ -125,18 +127,19 @@ if ($subset -eq 'help') {
 }
 
 if ($vs) {
+  $archToOpen = $arch[0]
+  $configToOpen = $configuration[0]
+  $repoRoot = Split-Path $PSScriptRoot -Parent
+  if ($runtimeConfiguration) {
+    $configToOpen = $runtimeConfiguration
+  }
+
   if ($vs -ieq "coreclr.sln") {
     # If someone passes in coreclr.sln (case-insensitive),
     # launch the generated CMake solution.
-    $archToOpen = $arch[0]
-    $configToOpen = $configuration[0]
-    if ($runtimeConfiguration) {
-      $configToOpen = $runtimeConfiguration
-    }
-    $vs = Split-Path $PSScriptRoot -Parent | Join-Path -ChildPath "artifacts\obj\coreclr" | Join-Path -ChildPath "windows.$archToOpen.$((Get-Culture).TextInfo.ToTitleCase($configToOpen))" | Join-Path -ChildPath "CoreCLR.sln"
+    $vs = Split-Path $PSScriptRoot -Parent | Join-Path -ChildPath "artifacts\obj\coreclr" | Join-Path -ChildPath "windows.$archToOpen.$((Get-Culture).TextInfo.ToTitleCase($configToOpen))" | Join-Path -ChildPath "ide" | Join-Path -ChildPath "CoreCLR.sln"
     if (-Not (Test-Path $vs)) {
-      $repoRoot = Split-Path $PSScriptRoot -Parent
-      Invoke-Expression "& `"$repoRoot/src/coreclr/build-runtime.cmd`" -configureonly -$archToOpen -$configToOpen"
+      Invoke-Expression "& `"$repoRoot/src/coreclr/build-runtime.cmd`" -configureonly -$archToOpen -$configToOpen -msbuild"
       if ($lastExitCode -ne 0) {
         Write-Error "Failed to generate the CoreCLR solution file."
         exit 1
@@ -146,12 +149,25 @@ if ($vs) {
       }
     }
   }
+  elseif ($vs -ieq "corehost.sln") {
+    $vs = Split-Path $PSScriptRoot -Parent | Join-Path -ChildPath "artifacts\obj\" | Join-Path -ChildPath "win-$archToOpen.$((Get-Culture).TextInfo.ToTitleCase($configToOpen))" | Join-Path -ChildPath "corehost" | Join-Path -ChildPath "ide" | Join-Path -ChildPath "corehost.sln"
+    if (-Not (Test-Path $vs)) {
+      Invoke-Expression "& `"$repoRoot/eng/common/msbuild.ps1`" $repoRoot/src/native/corehost/corehost.proj /clp:nosummary /restore /p:Ninja=false /p:Configuration=$configToOpen /p:TargetArchitecture=$archToOpen /p:ConfigureOnly=true"
+      if ($lastExitCode -ne 0) {
+        Write-Error "Failed to generate the CoreHost solution file."
+        exit 1
+      }
+      if (-Not (Test-Path $vs)) {
+        Write-Error "Unable to find the CoreHost solution file at $vs."
+      }
+    }
+  }
   elseif (-Not (Test-Path $vs)) {
     $solution = $vs
 
     if ($runtimeFlavor -eq "Mono") {
       # Search for the solution in mono
-      $vs = Split-Path $PSScriptRoot -Parent | Join-Path -ChildPath "src\mono\netcore" | Join-Path -ChildPath $vs | Join-Path -ChildPath "$vs.sln"
+      $vs = Split-Path $PSScriptRoot -Parent | Join-Path -ChildPath "src\mono" | Join-Path -ChildPath $vs | Join-Path -ChildPath "$vs.sln"
     } else {
       # Search for the solution in coreclr
       $vs = Split-Path $PSScriptRoot -Parent | Join-Path -ChildPath "src\coreclr" | Join-Path -ChildPath $vs | Join-Path -ChildPath "$vs.sln"
@@ -200,10 +216,7 @@ if ($vs) {
     # Respect the RuntimeConfiguration variable for building inside VS with different runtime configurations
     $env:RUNTIMECONFIGURATION=$runtimeConfiguration
   }
-
-  # Restore the solution to workaround https://github.com/dotnet/runtime/issues/32205
-  Invoke-Expression "& dotnet restore $vs"
-
+  
   # Launch Visual Studio with the locally defined environment variables
   ."$vs"
 
@@ -221,6 +234,11 @@ if (!$actionPassedIn) {
   $arguments = "-restore -build"
 }
 
+if ($PSBoundParameters.ContainsKey('os') -and $PSBoundParameters['os'] -eq "Browser") {
+  # make sure it is capitalized
+  $PSBoundParameters['os'] = "Browser"
+}
+
 foreach ($argument in $PSBoundParameters.Keys)
 {
   switch($argument)
@@ -234,7 +252,9 @@ foreach ($argument in $PSBoundParameters.Keys)
     "properties"             { $arguments += " " + $properties }
     "verbosity"              { $arguments += " -$argument " + $($PSBoundParameters[$argument]) }
     "cmakeargs"              { $arguments += " /p:CMakeArgs=`"$($PSBoundParameters[$argument])`"" }
-    "ninja"                  { $arguments += " /p:Ninja=$($PSBoundParameters[$argument])" }
+    # The -ninja switch is a no-op since Ninja is the default generator on Windows.
+    "ninja"                  { }
+    "msbuild"                { $arguments += " /p:Ninja=false" }
     "pgoinstrument"          { $arguments += " /p:PgoInstrument=$($PSBoundParameters[$argument])"}
     # configuration and arch can be specified multiple times, so they should be no-ops here
     "configuration"          {}
@@ -243,13 +263,31 @@ foreach ($argument in $PSBoundParameters.Keys)
   }
 }
 
+# Disable targeting pack caching as we reference a partially constructed targeting pack and update it later.
+# The later changes are ignored when using the cache.
+$env:DOTNETSDK_ALLOW_TARGETING_PACK_CACHING=0
+
 $failedBuilds = @()
+
+if ($os -eq "Browser") {
+  # override default arch for Browser, we only support wasm
+  $arch = "wasm"
+
+  if ($msbuild -eq $True) {
+    Write-Error "Using the -msbuild option isn't supported when building for Browser on Windows, we need need ninja for Emscripten."
+    exit 1
+  }
+}
 
 foreach ($config in $configuration) {
   $argumentsWithConfig = $arguments + " -configuration $((Get-Culture).TextInfo.ToTitleCase($config))";
   foreach ($singleArch in $arch) {
     $argumentsWithArch =  "/p:TargetArchitecture=$singleArch " + $argumentsWithConfig
-    $env:__DistroRid="win-$singleArch"
+    if ($os -eq "Browser") {
+      $env:__DistroRid="browser-$singleArch"
+    } else {
+      $env:__DistroRid="win-$singleArch"
+    }
     Invoke-Expression "& `"$PSScriptRoot/common/build.ps1`" $argumentsWithArch"
     if ($lastExitCode -ne 0) {
         $failedBuilds += "Configuration: $config, Architecture: $singleArch"
@@ -263,6 +301,10 @@ if ($failedBuilds.Count -ne 0) {
         Write-Host "`t$failedBuild"
     }
     exit 1
+}
+
+if ($ninja) {
+    Write-Host "The -ninja option has no effect on Windows builds since the Ninja generator is the default generator."
 }
 
 exit 0

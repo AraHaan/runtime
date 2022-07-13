@@ -15,10 +15,25 @@ namespace System.Linq.Tests.LegacyTests
         }
 
         [Fact]
+        public void EmptyDefault()
+        {
+            int[] source = { };
+            int defaultValue = 5;
+            Assert.Equal(defaultValue, source.AsQueryable().LastOrDefault(defaultValue));
+        }
+
+        [Fact]
         public void OneElement()
         {
             int[] source = { 5 };
             Assert.Equal(5, source.AsQueryable().LastOrDefault());
+        }
+
+        [Fact]
+        public void OneElementFalsePredicate()
+        {
+            int[] source = { 3 };
+            Assert.Equal(5, source.AsQueryable().LastOrDefault(i => i % 2 == 0, 5));
         }
 
         [Fact]
@@ -80,6 +95,17 @@ namespace System.Linq.Tests.LegacyTests
         {
             var val = (new int[] { 0, 1, 2 }).AsQueryable().LastOrDefault(n => n > 1);
             Assert.Equal(2, val);
+        }
+
+        [Fact]
+        public void LastOrDefault_OverloadResolution_Regression()
+        {
+            // Regression test for https://github.com/dotnet/runtime/issues/65419
+            object? result = new object[] { 1, "" }.AsQueryable().LastOrDefault(x => x is int);
+            Assert.IsType<int>(result);
+
+            result = Array.Empty<object>().AsQueryable().LastOrDefault(1);
+            Assert.IsType<int>(result);
         }
     }
 }

@@ -1,15 +1,13 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#if TARGET_AMD64 || TARGET_ARM64 || (TARGET_32BIT && !TARGET_ARM)
+#if TARGET_AMD64 || TARGET_ARM64 || (TARGET_32BIT && !TARGET_ARM) || TARGET_LOONGARCH64
 #define HAS_CUSTOM_BLOCKS
 #endif
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-
-using Internal.Runtime.CompilerServices;
 
 namespace System
 {
@@ -21,12 +19,10 @@ namespace System
         // array element indices and counts, use Array.Copy.
         public static unsafe void BlockCopy(Array src, int srcOffset, Array dst, int dstOffset, int count)
         {
-            if (src == null)
-                throw new ArgumentNullException(nameof(src));
-            if (dst == null)
-                throw new ArgumentNullException(nameof(dst));
+            ArgumentNullException.ThrowIfNull(src);
+            ArgumentNullException.ThrowIfNull(dst);
 
-            nuint uSrcLen = (nuint)src.LongLength;
+            nuint uSrcLen = src.NativeLength;
             if (src.GetType() != typeof(byte[]))
             {
                 if (!src.GetCorElementTypeOfElementType().IsPrimitiveType())
@@ -37,7 +33,7 @@ namespace System
             nuint uDstLen = uSrcLen;
             if (src != dst)
             {
-                uDstLen = (nuint)dst.LongLength;
+                uDstLen = dst.NativeLength;
                 if (dst.GetType() != typeof(byte[]))
                 {
                     if (!dst.GetCorElementTypeOfElementType().IsPrimitiveType())
@@ -60,20 +56,18 @@ namespace System
             if ((uSrcLen < uSrcOffset + uCount) || (uDstLen < uDstOffset + uCount))
                 throw new ArgumentException(SR.Argument_InvalidOffLen);
 
-            Memmove(ref Unsafe.AddByteOffset(ref dst.GetRawArrayData(), uDstOffset), ref Unsafe.AddByteOffset(ref src.GetRawArrayData(), uSrcOffset), uCount);
+            Memmove(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetArrayDataReference(dst), uDstOffset), ref Unsafe.AddByteOffset(ref MemoryMarshal.GetArrayDataReference(src), uSrcOffset), uCount);
         }
 
         public static int ByteLength(Array array)
         {
-            // Is the array present?
-            if (array == null)
-                throw new ArgumentNullException(nameof(array));
+            ArgumentNullException.ThrowIfNull(array);
 
             // Is it of primitive types?
             if (!array.GetCorElementTypeOfElementType().IsPrimitiveType())
                 throw new ArgumentException(SR.Arg_MustBePrimArray, nameof(array));
 
-            nuint byteLength = (nuint)array.LongLength * (nuint)array.GetElementSize();
+            nuint byteLength = array.NativeLength * (nuint)array.GetElementSize();
 
             // This API is explosed both as Buffer.ByteLength and also used indirectly in argument
             // checks for Buffer.GetByte/SetByte.
@@ -94,7 +88,7 @@ namespace System
                 ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.index);
             }
 
-            return Unsafe.Add<byte>(ref array.GetRawArrayData(), index);
+            return Unsafe.Add<byte>(ref MemoryMarshal.GetArrayDataReference(array), index);
         }
 
         public static void SetByte(Array array, int index, byte value)
@@ -105,12 +99,7 @@ namespace System
                 ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.index);
             }
 
-            Unsafe.Add<byte>(ref array.GetRawArrayData(), index) = value;
-        }
-
-        internal static unsafe void ZeroMemory(byte* dest, nuint len)
-        {
-            SpanHelpers.ClearWithoutReferences(ref *dest, len);
+            Unsafe.Add<byte>(ref MemoryMarshal.GetArrayDataReference(array), index) = value;
         }
 
         // The attributes on this method are chosen for best JIT performance.

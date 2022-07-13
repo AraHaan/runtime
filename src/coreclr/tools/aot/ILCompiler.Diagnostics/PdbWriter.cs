@@ -4,10 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using System.Text;
 
+using Internal.TypeSystem;
 using Microsoft.DiaSymReader;
 
 namespace ILCompiler.Diagnostics
@@ -73,8 +75,11 @@ namespace ILCompiler.Diagnostics
 
     public class PdbWriter
     {
+        private const string DiaSymReaderLibrary = "Microsoft.DiaSymReader.Native";
+
         string _pdbPath;
         PDBExtraData _pdbExtraData;
+        readonly TargetDetails _target;
 
         string _pdbFilePath;
         string _tempSourceDllName;
@@ -84,37 +89,36 @@ namespace ILCompiler.Diagnostics
         Dictionary<SymDocument,int> _documentToChecksumOffsetMapping;
 
         UIntPtr _pdbMod;
-        ISymNGenWriter2 _ngenWriter;
+        SymNgenWriterWrapper _ngenWriter;
 
-        private const string DiaSymReaderModuleName32 = "Microsoft.DiaSymReader.Native.x86.dll";
-        private const string DiaSymReaderModuleName64 = "Microsoft.DiaSymReader.Native.amd64.dll";
-
-        private const string CreateNGenPdbWriterFactoryName = "CreateNGenPdbWriter";
-
-        [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.SafeDirectories)]
-        [DllImport(DiaSymReaderModuleName32, EntryPoint = CreateNGenPdbWriterFactoryName, PreserveSig = false)]
-        private extern static void CreateNGenPdbWriter32([MarshalAs(UnmanagedType.LPWStr)] string ngenImagePath, [MarshalAs(UnmanagedType.LPWStr)] string pdbPath, [MarshalAs(UnmanagedType.IUnknown)] out object ngenPdbWriter);
-
-        [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.SafeDirectories)]
-        [DllImport(DiaSymReaderModuleName64, EntryPoint = CreateNGenPdbWriterFactoryName, PreserveSig = false)]
-        private extern static void CreateNGenPdbWriter64([MarshalAs(UnmanagedType.LPWStr)] string ngenImagePath, [MarshalAs(UnmanagedType.LPWStr)] string pdbPath, [MarshalAs(UnmanagedType.IUnknown)] out object ngenPdbWriter);
-
-        private static ISymNGenWriter2 CreateNGenWriter(string ngenImagePath, string pdbPath)
+        static PdbWriter()
         {
-            object instance;
-
-            if (IntPtr.Size == 4)
-            {
-                CreateNGenPdbWriter32(ngenImagePath, pdbPath, out instance);
-            }
-            else
-            {
-                CreateNGenPdbWriter64(ngenImagePath, pdbPath, out instance);
-            }
-            return (ISymNGenWriter2)instance;
+            NativeLibrary.SetDllImportResolver(typeof(PdbWriter).Assembly, DllImportResolver);
         }
 
-        public PdbWriter(string pdbPath, PDBExtraData pdbExtraData)
+        private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+        {
+            IntPtr libraryHandle = IntPtr.Zero;
+            if (libraryName == DiaSymReaderLibrary)
+            {
+                string archSuffix = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+                if (archSuffix == "x64")
+                {
+                    archSuffix = "amd64";
+                }
+                libraryHandle = NativeLibrary.Load(DiaSymReaderLibrary + "." + archSuffix + ".dll", assembly, searchPath);
+            }
+            return libraryHandle;
+        }
+
+        [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.SafeDirectories)]
+        [DllImport(DiaSymReaderLibrary, PreserveSig = false)]
+        private extern static void CreateNGenPdbWriter(
+            [MarshalAs(UnmanagedType.LPWStr)] string ngenImagePath,
+            [MarshalAs(UnmanagedType.LPWStr)] string pdbPath,
+            out IntPtr ngenPdbWriterPtr);
+
+        public PdbWriter(string pdbPath, PDBExtraData pdbExtraData, TargetDetails target)
         {
             SymDocument unknownDocument = new SymDocument();
             unknownDocument.Name = "unknown";
@@ -124,6 +128,7 @@ namespace ILCompiler.Diagnostics
             _symDocuments.Add(unknownDocument);
             _pdbPath = pdbPath;
             _pdbExtraData = pdbExtraData;
+            _target = target;
         }
 
         public void WritePDBData(string dllPath, IEnumerable<MethodInfo> methods)
@@ -133,23 +138,14 @@ namespace ILCompiler.Diagnostics
             {
                 try
                 {
-                    try
-                    {
-                        WritePDBDataHelper(dllPath, methods);
-                    }
-                    finally
-                    {
-                        if ((_ngenWriter != null) && (_pdbMod != UIntPtr.Zero))
-                        {
-                            _ngenWriter.CloseMod(_pdbMod);
-                        }
-                    }
+                    WritePDBDataHelper(dllPath, methods);
                 }
                 finally
                 {
-                    if (_ngenWriter != null)
+                    if ((_ngenWriter != null) && (_pdbMod != UIntPtr.Zero))
                     {
-                        Marshal.FinalReleaseComObject(_ngenWriter);
+                        _ngenWriter.CloseMod(_pdbMod);
+                        _ngenWriter?.Dispose();
                     }
                 }
 
@@ -209,22 +205,30 @@ namespace ILCompiler.Diagnostics
                 _pdbFilePath = Path.Combine(_pdbPath, dllNameWithoutExtension + ".ni.pdb");
             }
 
-            // Delete any preexisting PDB file upfront otherwise CreateNGenWriter silently opens it
+            // Delete any preexisting PDB file upfront, otherwise CreateNGenPdbWriter silently opens it
             File.Delete(_pdbFilePath);
 
-            _ngenWriter = CreateNGenWriter(dllPath, _pdbFilePath);
+            var comWrapper = new ILCompilerComWrappers();
+            CreateNGenPdbWriter(dllPath, _pdbFilePath, out var pdbWriterInst);
+            _ngenWriter = (SymNgenWriterWrapper)comWrapper.GetOrCreateObjectForComInstance(pdbWriterInst, CreateObjectFlags.UniqueInstance);
 
             {
                 // PDB file is now created. Get its path and update _pdbFilePath so the PDB file
                 // can be deleted if we don't make it successfully to the end.
-                StringBuilder pdbFilePathBuilder = new StringBuilder();
-                pdbFilePathBuilder.Capacity = 1024;
-                _ngenWriter.QueryPDBNameExW(pdbFilePathBuilder, new IntPtr(pdbFilePathBuilder.Capacity));
-                _pdbFilePath = pdbFilePathBuilder.ToString();
+                const int capacity = 1024;
+                var pdbFilePathBuilder = new char[capacity];
+                _ngenWriter.QueryPDBNameExW(pdbFilePathBuilder, new IntPtr(capacity - 1) /* remove 1 byte for null */);
+                int length = 0;
+                while (length < pdbFilePathBuilder.Length && pdbFilePathBuilder[length] != '\0')
+                {
+                    length++;
+                }
+                _pdbFilePath = new string(pdbFilePathBuilder, 0, length);
             }
 
             _ngenWriter.OpenModW(originalDllPath, Path.GetFileName(originalDllPath), out _pdbMod);
 
+            WriteCompilerVersion();
             WriteStringTable();
             WriteFileChecksums();
 
@@ -297,6 +301,24 @@ namespace ILCompiler.Diagnostics
             DEBUG_S_MERGED_ASSEMBLYINPUT,
 
             DEBUG_S_COFF_SYMBOL_RVA,
+        }
+
+        private enum SYM_ENUM : ushort
+        {
+            S_COMPILE3      =  0x113c,  // Replacement for S_COMPILE2
+        }
+
+        private enum CV_CPU_TYPE
+        {
+            CV_CFL_PENTIUMIII   = 0x07,
+            CV_CFL_X64          = 0xD0,
+            CV_CFL_ARMNT        = 0xF4,
+            CV_CFL_ARM64        = 0xF6,
+        }
+
+        private enum CV_CFL_LANG
+        {
+            CV_CFL_MSIL     = 0x0F,  // Unknown MSIL (LTCG of .NETMODULE)
         }
 
         private void WriteStringTable()
@@ -381,6 +403,112 @@ namespace ILCompiler.Diagnostics
             // Write string table into pdb file
             byte[] checksumTableArray = checksumStream.ToArray();
             _ngenWriter.ModAddSymbols(_pdbMod, checksumTableArray, checksumTableArray.Length);
+        }
+
+        private void WriteCompilerVersion()
+        {
+            // The only symbol we write into the DEBUG_S_SYMBOLS stream is the compiler version.
+            // Other symbols are represented as "public" symbols which are something else entirely.
+
+            MemoryStream symbolStream = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(symbolStream, Encoding.UTF8);
+            writer.Write(CV_SIGNATURE_C13);
+            writer.Write((uint)DEBUG_S_SUBSECTION_TYPE.DEBUG_S_SYMBOLS);
+            long startOfSymbolTablePosition = writer.BaseStream.Position;
+            writer.Write((uint)0); // Size of actual symbol table. To be filled in later
+            long startOfSymbolTableOffset = writer.BaseStream.Position;
+
+            {
+                long startOfCompile3RecordLength = writer.BaseStream.Position;
+                writer.Write((ushort)0); // Write record length. Fill in later
+                long startOfCompile3Record = writer.BaseStream.Position;
+                writer.Write((ushort)SYM_ENUM.S_COMPILE3);
+                byte iLanguage = (byte)CV_CFL_LANG.CV_CFL_MSIL;
+                writer.Write(iLanguage);
+                // Write rest of flags
+                writer.Write((byte)0);
+                writer.Write((byte)0);
+                writer.Write((byte)0);
+
+                switch (_target.Architecture)
+                {
+                    case TargetArchitecture.ARM:
+                        writer.Write((ushort)CV_CPU_TYPE.CV_CFL_ARMNT);
+                        break;
+                    case TargetArchitecture.ARM64:
+                        writer.Write((ushort)CV_CPU_TYPE.CV_CFL_ARM64);
+                        break;
+                    case TargetArchitecture.X64:
+                        writer.Write((ushort)CV_CPU_TYPE.CV_CFL_X64);
+                        break;
+                    case TargetArchitecture.X86:
+                        writer.Write((ushort)CV_CPU_TYPE.CV_CFL_PENTIUMIII);
+                        break;
+                    default:
+                        throw new Exception("Unknown target architecture");
+                }
+
+                writer.Write((ushort)0); // Front end Major Version
+                writer.Write((ushort)0); // Front end Minor Version
+                writer.Write((ushort)0); // Front end Build Version
+                writer.Write((ushort)0); // Front end QFE Version
+
+                Version compilerVersion = null;
+                foreach (AssemblyFileVersionAttribute versionAttribute in typeof(PdbWriter).Assembly.GetCustomAttributes(typeof(AssemblyFileVersionAttribute), true))
+                {
+                    string versionString = versionAttribute.Version;
+                    compilerVersion = new Version(versionString);
+                }
+                if (compilerVersion == null)
+                {
+                    throw new Exception("No AssemblyFileVersionAttribute present");
+                }
+
+                writer.Write((ushort)compilerVersion.Major); // Front end Major Version
+                writer.Write((ushort)compilerVersion.Minor); // Front end Minor Version
+                writer.Write((ushort)compilerVersion.Build); // Front end Build Version
+                writer.Write((ushort)compilerVersion.Revision); // Front end QFE Version
+
+                // compiler version string
+                string informationalVersion = null;
+                foreach (AssemblyInformationalVersionAttribute versionAttribute in typeof(PdbWriter).Assembly.GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), true))
+                {
+                    informationalVersion = versionAttribute.InformationalVersion;
+                }
+
+                if (informationalVersion == null)
+                {
+                    throw new Exception("No AssemblyInformationalVersionAttribute present");
+                }
+
+                string CompilerVersionString = $"Crossgen2 - {informationalVersion}";
+                writer.Write(CompilerVersionString.AsSpan());
+                writer.Write((byte)0); // Null terminate all strings
+
+                // Must align to the next 4-byte boundary
+                while ((writer.BaseStream.Position % 4) != 0)
+                {
+                    writer.Write((byte)0);
+                }
+
+                // Update Compile3 record size
+                long currentPosition = writer.BaseStream.Position;
+                long compile3RecordSize = writer.BaseStream.Position - startOfCompile3Record;
+                writer.BaseStream.Position = startOfCompile3RecordLength;
+                writer.Write(checked((ushort)compile3RecordSize));
+                writer.Flush();
+                writer.BaseStream.Position = currentPosition;
+            }
+
+            // Update symbol table size
+            long symbolTableSize = writer.BaseStream.Position - startOfSymbolTableOffset;
+            writer.BaseStream.Position = startOfSymbolTablePosition;
+            writer.Write(checked((uint)symbolTableSize));
+            writer.Flush();
+
+            // Write symbol table into pdb file
+            byte[] symbolTableArray = symbolStream.ToArray();
+            _ngenWriter.ModAddSymbols(_pdbMod, symbolTableArray, symbolTableArray.Length);
         }
     }
 }

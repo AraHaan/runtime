@@ -58,24 +58,6 @@ DWORD ArrayMethodDesc::GetAttrs()
     return (GetArrayFuncIndex() >= ARRAY_FUNC_CTOR) ? (mdPublic | mdRTSpecialName) : mdPublic;
 }
 
-/*****************************************************************************************/
-CorInfoIntrinsics ArrayMethodDesc::GetIntrinsicID()
-{
-    LIMITED_METHOD_CONTRACT;
-
-    switch (GetArrayFuncIndex())
-    {
-    case ARRAY_FUNC_GET:
-        return CORINFO_INTRINSIC_Array_Get;
-    case ARRAY_FUNC_SET:
-        return CORINFO_INTRINSIC_Array_Set;
-    case ARRAY_FUNC_ADDRESS:
-        return CORINFO_INTRINSIC_Array_Address;
-    default:
-        return CORINFO_INTRINSIC_Illegal;
-    }
-}
-
 #ifndef DACCESS_COMPILE
 
 /*****************************************************************************************/
@@ -230,7 +212,7 @@ void ArrayClass::InitArrayMethodDesc(
     _ASSERTE(pNewMD->GetMethodName() && GetDebugClassName());
     pNewMD->m_pszDebugMethodName = pNewMD->GetMethodName();
     pNewMD->m_pszDebugClassName  = GetDebugClassName();
-    pNewMD->m_pDebugMethodTable.SetValue(pNewMD->GetMethodTable());
+    pNewMD->m_pDebugMethodTable = pNewMD->GetMethodTable();
 #endif // _DEBUG
 }
 
@@ -305,12 +287,6 @@ MethodTable* Module::CreateArrayMethodTable(TypeHandle elemTypeHnd, CorElementTy
             _ASSERTE(cbCGCDescData == CGCDesc::ComputeSizeRepeating(nSeries));
         }
     }
-#ifdef FEATURE_COLLECTIBLE_TYPES
-    else if (this->IsCollectible())
-    {
-        cbCGCDescData = (DWORD)CGCDesc::ComputeSize(1);
-    }
-#endif
 
     DWORD dwMultipurposeSlotsMask = 0;
     dwMultipurposeSlotsMask |= MethodTable::enum_flag_HasPerInstInfo;
@@ -336,12 +312,7 @@ MethodTable* Module::CreateArrayMethodTable(TypeHandle elemTypeHnd, CorElementTy
     // Inherit top level class's interface map
     cbMT += pParentClass->GetNumInterfaces() * sizeof(InterfaceInfo_t);
 
-#ifdef FEATURE_PREJIT
-    Module* pComputedPZM = Module::ComputePreferredZapModule(NULL, Instantiation(&elemTypeHnd, 1));
-    BOOL canShareVtableChunks = MethodTable::CanShareVtableChunksFrom(pParentClass, this, pComputedPZM);
-#else
     BOOL canShareVtableChunks = MethodTable::CanShareVtableChunksFrom(pParentClass, this);
-#endif // FEATURE_PREJIT
 
     size_t offsetOfUnsharedVtableChunks = cbMT;
 
@@ -431,8 +402,7 @@ MethodTable* Module::CreateArrayMethodTable(TypeHandle elemTypeHnd, CorElementTy
             StackSString ssElemName;
             elemTypeHnd.GetName(ssElemName);
 
-            StackScratchBuffer scratch;
-            elemTypeHnd.GetAssembly()->ThrowTypeLoadException(ssElemName.GetUTF8(scratch), IDS_CLASSLOAD_VALUECLASSTOOLARGE);
+            elemTypeHnd.GetAssembly()->ThrowTypeLoadException(ssElemName.GetUTF8(), IDS_CLASSLOAD_VALUECLASSTOOLARGE);
         }
     }
 
@@ -486,7 +456,7 @@ MethodTable* Module::CreateArrayMethodTable(TypeHandle elemTypeHnd, CorElementTy
       InterfaceInfo_t *pIntInfo = (InterfaceInfo_t *) (pMTHead + imapOffset + index * sizeof(InterfaceInfo_t));
       pIntInfo->SetMethodTable((pParentClass->GetInterfaceMap() + index)->GetMethodTable());
     }
-    pMT->SetInterfaceMap(pParentClass->GetNumInterfaces(), (InterfaceInfo_t *)(pMTHead + imapOffset));
+    pMT->SetInterfaceMap((WORD)pParentClass->GetNumInterfaces(), (InterfaceInfo_t *)(pMTHead + imapOffset));
 
     // Copy down flags for these interfaces as well. This is simplified a bit since we know that System.Array
     // only has a few interfaces and the flags will fit inline into the MethodTable's optional members.
@@ -511,7 +481,7 @@ MethodTable* Module::CreateArrayMethodTable(TypeHandle elemTypeHnd, CorElementTy
             if (canShareVtableChunks)
             {
                 // Share the parent chunk
-                it.SetIndirectionSlot(pParentClass->GetVtableIndirections()[it.GetIndex()].GetValueMaybeNull());
+                it.SetIndirectionSlot(pParentClass->GetVtableIndirections()[it.GetIndex()]);
             }
             else
             {
@@ -539,8 +509,7 @@ MethodTable* Module::CreateArrayMethodTable(TypeHandle elemTypeHnd, CorElementTy
 #ifdef _DEBUG
     StackSString debugName;
     TypeString::AppendType(debugName, TypeHandle(pMT));
-    StackScratchBuffer buff;
-    const char* pDebugNameUTF8 = debugName.GetUTF8(buff);
+    const char* pDebugNameUTF8 = debugName.GetUTF8();
     S_SIZE_T safeLen = S_SIZE_T(strlen(pDebugNameUTF8))+S_SIZE_T(1);
     if(safeLen.IsOverflow()) COMPlusThrowHR(COR_E_OVERFLOW);
     size_t len = safeLen.Value();
@@ -671,7 +640,7 @@ MethodTable* Module::CreateArrayMethodTable(TypeHandle elemTypeHnd, CorElementTy
                 }
                 else if (index == 0)
                 {
-                    skip = pElemMT->GetAlignedNumInstanceFieldBytes() - numPtrsInBytes;
+                    skip = pElemMT->GetNumInstanceFieldBytes() - numPtrsInBytes;
                 }
                 else
                 {
@@ -686,8 +655,7 @@ MethodTable* Module::CreateArrayMethodTable(TypeHandle elemTypeHnd, CorElementTy
                     StackSString ssElemName;
                     elemTypeHnd.GetName(ssElemName);
 
-                    StackScratchBuffer scratch;
-                    elemTypeHnd.GetAssembly()->ThrowTypeLoadException(ssElemName.GetUTF8(scratch),
+                    elemTypeHnd.GetAssembly()->ThrowTypeLoadException(ssElemName.GetUTF8(),
                                                                       IDS_CLASSLOAD_VALUECLASSTOOLARGE);
                 }
 
@@ -714,31 +682,13 @@ MethodTable* Module::CreateArrayMethodTable(TypeHandle elemTypeHnd, CorElementTy
         pSeries->SetSeriesSize(-(SSIZE_T)(pMT->GetBaseSize()));
     }
 
-#ifdef FEATURE_COLLECTIBLE_TYPES
-    if (!pMT->ContainsPointers() && this->IsCollectible())
-    {
-        CGCDescSeries  *pSeries;
-
-        // For collectible types, insert empty gc series
-        CGCDesc::GetCGCDescFromMT(pMT)->InitValueClassSeries(pMT, 1);
-        pSeries = CGCDesc::GetCGCDescFromMT(pMT)->GetHighestSeries();
-        pSeries->SetSeriesOffset(ArrayBase::GetDataPtrOffset(pMT));
-        pSeries->val_serie[0].set_val_serie_item (0, static_cast<HALF_SIZE_T>(pMT->GetComponentSize()));
-    }
-#endif
-
     // If we get here we are assuming that there was no truncation. If this is not the case then
     // an array whose base type is not a value class was created and was larger then 0xffff (a word)
     _ASSERTE(dwComponentSize == pMT->GetComponentSize());
 
-#ifdef FEATURE_PREJIT
-    _ASSERTE(pComputedPZM == Module::GetPreferredZapModuleForMethodTable(pMT));
-#endif
-
     return(pMT);
 } // Module::CreateArrayMethodTable
 
-#ifndef CROSSGEN_COMPILE
 
 #ifdef FEATURE_ARRAYSTUB_AS_IL
 
@@ -1028,7 +978,7 @@ Stub *GenerateArrayOpStub(ArrayMethodDesc* pMD)
 
     static const ILStubTypes stubTypes[3] = { ILSTUB_ARRAYOP_GET, ILSTUB_ARRAYOP_SET, ILSTUB_ARRAYOP_ADDRESS };
 
-    _ASSERTE(pMD->GetArrayFuncIndex() <= COUNTOF(stubTypes));
+    _ASSERTE(pMD->GetArrayFuncIndex() <= ARRAY_SIZE(stubTypes));
     NDirectStubFlags arrayOpStubFlag = (NDirectStubFlags)stubTypes[pMD->GetArrayFuncIndex()];
 
     MethodDesc * pStubMD = ILStubCache::CreateAndLinkNewILStubMethodDesc(pMD->GetLoaderAllocator(),
@@ -1171,13 +1121,17 @@ void GenerateArrayOpScript(ArrayMethodDesc *pMD, ArrayOpScript *paos)
     ArgIterator argit(&msig);
 
 #ifdef TARGET_X86
-    paos->m_cbretpop = argit.CbStackPop();
+    UINT stackPop = argit.CbStackPop();
+    _ASSERTE(stackPop <= USHRT_MAX);
+    paos->m_cbretpop = (UINT16)stackPop;
 #endif
 
     if (argit.HasRetBuffArg())
     {
         paos->m_flags |= ArrayOpScript::HASRETVALBUFFER;
-        paos->m_fRetBufLoc = argit.GetRetBuffArgOffset();
+        UINT refBuffOffset = argit.GetRetBuffArgOffset();
+        _ASSERTE(refBuffOffset <= USHRT_MAX);
+        paos->m_fRetBufLoc = (UINT16)refBuffOffset;
     }
 
     if (paos->m_op == ArrayOpScript::LOADADDR)
@@ -1196,7 +1150,9 @@ void GenerateArrayOpScript(ArrayMethodDesc *pMD, ArrayOpScript *paos)
 
     if (paos->m_op == paos->STORE)
     {
-        paos->m_fValLoc = argit.GetNextOffset();
+        UINT offset = argit.GetNextOffset();
+        _ASSERTE(offset <= USHRT_MAX);
+        paos->m_fValLoc = (UINT16)offset;
     }
 }
 
@@ -1210,6 +1166,11 @@ class ArrayStubCache : public StubCacheBase
     virtual UINT Length(const BYTE *pRawStub);
 
 public:
+public:
+    ArrayStubCache(LoaderHeap* heap) : StubCacheBase(heap)
+    {
+    }
+
     static ArrayStubCache * GetArrayStubCache()
     {
         STANDARD_VM_CONTRACT;
@@ -1218,8 +1179,8 @@ public:
 
         if (s_pArrayStubCache == NULL)
         {
-            ArrayStubCache * pArrayStubCache = new ArrayStubCache();
-            if (FastInterlockCompareExchangePointer(&s_pArrayStubCache, pArrayStubCache, NULL) != NULL)
+            ArrayStubCache * pArrayStubCache = new ArrayStubCache(SystemDomain::GetGlobalLoaderAllocator()->GetStubHeap());
+            if (InterlockedCompareExchangeT(&s_pArrayStubCache, pArrayStubCache, NULL) != NULL)
                 delete pArrayStubCache;
         }
 
@@ -1261,7 +1222,6 @@ UINT ArrayStubCache::Length(const BYTE *pRawStub)
 
 #endif // FEATURE_ARRAYSTUB_AS_IL
 
-#endif // CROSSGEN_COMPILE
 
 //---------------------------------------------------------------------
 // This method returns TRUE if pInterfaceMT could be one of the interfaces
@@ -1322,7 +1282,7 @@ MethodDesc* GetActualImplementationForArrayGenericIListOrIReadOnlyListMethod(Met
 
     // Subtract one for the non-generic IEnumerable that the generic enumerable inherits from
     unsigned int inheritanceDepth = pItfcMeth->GetMethodTable()->GetNumInterfaces() - 1;
-    PREFIX_ASSUME(0 <= inheritanceDepth && inheritanceDepth < NumItems(startingMethod));
+    PREFIX_ASSUME(0 <= inheritanceDepth && inheritanceDepth < ARRAY_SIZE(startingMethod));
 
     MethodDesc *pGenericImplementor = CoreLibBinder::GetMethod((BinderMethodID)(startingMethod[inheritanceDepth] + slot));
 

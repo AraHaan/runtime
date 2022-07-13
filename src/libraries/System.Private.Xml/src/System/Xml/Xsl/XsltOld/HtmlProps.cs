@@ -1,16 +1,16 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+using System.Collections;
+using System.Collections.Specialized;
+using System.Diagnostics;
+using System.Xml;
+using System.Globalization;
+
 namespace System.Xml.Xsl.XsltOld
 {
-    using System;
-    using System.Collections;
-    using System.Collections.Specialized;
-    using System.Diagnostics;
-    using System.Xml;
-    using System.Globalization;
-
-    internal class HtmlElementProps
+    internal sealed class HtmlElementProps
     {
         private bool _empty;
         private bool _abrParent;
@@ -133,7 +133,7 @@ namespace System.Xml.Xsl.XsltOld
         }
     }
 
-    internal class HtmlAttributeProps
+    internal sealed class HtmlAttributeProps
     {
         private bool _abr;
         private bool _uri;

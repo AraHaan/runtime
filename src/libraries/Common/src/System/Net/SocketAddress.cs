@@ -18,7 +18,7 @@ namespace System.Net.Internals
 #if SYSTEM_NET_PRIMITIVES_DLL
     public
 #else
-    internal
+    internal sealed
 #endif
     class SocketAddress
     {
@@ -133,6 +133,7 @@ namespace System.Net.Internals
         {
             Buffer = buffer.ToArray();
             InternalSize = Buffer.Length;
+            SocketAddressPal.SetAddressFamily(Buffer, addressFamily);
         }
 
         internal IPAddress GetIPAddress()
@@ -185,22 +186,9 @@ namespace System.Net.Internals
             return Buffer.Length - IntPtr.Size;
         }
 
-        public override bool Equals(object? comparand)
-        {
-            SocketAddress? castedComparand = comparand as SocketAddress;
-            if (castedComparand == null || this.Size != castedComparand.Size)
-            {
-                return false;
-            }
-            for (int i = 0; i < this.Size; i++)
-            {
-                if (this[i] != castedComparand[i])
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
+        public override bool Equals(object? comparand) =>
+            comparand is SocketAddress other &&
+            Buffer.AsSpan(0, Size).SequenceEqual(other.Buffer.AsSpan(0, other.Size));
 
         public override int GetHashCode()
         {
@@ -251,7 +239,7 @@ namespace System.Net.Internals
                 stackalloc char[256] :
                 new char[maxLength];
 
-            familyString.AsSpan().CopyTo(result);
+            familyString.CopyTo(result);
             int length = familyString.Length;
 
             result[length++] = ':';

@@ -86,7 +86,7 @@ static int Internal_Convertfwrite(CPalThread *pthrCurrent, const void *buffer, s
             free(newBuff);
             return -1;
         }
-        ret = InternalFwrite(newBuff, 1, count, stream, &iError);
+        ret = InternalFwrite(newBuff, 1, nsize, stream, &iError);
         if (iError != 0)
         {
             ERROR("InternalFwrite did not write the whole buffer. Error is %d\n", iError);
@@ -112,16 +112,16 @@ static int Internal_Convertfwrite(CPalThread *pthrCurrent, const void *buffer, s
 Function:
   Internal_ExtractFormatA
 
-Paramaters:
+Parameters:
   Fmt
     - format string to parse
     - first character must be a '%'
-    - paramater gets updated to point to the character after
+    - parameter gets updated to point to the character after
       the %<foo> format string
   Out
     - buffer will contain the %<foo> format string
   Flags
-    - paramater will be set with the PRINTF_FORMAT_FLAGS defined above
+    - parameter will be set with the PRINTF_FORMAT_FLAGS defined above
   Width
     - will contain the width specified by the format string
     - -1 if none given
@@ -220,7 +220,7 @@ BOOL Internal_ExtractFormatA(CPalThread *pthrCurrent, LPCSTR *Fmt, LPSTR Out, LP
         {
             ERROR("atoi returned a negative value indicative of an overflow.\n");
             pthrCurrent->SetLastError(ERROR_INTERNAL_ERROR);
-            return Result;
+            goto EXIT;
         }
     }
     else if (**Fmt == '*')
@@ -258,7 +258,7 @@ BOOL Internal_ExtractFormatA(CPalThread *pthrCurrent, LPCSTR *Fmt, LPSTR Out, LP
             {
                 ERROR("atoi returned a negative value indicative of an overflow.\n");
                 pthrCurrent->SetLastError(ERROR_INTERNAL_ERROR);
-                return Result;
+                goto EXIT;
             }
         }
         else if (**Fmt == '*')
@@ -444,6 +444,8 @@ BOOL Internal_ExtractFormatA(CPalThread *pthrCurrent, LPCSTR *Fmt, LPSTR Out, LP
     }
 
     *Out = 0;  /* end the string */
+
+EXIT:
     free(TempStr);
     return Result;
 }
@@ -525,7 +527,7 @@ BOOL Internal_ExtractFormatW(CPalThread *pthrCurrent, LPCWSTR *Fmt, LPSTR Out, L
         {
             ERROR("atoi returned a negative value indicative of an overflow.\n");
             pthrCurrent->SetLastError(ERROR_INTERNAL_ERROR);
-            return Result;
+            goto EXIT;
         }
     }
     else if (**Fmt == '*')
@@ -562,7 +564,7 @@ BOOL Internal_ExtractFormatW(CPalThread *pthrCurrent, LPCWSTR *Fmt, LPSTR Out, L
             {
                 ERROR("atoi returned a negative value indicative of an overflow.\n");
                 pthrCurrent->SetLastError(ERROR_INTERNAL_ERROR);
-                return Result;
+                goto EXIT;
             }
         }
         else if (**Fmt == '*')
@@ -704,7 +706,7 @@ BOOL Internal_ExtractFormatW(CPalThread *pthrCurrent, LPCWSTR *Fmt, LPSTR Out, L
             *Out++ = 'l';
             *Out++ = 'l';
         }
-        *Out++ = *(*Fmt)++;
+        *Out++ = (CHAR)*(*Fmt)++;
         Result = TRUE;
     }
     else if (**Fmt == 'e' || **Fmt == 'E' || **Fmt == 'f' ||
@@ -717,7 +719,7 @@ BOOL Internal_ExtractFormatW(CPalThread *pthrCurrent, LPCWSTR *Fmt, LPSTR Out, L
         }
 
         *Type = PFF_TYPE_FLOAT;
-        *Out++ = *(*Fmt)++;
+        *Out++ = (CHAR)*(*Fmt)++;
         Result = TRUE;
     }
     else if (**Fmt == 'n')
@@ -731,7 +733,7 @@ BOOL Internal_ExtractFormatW(CPalThread *pthrCurrent, LPCWSTR *Fmt, LPSTR Out, L
         {
             *Out++ = 'h';
         }
-        *Out++ = *(*Fmt)++;
+        *Out++ = (CHAR)*(*Fmt)++;
         *Type = PFF_TYPE_N;
         Result = TRUE;
     }
@@ -772,6 +774,8 @@ BOOL Internal_ExtractFormatW(CPalThread *pthrCurrent, LPCWSTR *Fmt, LPSTR Out, L
     }
 
     *Out = 0;  /* end the string */
+
+EXIT:
     free(TempStr);
     return Result;
 }
@@ -899,7 +903,7 @@ static INT Internal_AddPaddingVfwprintf(CPalThread *pthrCurrent, PAL_FILE *strea
     LPWSTR OutOriginal;
     INT LengthInStr;
     INT Length;
-    INT Written = 0;
+    INT Written = -1;
 
     LengthInStr = PAL_wcslen(In);
     Length = LengthInStr;
@@ -924,9 +928,8 @@ static INT Internal_AddPaddingVfwprintf(CPalThread *pthrCurrent, PAL_FILE *strea
         if (wcscpy_s(Out, iLen, In) != SAFECRT_SUCCESS)
         {
             ERROR("wcscpy_s failed!\n");
-            free(OutOriginal);
             pthrCurrent->SetLastError(ERROR_INSUFFICIENT_BUFFER);
-            return -1;
+            goto EXIT;
         }
         Out += LengthInStr;
         iLen -= LengthInStr;
@@ -954,9 +957,8 @@ static INT Internal_AddPaddingVfwprintf(CPalThread *pthrCurrent, PAL_FILE *strea
         if (wcscpy_s(Out, iLen, In) != SAFECRT_SUCCESS)
         {
             ERROR("wcscpy_s failed!\n");
-            free(OutOriginal);
             pthrCurrent->SetLastError(ERROR_INSUFFICIENT_BUFFER);
-            return -1;
+            goto EXIT;
         }
 
         Out += LengthInStr;
@@ -971,9 +973,14 @@ static INT Internal_AddPaddingVfwprintf(CPalThread *pthrCurrent, PAL_FILE *strea
         {
             ERROR("fwrite() failed with errno == %d\n", errno);
         }
-        free(OutOriginal);
+    }
+    else
+    {
+        Written = 0;
     }
 
+EXIT:
+    free(OutOriginal);
     return Written;
 }
 
@@ -1213,8 +1220,8 @@ int CoreVfwprintf(CPalThread *pthrCurrent, PAL_FILE *stream, const wchar_16 *for
                     TempInt = va_arg(ap, INT); /* value not used */
                 }
 
-                TempWChar[0] = va_arg(ap, int);
-                TempWChar[1] = 0;
+                TempWChar[0] = (WCHAR)va_arg(ap, int);
+                TempWChar[1] = W('\0');
 
                /* do the padding (if needed)*/
                 paddingReturnValue =
@@ -1247,7 +1254,7 @@ int CoreVfwprintf(CPalThread *pthrCurrent, PAL_FILE *stream, const wchar_16 *for
 
                 if (Prefix == PFF_PREFIX_SHORT)
                 {
-                    *(va_arg(ap, short *)) = written;
+                    *(va_arg(ap, short *)) = (short)written;
                 }
                 else
                 {
@@ -1598,7 +1605,7 @@ int CoreVfprintf(CPalThread *pthrCurrent, PAL_FILE *stream, const char *format, 
                     TempInt = va_arg(ap, INT); /* value not used */
                 }
 
-                TempWChar = va_arg(ap, int);
+                TempWChar = (WCHAR)va_arg(ap, int);
                 Length = WideCharToMultiByte(CP_ACP, 0, &TempWChar, 1,
                                              TempBuffer, sizeof(TempBuffer),
                                              0, 0);
@@ -1610,7 +1617,7 @@ int CoreVfprintf(CPalThread *pthrCurrent, PAL_FILE *stream, const char *format, 
                     va_end(ap);
                     return -1;
                 }
-                TempBuffer[Length] = 0;
+                TempBuffer[Length] = W('\0');
 
                 /* do the padding (if needed)*/
                 paddingReturnValue =
@@ -1641,7 +1648,7 @@ int CoreVfprintf(CPalThread *pthrCurrent, PAL_FILE *stream, const char *format, 
 
                 if (Prefix == PFF_PREFIX_SHORT)
                 {
-                    *(va_arg(ap, short *)) = written;
+                    *(va_arg(ap, short *)) = (short)written;
                 }
                 else
                 {

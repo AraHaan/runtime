@@ -8,11 +8,11 @@ using System.Globalization;
 using System.Reflection;
 using System.Xml;
 using System.Security;
-
+using System.Diagnostics.CodeAnalysis;
 
 namespace System.Runtime.Serialization
 {
-    internal class DataMember
+    internal sealed class DataMember
     {
         private readonly CriticalHelper _helper;
 
@@ -89,12 +89,14 @@ namespace System.Runtime.Serialization
 
         internal DataContract MemberTypeContract
         {
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             get
             { return _helper.MemberTypeContract; }
         }
 
         internal PrimitiveDataContract? MemberPrimitiveContract
         {
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             get
             {
                 return _helper.MemberPrimitiveContract;
@@ -120,34 +122,12 @@ namespace System.Runtime.Serialization
         }
 
         private FastInvokerBuilder.Getter? _getter;
-        internal FastInvokerBuilder.Getter Getter
-        {
-            get
-            {
-                if (_getter == null)
-                {
-                    _getter = FastInvokerBuilder.CreateGetter(MemberInfo);
-                }
-
-                return _getter;
-            }
-        }
+        internal FastInvokerBuilder.Getter Getter => _getter ??= FastInvokerBuilder.CreateGetter(MemberInfo);
 
         private FastInvokerBuilder.Setter? _setter;
-        internal FastInvokerBuilder.Setter Setter
-        {
-            get
-            {
-                if (_setter == null)
-                {
-                    _setter = FastInvokerBuilder.CreateSetter(MemberInfo);
-                }
+        internal FastInvokerBuilder.Setter Setter => _setter ??= FastInvokerBuilder.CreateSetter(MemberInfo);
 
-                return _setter;
-            }
-        }
-
-        private class CriticalHelper
+        private sealed class CriticalHelper
         {
             private DataContract? _memberTypeContract;
             private string _name = null!; // Name is always initialized right after construction
@@ -164,6 +144,7 @@ namespace System.Runtime.Serialization
             {
                 _emitDefaultValue = Globals.DefaultEmitDefaultValue;
                 _memberInfo = memberInfo;
+                _memberPrimitiveContract = PrimitiveDataContract.NullContract;
             }
 
             internal MemberInfo MemberInfo
@@ -228,6 +209,7 @@ namespace System.Runtime.Serialization
 
             internal DataContract MemberTypeContract
             {
+                [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
                 get
                 {
                     if (_memberTypeContract == null)
@@ -262,10 +244,11 @@ namespace System.Runtime.Serialization
                 set { _conflictingMember = value; }
             }
 
-            private PrimitiveDataContract? _memberPrimitiveContract = PrimitiveDataContract.NullContract;
+            private PrimitiveDataContract? _memberPrimitiveContract;
 
             internal PrimitiveDataContract? MemberPrimitiveContract
             {
+                [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
                 get
                 {
                     if (_memberPrimitiveContract == PrimitiveDataContract.NullContract)

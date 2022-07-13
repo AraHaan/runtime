@@ -27,9 +27,9 @@ namespace System.Xml
 
         public virtual bool TryAdd(XmlDictionaryString value, out int key)
         {
+            ArgumentNullException.ThrowIfNull(value);
+
             IntArray? keys;
-            if (value == null)
-                throw System.Runtime.Serialization.DiagnosticUtility.ExceptionUtility.ThrowHelperArgumentNull(nameof(value));
 
             if (_maps.TryGetValue(value.Dictionary, out keys))
             {
@@ -88,10 +88,7 @@ namespace System.Xml
 
             if (_strings.TryGetValue(s.Value, out key))
             {
-                if (keys == null)
-                {
-                    keys = AddKeys(s.Dictionary, s.Key + 1);
-                }
+                keys ??= AddKeys(s.Dictionary, s.Key + 1);
 
                 keys[s.Key] = (key + 1);
                 return true;
@@ -101,7 +98,7 @@ namespace System.Xml
             return false;
         }
 
-        private class PriorityDictionary<K, V> where K : class
+        private sealed class PriorityDictionary<K, V> where K : class
         {
             private Dictionary<K, V>? _dictionary;
             private readonly Entry[] _list;
@@ -117,9 +114,8 @@ namespace System.Xml
             {
                 _now = 0;
                 _listCount = 0;
-                Array.Clear(_list, 0, _list.Length);
-                if (_dictionary != null)
-                    _dictionary.Clear();
+                Array.Clear(_list);
+                _dictionary?.Clear();
             }
 
             public bool TryGetValue(K key, [MaybeNullWhen(false)] out V value)
@@ -226,7 +222,7 @@ namespace System.Xml
             }
         }
 
-        private class IntArray
+        private sealed class IntArray
         {
             private int[] _array;
 

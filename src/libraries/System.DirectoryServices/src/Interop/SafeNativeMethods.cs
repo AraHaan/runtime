@@ -7,16 +7,14 @@ using System.Runtime.InteropServices;
 
 namespace System.DirectoryServices.Interop
 {
-    internal class SafeNativeMethods
+    internal static partial class SafeNativeMethods
     {
-        [DllImport(ExternDll.Oleaut32, PreserveSig = false)]
-        public static extern void VariantClear(IntPtr pObject);
+        [LibraryImport(global::Interop.Libraries.OleAut32)]
+        public static partial void VariantInit(IntPtr pObject);
 
-        [DllImport(ExternDll.Oleaut32)]
-        public static extern void VariantInit(IntPtr pObject);
-
-        [DllImport(ExternDll.Activeds)]
-        public static extern bool FreeADsMem(IntPtr pVoid);
+        [LibraryImport(global::Interop.Libraries.Activeds)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool FreeADsMem(IntPtr pVoid);
 
         public const int
             FORMAT_MESSAGE_IGNORE_INSERTS = 0x00000200,
@@ -25,13 +23,13 @@ namespace System.DirectoryServices.Interop
             ERROR_MORE_DATA = 234,
             ERROR_SUCCESS = 0;
 
-        [DllImport(ExternDll.Activeds, CharSet = CharSet.Unicode)]
-        public static extern unsafe int ADsGetLastError(out int error, char* errorBuffer, int errorBufferLength, char* nameBuffer, int nameBufferLength);
+        [LibraryImport(global::Interop.Libraries.Activeds, StringMarshalling = StringMarshalling.Utf16)]
+        public static unsafe partial int ADsGetLastError(out int error, char* errorBuffer, int errorBufferLength, char* nameBuffer, int nameBufferLength);
 
-        [DllImport(ExternDll.Activeds, CharSet = CharSet.Unicode)]
-        public static extern int ADsSetLastError(int error, string errorString, string provider);
+        [LibraryImport(global::Interop.Libraries.Activeds, StringMarshalling = StringMarshalling.Utf16)]
+        public static partial int ADsSetLastError(int error, string? errorString, string? provider);
 
-        public class EnumVariant
+        public sealed class EnumVariant
         {
             private static readonly object s_noMoreValues = new object();
             private object _currentValue = s_noMoreValues;
@@ -39,7 +37,9 @@ namespace System.DirectoryServices.Interop
 
             public EnumVariant(IEnumVariant en)
             {
-                _enumerator = en ?? throw new ArgumentNullException(nameof(en));
+                ArgumentNullException.ThrowIfNull(en);
+
+                _enumerator = en;
             }
 
             /// <devdoc>
@@ -93,13 +93,13 @@ namespace System.DirectoryServices.Interop
                         if (numRead[0] > 0)
                         {
 #pragma warning disable 612, 618
-                            _currentValue = Marshal.GetObjectForNativeVariant(addr);
+                            _currentValue = Marshal.GetObjectForNativeVariant(addr)!;
 #pragma warning restore 612, 618
                         }
                     }
                     finally
                     {
-                        VariantClear(addr);
+                        global::Interop.OleAut32.VariantClear(addr);
                     }
                 }
                 finally

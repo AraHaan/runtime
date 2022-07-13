@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security;
 
@@ -26,16 +27,26 @@ namespace System.DirectoryServices.Interop
         public IntPtr ptr2;
     }
 
-    internal class UnsafeNativeMethods
+    internal static class UnsafeNativeMethods
     {
-        [DllImport(ExternDll.Activeds, ExactSpelling = true, EntryPoint = "ADsOpenObject", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
-        private static extern int IntADsOpenObject(string path, string userName, string password, int flags, [In, Out] ref Guid iid, [Out, MarshalAs(UnmanagedType.Interface)] out object ppObject);
-
-        public static int ADsOpenObject(string path, string userName, string password, int flags, [In, Out] ref Guid iid, [Out, MarshalAs(UnmanagedType.Interface)] out object ppObject)
+        public static int ADsOpenObject(string path, string? userName, string? password, int flags, [In, Out] ref Guid iid, [Out, MarshalAs(UnmanagedType.Interface)] out object ppObject)
         {
+            IntPtr ppObjectNative = IntPtr.Zero;
             try
             {
-                return IntADsOpenObject(path, userName, password, flags, ref iid, out ppObject);
+                int hr = global::Interop.Activeds.ADsOpenObject(path, userName, password, flags, ref iid, out ppObjectNative);
+                try
+                {
+                    ppObject = ppObjectNative != IntPtr.Zero ? Marshal.GetObjectForIUnknown(ppObjectNative) : null!;
+                    return hr;
+                }
+                finally
+                {
+                    if (ppObjectNative != IntPtr.Zero)
+                    {
+                        Marshal.Release(ppObjectNative);
+                    }
+                }
             }
             catch (EntryPointNotFoundException)
             {
@@ -86,17 +97,17 @@ namespace System.DirectoryServices.Interop
 
             void SetInfo();
 
-            object Get([In, MarshalAs(UnmanagedType.BStr)] string bstrName);
+            object? Get([In, MarshalAs(UnmanagedType.BStr)] string bstrName);
 
-            void Put([In, MarshalAs(UnmanagedType.BStr)] string bstrName, [In] object vProp);
+            void Put([In, MarshalAs(UnmanagedType.BStr)] string bstrName, [In] object? vProp);
 
             [PreserveSig]
-            int GetEx([In, MarshalAs(UnmanagedType.BStr)] string bstrName, [Out] out object value);
+            int GetEx([In, MarshalAs(UnmanagedType.BStr)] string bstrName, [Out] out object? value);
 
             void PutEx(
                 [In, MarshalAs(UnmanagedType.U4)] int lnControlCode,
                 [In, MarshalAs(UnmanagedType.BStr)] string bstrName,
-                [In] object vProp);
+                [In] object? vProp);
 
             void GetInfoEx([In] object vProperties, [In, MarshalAs(UnmanagedType.U4)] int lnReserved);
         }
@@ -116,13 +127,13 @@ namespace System.DirectoryServices.Interop
                 get;
             }
 
-            object Filter { get; set; }
+            object? Filter { get; set; }
 
             object Hints { get; set; }
 
             [return: MarshalAs(UnmanagedType.Interface)]
             object GetObject(
-                [In, MarshalAs(UnmanagedType.BStr)] string className,
+                [In, MarshalAs(UnmanagedType.BStr)] string? className,
                 [In, MarshalAs(UnmanagedType.BStr)] string relativeName);
 
             [return: MarshalAs(UnmanagedType.Interface)]
@@ -137,12 +148,12 @@ namespace System.DirectoryServices.Interop
             [return: MarshalAs(UnmanagedType.Interface)]
             object CopyHere(
                 [In, MarshalAs(UnmanagedType.BStr)] string sourceName,
-                [In, MarshalAs(UnmanagedType.BStr)] string newName);
+                [In, MarshalAs(UnmanagedType.BStr)] string? newName);
 
             [return: MarshalAs(UnmanagedType.Interface)]
             object MoveHere(
                 [In, MarshalAs(UnmanagedType.BStr)] string sourceName,
-                [In, MarshalAs(UnmanagedType.BStr)] string newName);
+                [In, MarshalAs(UnmanagedType.BStr)] string? newName);
         }
 
         [ComImport, Guid("B2BD0902-8878-11D1-8C21-00C04FD8D503")]
@@ -320,8 +331,8 @@ namespace System.DirectoryServices.Interop
             void SetSearchPreference([In] IntPtr /*ads_searchpref_info * */pSearchPrefs, int dwNumPrefs);
 
             void ExecuteSearch(
-                [In, MarshalAs(UnmanagedType.LPWStr)] string pszSearchFilter,
-                [In, MarshalAs(UnmanagedType.LPArray)] string[] pAttributeNames,
+                [In, MarshalAs(UnmanagedType.LPWStr)] string? pszSearchFilter,
+                [In, MarshalAs(UnmanagedType.LPArray)] string[]? pAttributeNames,
                 [In] int dwNumberAttributes,
                 [Out] out IntPtr hSearchResult);
 

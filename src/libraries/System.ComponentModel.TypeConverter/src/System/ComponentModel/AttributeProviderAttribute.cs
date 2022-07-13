@@ -8,32 +8,36 @@ namespace System.ComponentModel
     [AttributeUsage(AttributeTargets.Property)]
     public class AttributeProviderAttribute : Attribute
     {
+        private const DynamicallyAccessedMemberTypes RequiredMemberTypes = DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.PublicNestedTypes | DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicEvents;
+
         /// <summary>
         /// Creates a new AttributeProviderAttribute object.
         /// </summary>
-        public AttributeProviderAttribute(string typeName)
+        public AttributeProviderAttribute([DynamicallyAccessedMembers(RequiredMemberTypes)] string typeName)
         {
-            TypeName = typeName ?? throw new ArgumentNullException(nameof(typeName));
+            ArgumentNullException.ThrowIfNull(typeName);
+
+            TypeName = typeName;
         }
 
         /// <summary>
         /// Creates a new AttributeProviderAttribute object.
         /// </summary>
-        public AttributeProviderAttribute(string typeName, string propertyName)
+        public AttributeProviderAttribute([DynamicallyAccessedMembers(RequiredMemberTypes)] string typeName, string propertyName)
         {
-            TypeName = typeName ?? throw new ArgumentNullException(nameof(typeName));
-            PropertyName = propertyName ?? throw new ArgumentNullException(nameof(propertyName));
+            ArgumentNullException.ThrowIfNull(typeName);
+            ArgumentNullException.ThrowIfNull(propertyName);
+
+            TypeName = typeName;
+            PropertyName = propertyName;
         }
 
         /// <summary>
         /// Creates a new AttributeProviderAttribute object.
         /// </summary>
-        public AttributeProviderAttribute(Type type)
+        public AttributeProviderAttribute([DynamicallyAccessedMembers(RequiredMemberTypes)] Type type)
         {
-            if (type == null)
-            {
-                throw new ArgumentNullException(nameof(type));
-            }
+            ArgumentNullException.ThrowIfNull(type);
 
             TypeName = type.AssemblyQualifiedName;
         }
@@ -42,11 +46,12 @@ namespace System.ComponentModel
         /// The TypeName property returns the assembly qualified type name
         /// passed into the constructor.
         /// </summary>
-        public string TypeName { get; }
+        [DynamicallyAccessedMembers(RequiredMemberTypes)]
+        public string? TypeName { get; }
 
         /// <summary>
         /// The TypeName property returns the property name that will be used to query attributes from.
         /// </summary>
-        public string PropertyName { get; }
+        public string? PropertyName { get; }
     }
 }

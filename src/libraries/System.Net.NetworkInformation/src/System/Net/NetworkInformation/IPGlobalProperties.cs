@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 
 namespace System.Net.NetworkInformation
@@ -11,6 +12,8 @@ namespace System.Net.NetworkInformation
     /// </summary>
     public abstract class IPGlobalProperties
     {
+        [UnsupportedOSPlatform("illumos")]
+        [UnsupportedOSPlatform("solaris")]
         public static IPGlobalProperties GetIPGlobalProperties()
         {
             return IPGlobalPropertiesPal.GetIPGlobalProperties();
@@ -19,21 +22,25 @@ namespace System.Net.NetworkInformation
         /// <summary>
         /// Gets the Active Udp Listeners on this machine.
         /// </summary>
+        [UnsupportedOSPlatform("android")]
         public abstract IPEndPoint[] GetActiveUdpListeners();
 
         /// <summary>
         /// Gets the Active Tcp Listeners on this machine.
         /// </summary>
+        [UnsupportedOSPlatform("android")]
         public abstract IPEndPoint[] GetActiveTcpListeners();
 
         /// <summary>
         /// Gets the Active Udp Listeners on this machine.
         /// </summary>
+        [UnsupportedOSPlatform("android")]
         public abstract TcpConnectionInformation[] GetActiveTcpConnections();
 
         /// <summary>
         /// Gets the Dynamic Host Configuration Protocol (DHCP) scope name.
         /// </summary>
+        [UnsupportedOSPlatform("android")]
         public abstract string DhcpScopeName { get; }
 
         /// <summary>
@@ -49,6 +56,7 @@ namespace System.Net.NetworkInformation
         /// <summary>
         /// Gets a bool value that specifies whether the local computer is acting as a Windows Internet Name Service (WINS) proxy.
         /// </summary>
+        [UnsupportedOSPlatform("android")]
         public abstract bool IsWinsProxy { get; }
 
         /// <summary>
@@ -66,25 +74,31 @@ namespace System.Net.NetworkInformation
             throw NotImplemented.ByDesignWithMessage(SR.net_MethodNotImplementedException);
         }
 
+        [UnsupportedOSPlatform("android")]
         public abstract TcpStatistics GetTcpIPv4Statistics();
 
+        [UnsupportedOSPlatform("android")]
         public abstract TcpStatistics GetTcpIPv6Statistics();
 
         /// <summary>
         /// Provides User Datagram Protocol (UDP) statistical data for the local computer.
         /// </summary>
+        [UnsupportedOSPlatform("android")]
         public abstract UdpStatistics GetUdpIPv4Statistics();
 
+        [UnsupportedOSPlatform("android")]
         public abstract UdpStatistics GetUdpIPv6Statistics();
 
         /// <summary>
         /// Provides Internet Control Message Protocol (ICMP) version 4 statistical data for the local computer.
         /// </summary>
+        [UnsupportedOSPlatform("android")]
         public abstract IcmpV4Statistics GetIcmpV4Statistics();
 
         /// <summary>
         /// Provides Internet Control Message Protocol (ICMP) version 6 statistical data for the local computer.
         /// </summary>
+        [UnsupportedOSPlatform("android")]
         public abstract IcmpV6Statistics GetIcmpV6Statistics();
 
         /// <summary>

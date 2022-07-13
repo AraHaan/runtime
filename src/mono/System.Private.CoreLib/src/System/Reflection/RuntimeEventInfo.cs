@@ -82,14 +82,6 @@ namespace System.Reflection
             return (RuntimeType)DeclaringType;
         }
 
-        private RuntimeType ReflectedTypeInternal
-        {
-            get
-            {
-                return (RuntimeType)ReflectedType;
-            }
-        }
-
         internal RuntimeModule GetRuntimeModule()
         {
             return GetDeclaringTypeInternal().GetRuntimeModule();
@@ -99,11 +91,7 @@ namespace System.Reflection
         {
             MonoEventInfo info = GetEventInfo(this);
 
-            MethodInfo method = info.add_method;
-            if (method == null)
-                method = info.remove_method;
-            if (method == null)
-                method = info.raise_method;
+            MethodInfo method = info.add_method ?? info.remove_method ?? info.raise_method;
 
             return RuntimeType.FilterPreCalculate(method != null && method.IsPublic, GetDeclaringTypeInternal() != ReflectedType, method != null && method.IsStatic);
         }
@@ -209,7 +197,7 @@ namespace System.Reflection
 
         public override IList<CustomAttributeData> GetCustomAttributesData()
         {
-            return CustomAttributeData.GetCustomAttributes(this);
+            return RuntimeCustomAttributeData.GetCustomAttributesInternal(this);
         }
 
         public override int MetadataToken

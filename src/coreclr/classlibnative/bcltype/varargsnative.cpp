@@ -70,10 +70,10 @@ static void InitCommon(VARARGS *data, VASigCookie** cookie)
     data->SigPtr    = data->ArgCookie->signature.CreateSigPointer();
 
     // Skip the calling convention, get the # of args and skip the return type.
-    ULONG callConv;
+    uint32_t callConv;
     IfFailThrow(data->SigPtr.GetCallingConvInfo(&callConv));
 
-    ULONG sigData;
+    uint32_t sigData;
     IfFailThrow(data->SigPtr.GetData(&sigData));
     data->RemainingArgs = sigData;
 
@@ -91,7 +91,7 @@ static void InitCommon(VARARGS *data, VASigCookie** cookie)
     //                              += sizeOfArgs
     //                             /
     //   <arg1>                   /
-    // * <this>            ;; if an instance method (note: <this> is usally passed in
+    // * <this>            ;; if an instance method (note: <this> is usually passed in
     //                     ;; a register and wouldn't appear on the stack frame)
     //                     ;; higher memory
     //

@@ -4,9 +4,9 @@
 using System;
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Crypt32
+    internal static partial class Crypt32
     {
         [StructLayout(LayoutKind.Sequential)]
         internal struct DATA_BLOB
@@ -19,6 +19,20 @@ internal partial class Interop
                 cbData = size;
                 pbData = handle;
             }
+
+            internal byte[] ToByteArray()
+            {
+                if (cbData == 0)
+                {
+                    return Array.Empty<byte>();
+                }
+
+                byte[] array = new byte[cbData];
+                Marshal.Copy(pbData, array, 0, (int)cbData);
+                return array;
+            }
+
+            internal unsafe ReadOnlySpan<byte> DangerousAsSpan() => new ReadOnlySpan<byte>((void*)pbData, (int)cbData);
         }
     }
 }

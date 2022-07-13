@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Microsoft.Extensions.Logging.Console
 {
-    internal class FormatterOptionsMonitor<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions> :
+    internal sealed class FormatterOptionsMonitor<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions> :
         IOptionsMonitor<TOptions>
         where TOptions : ConsoleFormatterOptions
     {
@@ -17,9 +17,9 @@ namespace Microsoft.Extensions.Logging.Console
             _options = options;
         }
 
-        public TOptions Get(string name) => _options;
+        public TOptions Get(string? name) => _options;
 
-        public IDisposable OnChange(Action<TOptions, string> listener)
+        public IDisposable? OnChange(Action<TOptions, string> listener)
         {
             return null;
         }

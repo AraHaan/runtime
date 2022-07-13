@@ -6,7 +6,6 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using Internal.Runtime.CompilerServices;
 
 namespace System
 {
@@ -43,6 +42,7 @@ namespace System
         /// <param name="other">The value to compare with the source span.</param>
         /// <param name="comparisonType">One of the enumeration values that determines how the <paramref name="span"/> and <paramref name="other"/> are compared.</param>
         /// </summary>
+        [Intrinsic] // Unrolled and vectorized for half-constant input (Ordinal)
         public static bool Equals(this ReadOnlySpan<char> span, ReadOnlySpan<char> other, StringComparison comparisonType)
         {
             string.CheckStringComparison(comparisonType);
@@ -206,7 +206,7 @@ namespace System
                 return -1;
 
             if (GlobalizationMode.Invariant)
-                TextInfo.ToLowerAsciiInvariant(source, destination);
+                InvariantModeCasing.ToLower(source, destination);
             else
                 culture.TextInfo.ChangeCaseToLower(source, destination);
             return source.Length;
@@ -230,7 +230,7 @@ namespace System
                 return -1;
 
             if (GlobalizationMode.Invariant)
-                TextInfo.ToLowerAsciiInvariant(source, destination);
+                InvariantModeCasing.ToLower(source, destination);
             else
                 TextInfo.Invariant.ChangeCaseToLower(source, destination);
             return source.Length;
@@ -258,7 +258,7 @@ namespace System
                 return -1;
 
             if (GlobalizationMode.Invariant)
-                TextInfo.ToUpperAsciiInvariant(source, destination);
+                InvariantModeCasing.ToUpper(source, destination);
             else
                 culture.TextInfo.ChangeCaseToUpper(source, destination);
             return source.Length;
@@ -282,7 +282,7 @@ namespace System
                 return -1;
 
             if (GlobalizationMode.Invariant)
-                TextInfo.ToUpperAsciiInvariant(source, destination);
+                InvariantModeCasing.ToUpper(source, destination);
             else
                 TextInfo.Invariant.ChangeCaseToUpper(source, destination);
             return source.Length;
@@ -331,6 +331,7 @@ namespace System
         /// <param name="span">The source span.</param>
         /// <param name="value">The sequence to compare to the beginning of the source span.</param>
         /// <param name="comparisonType">One of the enumeration values that determines how the <paramref name="span"/> and <paramref name="value"/> are compared.</param>
+        [Intrinsic] // Unrolled and vectorized for half-constant input (Ordinal)
         public static bool StartsWith(this ReadOnlySpan<char> span, ReadOnlySpan<char> value, StringComparison comparisonType)
         {
             string.CheckStringComparison(comparisonType);
@@ -379,6 +380,32 @@ namespace System
         public static SpanRuneEnumerator EnumerateRunes(this Span<char> span)
         {
             return new SpanRuneEnumerator(span);
+        }
+
+        /// <summary>
+        /// Returns an enumeration of lines over the provided span.
+        /// </summary>
+        /// <remarks>
+        /// It is recommended that protocol parsers not utilize this API. See the documentation
+        /// for <see cref="string.ReplaceLineEndings"/> for more information on how newline
+        /// sequences are detected.
+        /// </remarks>
+        public static SpanLineEnumerator EnumerateLines(this ReadOnlySpan<char> span)
+        {
+            return new SpanLineEnumerator(span);
+        }
+
+        /// <summary>
+        /// Returns an enumeration of lines over the provided span.
+        /// </summary>
+        /// <remarks>
+        /// It is recommended that protocol parsers not utilize this API. See the documentation
+        /// for <see cref="string.ReplaceLineEndings"/> for more information on how newline
+        /// sequences are detected.
+        /// </remarks>
+        public static SpanLineEnumerator EnumerateLines(this Span<char> span)
+        {
+            return new SpanLineEnumerator(span);
         }
     }
 }

@@ -13,6 +13,7 @@ namespace System.Diagnostics
     {
         private readonly ActivityTagsCollection? _samplerTags;
         private readonly ActivityContext _context;
+        private readonly string? _traceState;
 
         /// <summary>
         /// Construct a new <see cref="ActivityCreationOptions{T}"/> object.
@@ -23,7 +24,8 @@ namespace System.Diagnostics
         /// <param name="kind"><see cref="ActivityKind"/> to create the Activity object with.</param>
         /// <param name="tags">Key-value pairs list for the tags to create the Activity object with.<see cref="ActivityContext"/></param>
         /// <param name="links"><see cref="ActivityLink"/> list to create the Activity object with.</param>
-        internal ActivityCreationOptions(ActivitySource source, string name, T parent, ActivityKind kind, IEnumerable<KeyValuePair<string, object?>>? tags, IEnumerable<ActivityLink>? links)
+        /// <param name="idFormat">The default Id format to use.</param>
+        internal ActivityCreationOptions(ActivitySource source, string name, T parent, ActivityKind kind, IEnumerable<KeyValuePair<string, object?>>? tags, IEnumerable<ActivityLink>? links, ActivityIdFormat idFormat)
         {
             Source = source;
             Name = name;
@@ -31,21 +33,52 @@ namespace System.Diagnostics
             Parent = parent;
             Tags = tags;
             Links = links;
+            IdFormat = idFormat;
+
+            if (IdFormat == ActivityIdFormat.Unknown && Activity.ForceDefaultIdFormat)
+            {
+                IdFormat = Activity.DefaultIdFormat;
+            }
 
             _samplerTags = null;
+            _traceState = null;
 
-            if (parent is ActivityContext ac)
+            if (parent is ActivityContext ac && ac != default)
             {
                 _context = ac;
+                if (IdFormat == ActivityIdFormat.Unknown)
+                {
+                    IdFormat = ActivityIdFormat.W3C;
+                }
+
+                _traceState = ac.TraceState;
             }
             else if (parent is string p && p != null)
             {
-                // We don't care about the return value. we care if _context is initialized accordingly.
-                ActivityContext.TryParse(p, null, out _context);
+                if (IdFormat != ActivityIdFormat.Hierarchical)
+                {
+                    if (ActivityContext.TryParse(p, null, out _context))
+                    {
+                        IdFormat = ActivityIdFormat.W3C;
+                    }
+
+                    if (IdFormat == ActivityIdFormat.Unknown)
+                    {
+                        IdFormat =ActivityIdFormat.Hierarchical;
+                    }
+                }
+                else
+                {
+                    _context = default;
+                }
             }
             else
             {
                 _context = default;
+                if (IdFormat == ActivityIdFormat.Unknown)
+                {
+                    IdFormat = Activity.Current != null ? Activity.Current.IdFormat : Activity.DefaultIdFormat;
+                }
             }
         }
 
@@ -103,15 +136,48 @@ namespace System.Diagnostics
 #endif
             get
             {
-                if (Parent is ActivityContext && _context == default)
+                if (Parent is ActivityContext && IdFormat == ActivityIdFormat.W3C && _context == default)
                 {
+                    Func<ActivityTraceId>? traceIdGenerator = Activity.TraceIdGenerator;
+                    ActivityTraceId id = traceIdGenerator == null ? ActivityTraceId.CreateRandom() : traceIdGenerator();
+
                     // Because the struct is readonly, we cannot directly assign _context. We have to workaround it by calling Unsafe.AsRef
-                    Unsafe.AsRef(in _context) = new ActivityContext(ActivityTraceId.CreateRandom(), default, ActivityTraceFlags.None);
+                    Unsafe.AsRef(in _context) = new ActivityContext(id, default, ActivityTraceFlags.None);
                 }
 
                 return _context.TraceId;
             }
         }
+
+        /// <summary>
+        /// Retrieve or initialize the trace state to use for the Activity we may create.
+        /// </summary>
+        public string? TraceState
+        {
+#if ALLOW_PARTIALLY_TRUSTED_CALLERS
+            [System.Security.SecuritySafeCriticalAttribute]
+#endif
+            get => _traceState;
+
+#if ALLOW_PARTIALLY_TRUSTED_CALLERS
+            [System.Security.SecuritySafeCriticalAttribute]
+#endif
+            init
+            {
+                _traceState = value;
+            }
+        }
+
+        // SetTraceState is to set the _traceState without the need of copying the whole structure.
+#if ALLOW_PARTIALLY_TRUSTED_CALLERS
+        [System.Security.SecuritySafeCriticalAttribute]
+#endif
+        internal void SetTraceState(string? traceState) => Unsafe.AsRef(in _traceState) = traceState;
+
+        /// <summary>
+        /// Retrieve Id format of to use for the Activity we may create.
+        /// </summary>
+        internal ActivityIdFormat IdFormat { get; }
 
         // Helper to access the sampling tags. The SamplingTags Getter can allocate when not necessary.
         internal ActivityTagsCollection? GetSamplingTags() => _samplerTags;

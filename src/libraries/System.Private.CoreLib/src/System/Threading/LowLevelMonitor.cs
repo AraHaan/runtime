@@ -28,6 +28,7 @@ namespace System.Threading
         public bool IsLocked => _ownerThread == Thread.CurrentThread;
 #endif
 
+#pragma warning disable CA1822
         [Conditional("DEBUG")]
         public void VerifyIsLocked()
         {
@@ -51,6 +52,7 @@ namespace System.Threading
             Debug.Assert(_ownerThread == null);
 #endif
         }
+#pragma warning restore CA1822
 
         [Conditional("DEBUG")]
         private void ResetOwnerThread()
@@ -88,6 +90,16 @@ namespace System.Threading
             ResetOwnerThread();
             WaitCore();
             SetOwnerThreadToCurrent();
+        }
+
+        public bool Wait(int timeoutMilliseconds)
+        {
+            Debug.Assert(timeoutMilliseconds >= -1);
+
+            ResetOwnerThread();
+            bool waitResult = WaitCore(timeoutMilliseconds);
+            SetOwnerThreadToCurrent();
+            return waitResult;
         }
 
         public void Signal_Release()

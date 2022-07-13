@@ -3,11 +3,12 @@
 
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Kernel32
+    internal static partial class Kernel32
     {
-        [DllImport(Libraries.Kernel32, CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "K32EnumProcesses")]
-        internal static extern bool EnumProcesses(int[] processIds, int size, out int needed);
+        [LibraryImport(Libraries.Kernel32, EntryPoint = "K32EnumProcesses",  SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool EnumProcesses(int[] processIds, int size, out int needed);
     }
 }

@@ -117,7 +117,6 @@ namespace Internal.TypeSystem
                 case WellKnownType.RuntimeMethodHandle:
                 case WellKnownType.RuntimeFieldHandle:
                 case WellKnownType.TypedReference:
-                case WellKnownType.ByReferenceOfT:
                     flags = TypeFlags.ValueType;
                     break;
 
@@ -217,6 +216,8 @@ namespace Internal.TypeSystem
                     case TypeFlags.UInt32:
                     case TypeFlags.Int64:
                     case TypeFlags.UInt64:
+                    case TypeFlags.IntPtr:
+                    case TypeFlags.UIntPtr:
                     case TypeFlags.Single:
                     case TypeFlags.Double:
                         return true;
@@ -284,6 +285,14 @@ namespace Internal.TypeSystem
             }
         }
 
+        public bool IsTypedReference
+        {
+            get
+            {
+                return this.IsWellKnownType(WellKnownType.TypedReference);
+            }
+        }
+
         /// <summary>
         /// Gets a value indicating whether this is a generic definition, or
         /// an instance of System.Nullable`1.
@@ -293,18 +302,6 @@ namespace Internal.TypeSystem
             get
             {
                 return this.GetTypeDefinition().IsWellKnownType(WellKnownType.Nullable);
-            }
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether this is a generic definition, or
-        /// an instance of System.ByReference`1.
-        /// </summary>
-        public bool IsByReferenceOfT
-        {
-            get
-            {
-                return this.GetTypeDefinition().IsWellKnownType(WellKnownType.ByReferenceOfT);
             }
         }
 
@@ -506,6 +503,16 @@ namespace Internal.TypeSystem
         public virtual IEnumerable<MethodDesc> GetMethods()
         {
             return MethodDesc.EmptyMethods;
+        }
+
+        /// <summary>
+        /// Gets a subset of methods returned by <see cref="GetMethods"/> that are virtual.
+        /// </summary>
+        public virtual IEnumerable<MethodDesc> GetVirtualMethods()
+        {
+            foreach (MethodDesc method in GetMethods())
+                if (method.IsVirtual)
+                    yield return method;
         }
 
         /// <summary>

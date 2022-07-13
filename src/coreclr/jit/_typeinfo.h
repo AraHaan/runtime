@@ -58,7 +58,7 @@ namespace
 {
 #endif //  _MSC_VER
 const ti_types g_jit_types_map[] = {
-#define DEF_TP(tn, nm, jitType, verType, sz, sze, asze, st, al, tf, howUsed) verType,
+#define DEF_TP(tn, nm, jitType, verType, sz, sze, asze, st, al, tf) verType,
 #include "typelist.h"
 #undef DEF_TP
 };
@@ -143,6 +143,21 @@ inline ti_types JITtype2tiType(CorInfoType type)
 };
 
 /*****************************************************************************
+* Captures information about a method pointer
+*
+* m_token is the CORINFO_RESOLVED_TOKEN from the IL, potentially with a more
+*         precise method handle from getCallInfo
+* m_tokenConstraint is the constraint if this was a constrained ldftn.
+*
+*/
+class methodPointerInfo
+{
+public:
+    CORINFO_RESOLVED_TOKEN m_token;
+    mdToken                m_tokenConstraint;
+};
+
+/*****************************************************************************
  * Declares the typeInfo class, which represents the type of an entity on the
  * stack, in a local variable or an argument.
  *
@@ -221,9 +236,6 @@ inline ti_types JITtype2tiType(CorInfoType type)
 // since conversions between them are not verifiable.
 #define TI_FLAG_NATIVE_INT 0x00000200
 
-// This item contains resolved token. It is used for ctor delegate optimization.
-#define TI_FLAG_TOKEN 0x00000400
-
 // This item contains the 'this' pointer (used for tracking)
 
 #define TI_FLAG_THIS_PTR 0x00001000
@@ -270,7 +282,7 @@ inline ti_types JITtype2tiType(CorInfoType type)
  * - A type (ref, array, value type) (m_cls describes the type)
  * - An array (m_cls describes the array type)
  * - A byref (byref flag set, otherwise the same as the above),
- * - A Function Pointer (m_method)
+ * - A Function Pointer (m_methodPointerInfo)
  * - A byref local variable (byref and byref local flags set), can be
  *   uninitialized
  *
@@ -291,7 +303,7 @@ private:
             unsigned byref : 1;            // used
             unsigned byref_readonly : 1;   // used
             unsigned nativeInt : 1;        // used
-            unsigned token : 1;            // used
+            unsigned : 1;                  // unused
             unsigned : 1;                  // unused
             unsigned thisPtr : 1;          // used
             unsigned thisPermHome : 1;     // used
@@ -303,10 +315,8 @@ private:
 
     union {
         CORINFO_CLASS_HANDLE m_cls;
-        // Valid only for type TI_METHOD without IsToken
-        CORINFO_METHOD_HANDLE m_method;
-        // Valid only for TI_TOKEN with IsToken
-        CORINFO_RESOLVED_TOKEN* m_token;
+        // Valid only for type TI_METHOD
+        methodPointerInfo* m_methodPointerInfo;
     };
 
     template <typename T>
@@ -362,21 +372,13 @@ public:
         m_cls = cls;
     }
 
-    typeInfo(CORINFO_METHOD_HANDLE method)
+    typeInfo(methodPointerInfo* methodPointerInfo)
     {
-        assert(method != nullptr && !isInvalidHandle(method));
-        m_flags  = TI_METHOD;
-        m_method = method;
-    }
-
-    typeInfo(CORINFO_RESOLVED_TOKEN* token)
-    {
-        assert(token != nullptr);
-        assert(token->hMethod != nullptr);
-        assert(!isInvalidHandle(token->hMethod));
-        m_flags = TI_METHOD;
-        SetIsToken();
-        m_token = token;
+        assert(methodPointerInfo != nullptr);
+        assert(methodPointerInfo->m_token.hMethod != nullptr);
+        assert(!isInvalidHandle(methodPointerInfo->m_token.hMethod));
+        m_flags             = TI_METHOD;
+        m_methodPointerInfo = methodPointerInfo;
     }
 
 #ifdef DEBUG
@@ -443,13 +445,13 @@ public:
     }
 #endif // DEBUG
 
-    static BOOL tiMergeToCommonParent(COMP_HANDLE CompHnd, typeInfo* pDest, const typeInfo* pSrc, bool* changed);
-    static BOOL tiCompatibleWith(COMP_HANDLE     CompHnd,
+    static bool tiMergeToCommonParent(COMP_HANDLE CompHnd, typeInfo* pDest, const typeInfo* pSrc, bool* changed);
+    static bool tiCompatibleWith(COMP_HANDLE     CompHnd,
                                  const typeInfo& child,
                                  const typeInfo& parent,
                                  bool            normalisedForStack);
 
-    static BOOL tiMergeCompatibleWith(COMP_HANDLE     CompHnd,
+    static bool tiMergeCompatibleWith(COMP_HANDLE     CompHnd,
                                       const typeInfo& child,
                                       const typeInfo& parent,
                                       bool            normalisedForStack);
@@ -457,12 +459,6 @@ public:
     /////////////////////////////////////////////////////////////////////////
     // Operations
     /////////////////////////////////////////////////////////////////////////
-
-    void SetIsToken()
-    {
-        m_flags |= TI_FLAG_TOKEN;
-        assert(m_bits.token);
-    }
 
     void SetIsThisPtr()
     {
@@ -573,17 +569,13 @@ public:
     CORINFO_METHOD_HANDLE GetMethod() const
     {
         assert(GetType() == TI_METHOD);
-        if (IsToken())
-        {
-            return m_token->hMethod;
-        }
-        return m_method;
+        return m_methodPointerInfo->m_token.hMethod;
     }
 
-    CORINFO_RESOLVED_TOKEN* GetToken() const
+    methodPointerInfo* GetMethodPointerInfo() const
     {
-        assert(IsToken());
-        return m_token;
+        assert(GetType() == TI_METHOD);
+        return m_methodPointerInfo;
     }
 
     // Get this item's type
@@ -603,7 +595,7 @@ public:
         return (ti_types)(m_flags & TI_FLAG_DATA_MASK);
     }
 
-    BOOL IsType(ti_types type) const
+    bool IsType(ti_types type) const
     {
         assert(type != TI_ERROR);
         return (m_flags & (TI_FLAG_DATA_MASK | TI_FLAG_BYREF | TI_FLAG_BYREF_READONLY | TI_FLAG_BYREF_PERMANENT_HOME |
@@ -611,68 +603,68 @@ public:
     }
 
     // Returns whether this is an objref
-    BOOL IsObjRef() const
+    bool IsObjRef() const
     {
         return IsType(TI_REF) || IsType(TI_NULL);
     }
 
     // Returns whether this is a by-ref
-    BOOL IsByRef() const
+    bool IsByRef() const
     {
         return (m_flags & TI_FLAG_BYREF);
     }
 
     // Returns whether this is the this pointer
-    BOOL IsThisPtr() const
+    bool IsThisPtr() const
     {
         return (m_flags & TI_FLAG_THIS_PTR);
     }
 
-    BOOL IsUnboxedGenericTypeVar() const
+    bool IsUnboxedGenericTypeVar() const
     {
         return !IsByRef() && (m_flags & TI_FLAG_GENERIC_TYPE_VAR);
     }
 
-    BOOL IsReadonlyByRef() const
+    bool IsReadonlyByRef() const
     {
         return IsByRef() && (m_flags & TI_FLAG_BYREF_READONLY);
     }
 
-    BOOL IsPermanentHomeByRef() const
+    bool IsPermanentHomeByRef() const
     {
         return IsByRef() && (m_flags & TI_FLAG_BYREF_PERMANENT_HOME);
     }
 
     // Returns whether this is a method desc
-    BOOL IsMethod() const
+    bool IsMethod() const
     {
         return GetType() == TI_METHOD;
     }
 
-    BOOL IsStruct() const
+    bool IsStruct() const
     {
         return IsType(TI_STRUCT);
     }
 
     // A byref value class is NOT a value class
-    BOOL IsValueClass() const
+    bool IsValueClass() const
     {
         return (IsStruct() || IsPrimitiveType());
     }
 
     // Does not return true for primitives. Will return true for value types that behave
     // as primitives
-    BOOL IsValueClassWithClsHnd() const
+    bool IsValueClassWithClsHnd() const
     {
         if ((GetType() == TI_STRUCT) ||
             (m_cls && GetType() != TI_REF && GetType() != TI_METHOD &&
              GetType() != TI_ERROR)) // necessary because if byref bit is set, we return TI_ERROR)
         {
-            return TRUE;
+            return true;
         }
         else
         {
-            return FALSE;
+            return false;
         }
     }
 
@@ -680,7 +672,7 @@ public:
     // NOTE: Use NormaliseToPrimitiveType() if you think you may have a
     // System.Int32 etc., because those types are not considered number
     // types by this function.
-    BOOL IsNumberType() const
+    bool IsNumberType() const
     {
         ti_types Type = GetType();
 
@@ -694,7 +686,7 @@ public:
     // NOTE: Use NormaliseToPrimitiveType() if you think you may have a
     // System.Int32 etc., because those types are not considered number
     // types by this function.
-    BOOL IsIntegerType() const
+    bool IsIntegerType() const
     {
         ti_types Type = GetType();
 
@@ -705,7 +697,7 @@ public:
     }
 
     // Returns true whether this is an integer or a native int.
-    BOOL IsIntOrNativeIntType() const
+    bool IsIntOrNativeIntType() const
     {
 #ifdef TARGET_64BIT
         return (GetType() == TI_INT) || AreEquivalent(*this, nativeInt());
@@ -714,7 +706,7 @@ public:
 #endif
     }
 
-    BOOL IsNativeIntType() const
+    bool IsNativeIntType() const
     {
         return AreEquivalent(*this, nativeInt());
     }
@@ -722,7 +714,7 @@ public:
     // Returns whether this is a primitive type (not a byref, objref,
     // array, null, value class, invalid value)
     // May Need to normalise first (m/r/I4 --> I4)
-    BOOL IsPrimitiveType() const
+    bool IsPrimitiveType() const
     {
         DWORD Type = GetType();
 
@@ -732,7 +724,7 @@ public:
     }
 
     // Returns whether this is the null objref
-    BOOL IsNullObjRef() const
+    bool IsNullObjRef() const
     {
         return (IsType(TI_NULL));
     }
@@ -740,19 +732,14 @@ public:
     // must be for a local which is an object type (i.e. has a slot >= 0)
     // for primitive locals, use the liveness bitmap instead
     // Note that this works if the error is 'Byref'
-    BOOL IsDead() const
+    bool IsDead() const
     {
         return (m_flags & (TI_FLAG_DATA_MASK)) == TI_ERROR;
     }
 
-    BOOL IsUninitialisedObjRef() const
+    bool IsUninitialisedObjRef() const
     {
         return (m_flags & TI_FLAG_UNINIT_OBJREF);
-    }
-
-    BOOL IsToken() const
-    {
-        return IsMethod() && ((m_flags & TI_FLAG_TOKEN) != 0);
     }
 
 private:

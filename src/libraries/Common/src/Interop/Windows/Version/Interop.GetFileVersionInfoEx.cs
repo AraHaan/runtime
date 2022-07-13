@@ -4,12 +4,13 @@
 using System;
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Version
+    internal static partial class Version
     {
-        [DllImport(Libraries.Version, CharSet = CharSet.Unicode, EntryPoint = "GetFileVersionInfoExW")]
-        internal static extern bool GetFileVersionInfoEx(
+        [LibraryImport(Libraries.Version, EntryPoint = "GetFileVersionInfoExW", StringMarshalling = StringMarshalling.Utf16)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool GetFileVersionInfoEx(
                     uint dwFlags,
                     string lpwstrFilename,
                     uint dwHandle,

@@ -47,7 +47,7 @@ namespace System.Xml.Xsl.IlGen
     /// <summary>
     /// Every node is annotated with information about how it will be constructed by ILGen.
     /// </summary>
-    internal class XmlILConstructInfo : IQilAnnotation
+    internal sealed class XmlILConstructInfo : IQilAnnotation
     {
         private readonly QilNodeType _nodeType;
         private PossibleXmlStates _xstatesInitial, _xstatesFinal, _xstatesBeginLoop, _xstatesEndLoop;
@@ -65,7 +65,7 @@ namespace System.Xml.Xsl.IlGen
         public static XmlILConstructInfo Read(QilNode nd)
         {
             XmlILAnnotation? ann = nd.Annotation as XmlILAnnotation;
-            XmlILConstructInfo? constrInfo = (ann != null) ? ann.ConstructInfo : null;
+            XmlILConstructInfo? constrInfo = ann?.ConstructInfo;
 
             if (constrInfo == null)
             {
@@ -359,21 +359,12 @@ namespace System.Xml.Xsl.IlGen
         /// This annotation is only applicable to Function nodes.  It contains a list of XmlILConstructInfo annotations
         /// for all QilInvoke nodes which call the annotated function.
         /// </summary>
-        public ArrayList CallersInfo
-        {
-            get
-            {
-                if (_callersInfo == null)
-                    _callersInfo = new ArrayList();
-
-                return _callersInfo;
-            }
-        }
+        public ArrayList CallersInfo => _callersInfo ??= new ArrayList();
 
         /// <summary>
         /// Return name of this annotation.
         /// </summary>
-        public virtual string Name
+        public string Name
         {
             get { return "ConstructInfo"; }
         }
@@ -389,14 +380,14 @@ namespace System.Xml.Xsl.IlGen
             {
                 s += _constrMeth.ToString();
 
-                s += ", " + _xstatesInitial;
+                s += $", {_xstatesInitial}";
 
                 if (_xstatesBeginLoop != PossibleXmlStates.None)
                 {
-                    s += " => " + _xstatesBeginLoop.ToString() + " => " + _xstatesEndLoop.ToString();
+                    s += $" => {_xstatesBeginLoop} => {_xstatesEndLoop}";
                 }
 
-                s += " => " + _xstatesFinal;
+                s += $" => {_xstatesFinal}";
 
                 if (!MightHaveAttributes)
                     s += ", NoAttrs";
@@ -770,7 +761,7 @@ namespace System.Xml.Xsl.IlGen
         /// <summary>
         /// Return true if an instance of the specified type might be an attribute or a namespace node.
         /// </summary>
-        private bool MaybeAttrNmsp(XmlQueryType typ)
+        private static bool MaybeAttrNmsp(XmlQueryType typ)
         {
             return (typ.NodeKinds & (XmlNodeKindFlags.Attribute | XmlNodeKindFlags.Namespace)) != XmlNodeKindFlags.None;
         }
@@ -778,7 +769,7 @@ namespace System.Xml.Xsl.IlGen
         /// <summary>
         /// Return true if an instance of the specified type might be a non-empty content type (attr/nsmp don't count).
         /// </summary>
-        private bool MaybeContent(XmlQueryType typ)
+        private static bool MaybeContent(XmlQueryType typ)
         {
             return !typ.IsNode || (typ.NodeKinds & ~(XmlNodeKindFlags.Attribute | XmlNodeKindFlags.Namespace)) != XmlNodeKindFlags.None;
         }
@@ -789,7 +780,7 @@ namespace System.Xml.Xsl.IlGen
     /// Scans the content of an ElementCtor and tries to minimize the number of well-formed checks that will have
     /// to be made at runtime when constructing content.
     /// </summary>
-    internal class XmlILElementAnalyzer : XmlILStateAnalyzer
+    internal sealed class XmlILElementAnalyzer : XmlILStateAnalyzer
     {
         private readonly NameTable _attrNames = new NameTable();
         private readonly ArrayList _dupAttrs = new ArrayList();
@@ -942,7 +933,7 @@ namespace System.Xml.Xsl.IlGen
     /// Scans constructed content, looking for redundant namespace declarations.  If any are found, then they are marked
     /// and removed later.
     /// </summary>
-    internal class XmlILNamespaceAnalyzer
+    internal sealed class XmlILNamespaceAnalyzer
     {
         private readonly XmlNamespaceManager _nsmgr = new XmlNamespaceManager(new NameTable());
         private bool _addInScopeNmsp;

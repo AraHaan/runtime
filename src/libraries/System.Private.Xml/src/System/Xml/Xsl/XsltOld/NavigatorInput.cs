@@ -1,16 +1,16 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Xml;
+using System.Xml.XPath;
+using KeywordsTable = System.Xml.Xsl.Xslt.KeywordsTable;
+
 namespace System.Xml.Xsl.XsltOld
 {
-    using System;
-    using System.Diagnostics;
-    using System.Diagnostics.CodeAnalysis;
-    using System.Xml;
-    using System.Xml.XPath;
-    using KeywordsTable = System.Xml.Xsl.Xslt.KeywordsTable;
-
-    internal class NavigatorInput
+    internal sealed class NavigatorInput
     {
         private XPathNavigator? _Navigator;
         private PositionInfo? _PositionInfo;
@@ -206,14 +206,9 @@ namespace System.Xml.Xsl.XsltOld
         //
         internal NavigatorInput(XPathNavigator navigator, string baseUri, InputScope? rootScope)
         {
-            if (navigator == null)
-            {
-                throw new ArgumentNullException(nameof(navigator));
-            }
-            if (baseUri == null)
-            {
-                throw new ArgumentNullException(nameof(baseUri));
-            }
+            ArgumentNullException.ThrowIfNull(navigator);
+            ArgumentNullException.ThrowIfNull(baseUri);
+
             Debug.Assert(navigator.NameTable != null);
             _Next = null;
             _Href = baseUri;

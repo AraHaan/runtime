@@ -21,7 +21,7 @@ namespace System.DirectoryServices.Interop
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal class DnWithBinary
+    internal sealed class DnWithBinary
     {
         public int dwLength;
         public IntPtr lpBinaryValue;       // GUID of directory object
@@ -29,7 +29,7 @@ namespace System.DirectoryServices.Interop
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal class DnWithString
+    internal sealed class DnWithString
     {
         public IntPtr pszStringValue;      // associated value
         public IntPtr pszDNString;         // Distinguished Name
@@ -38,7 +38,7 @@ namespace System.DirectoryServices.Interop
     /// <summary>
     /// Helper class for dealing with struct AdsValue.
     /// </summary>
-    internal class AdsValueHelper
+    internal sealed class AdsValueHelper
     {
         public AdsValue adsvalue;
         private GCHandle _pinnedHandle;
@@ -165,15 +165,7 @@ namespace System.DirectoryServices.Interop
                         Marshal.PtrToStructure(adsvalue.pointer.value, dns);
                         string strValue = Marshal.PtrToStringUni(dns.pszStringValue) ?? string.Empty;
 
-                        var strb = new StringBuilder();
-                        strb.Append("S:");
-                        strb.Append(strValue.Length);
-                        strb.Append(':');
-                        strb.Append(strValue);
-                        strb.Append(':');
-                        strb.Append(Marshal.PtrToStringUni(dns.pszDNString));
-
-                        return strb.ToString();
+                        return $"S:{strValue.Length}:{strValue}:{Marshal.PtrToStringUni(dns.pszDNString)}";
                     }
 
                 case AdsType.ADSTYPE_DN_STRING:
@@ -183,7 +175,7 @@ namespace System.DirectoryServices.Interop
                 case AdsType.ADSTYPE_NUMERIC_STRING:
                 case AdsType.ADSTYPE_OBJECT_CLASS:
                     // The value is a String.
-                    return Marshal.PtrToStringUni(adsvalue.pointer.value);
+                    return Marshal.PtrToStringUni(adsvalue.pointer.value)!;
 
                 case AdsType.ADSTYPE_BOOLEAN:
                     // The value is a bool.
@@ -235,7 +227,7 @@ namespace System.DirectoryServices.Interop
             var vlv = new AdsVLV();
             Marshal.PtrToStructure(adsvalue.octetString.value, vlv);
 
-            byte[] bytes = null;
+            byte[]? bytes = null;
             if (vlv.contextID != (IntPtr)0 && vlv.contextIDlength != 0)
             {
                 bytes = new byte[vlv.contextIDlength];

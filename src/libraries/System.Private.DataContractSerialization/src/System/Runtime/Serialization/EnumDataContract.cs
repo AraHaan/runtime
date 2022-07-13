@@ -21,6 +21,7 @@ namespace System.Runtime.Serialization
 
         public XmlQualifiedName? BaseContractName { get; set; }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal EnumDataContract(Type type) : base(new EnumDataContractCriticalHelper(type))
         {
             _helper = (base.Helper as EnumDataContractCriticalHelper)!;
@@ -65,7 +66,7 @@ namespace System.Runtime.Serialization
             get { return false; }
         }
 
-        private class EnumDataContractCriticalHelper : DataContract.DataContractCriticalHelper
+        private sealed class EnumDataContractCriticalHelper : DataContract.DataContractCriticalHelper
         {
             private static readonly Dictionary<Type, XmlQualifiedName> s_typeToName = new Dictionary<Type, XmlQualifiedName>();
             private static readonly Dictionary<XmlQualifiedName, Type> s_nameToType = new Dictionary<XmlQualifiedName, Type>();
@@ -96,7 +97,10 @@ namespace System.Runtime.Serialization
                 s_nameToType.Add(stableName, type);
             }
 
-            internal EnumDataContractCriticalHelper(Type type) : base(type)
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
+            internal EnumDataContractCriticalHelper(
+                [DynamicallyAccessedMembers(ClassDataContract.DataContractPreserveMemberTypes)]
+                Type type) : base(type)
             {
                 this.StableName = DataContract.GetStableName(type, out _hasDataContract);
                 Type baseType = Enum.GetUnderlyingType(type);
@@ -286,7 +290,7 @@ namespace System.Runtime.Serialization
 
                 // Read space-delimited values
                 int startIndex = i;
-                int count = 0;
+                int count;
                 for (; i < stringValue.Length; i++)
                 {
                     if (stringValue[i] == ' ')
@@ -355,16 +359,17 @@ namespace System.Runtime.Serialization
             }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override void WriteXmlValue(XmlWriterDelegator xmlWriter, object obj, XmlObjectSerializerWriteContext? context)
         {
             WriteEnumValue(xmlWriter, obj);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override object ReadXmlValue(XmlReaderDelegator xmlReader, XmlObjectSerializerReadContext? context)
         {
             object obj = ReadEnumValue(xmlReader);
-            if (context != null)
-                context.AddNewObject(obj);
+            context?.AddNewObject(obj);
             return obj;
         }
     }

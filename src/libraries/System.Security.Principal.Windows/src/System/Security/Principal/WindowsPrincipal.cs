@@ -4,6 +4,7 @@
 using Microsoft.Win32.SafeHandles;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Security.Claims;
 
 namespace System.Security.Principal
@@ -32,7 +33,9 @@ namespace System.Security.Principal
         public WindowsPrincipal(WindowsIdentity ntIdentity)
             : base(ntIdentity)
         {
-            _identity = ntIdentity ?? throw new ArgumentNullException(nameof(ntIdentity));
+            ArgumentNullException.ThrowIfNull(ntIdentity);
+
+            _identity = ntIdentity;
         }
 
         //
@@ -121,11 +124,7 @@ namespace System.Security.Principal
             return IsInRole(
                 new SecurityIdentifier(
                     IdentifierAuthority.NTAuthority,
-#if NETSTANDARD2_0
-                    new
-#else
                     stackalloc
-#endif
                     int[] { Interop.SecurityIdentifier.SECURITY_BUILTIN_DOMAIN_RID, rid }
                 )
             );
@@ -138,8 +137,7 @@ namespace System.Security.Principal
 
         public virtual bool IsInRole(SecurityIdentifier sid)
         {
-            if (sid == null)
-                throw new ArgumentNullException(nameof(sid));
+            ArgumentNullException.ThrowIfNull(sid);
 
             // special case the anonymous identity.
             if (_identity.AccessToken.IsInvalid)
@@ -155,7 +153,7 @@ namespace System.Security.Principal
                                                   (uint)TokenImpersonationLevel.Identification,
                                                   (uint)TokenType.TokenImpersonation,
                                                   ref token))
-                    throw new SecurityException(new Win32Exception().Message);
+                    throw new SecurityException(Marshal.GetLastPInvokeErrorMessage());
             }
 
             bool isMember = false;
@@ -164,7 +162,7 @@ namespace System.Security.Principal
             if (!Interop.Advapi32.CheckTokenMembership((_identity.ImpersonationLevel != TokenImpersonationLevel.None ? _identity.AccessToken : token),
                                                   sid.BinaryForm,
                                                   ref isMember))
-                throw new SecurityException(new Win32Exception().Message);
+                throw new SecurityException(Marshal.GetLastPInvokeErrorMessage());
 
             token.Dispose();
             return isMember;

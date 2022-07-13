@@ -7,7 +7,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace Microsoft.Extensions.Logging.Configuration
 {
-    internal class LoggerProviderConfigurationFactory : ILoggerProviderConfigurationFactory
+    internal sealed class LoggerProviderConfigurationFactory : ILoggerProviderConfigurationFactory
     {
         private readonly IEnumerable<LoggingConfiguration> _configurations;
 
@@ -18,13 +18,10 @@ namespace Microsoft.Extensions.Logging.Configuration
 
         public IConfiguration GetConfiguration(Type providerType)
         {
-            if (providerType == null)
-            {
-                throw new ArgumentNullException(nameof(providerType));
-            }
+            ThrowHelper.ThrowIfNull(providerType);
 
-            string fullName = providerType.FullName;
-            string alias = ProviderAliasUtilities.GetAlias(providerType);
+            string fullName = providerType.FullName!;
+            string? alias = ProviderAliasUtilities.GetAlias(providerType);
             var configurationBuilder = new ConfigurationBuilder();
             foreach (LoggingConfiguration configuration in _configurations)
             {

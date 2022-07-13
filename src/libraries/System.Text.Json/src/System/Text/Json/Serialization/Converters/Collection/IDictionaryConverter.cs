@@ -3,6 +3,8 @@
 
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Text.Json.Serialization.Metadata;
 
 namespace System.Text.Json.Serialization.Converters
 {
@@ -10,58 +12,32 @@ namespace System.Text.Json.Serialization.Converters
     /// Converter for <cref>System.Collections.IDictionary</cref> that (de)serializes as a JSON object with properties
     /// representing the dictionary element key and value.
     /// </summary>
-    internal sealed class IDictionaryConverter<TCollection>
-        : DictionaryDefaultConverter<TCollection, string, object?>
-        where TCollection : IDictionary
+    internal sealed class IDictionaryConverter<TDictionary>
+        : JsonDictionaryConverter<TDictionary, string, object?>
+        where TDictionary : IDictionary
     {
         protected override void Add(string key, in object? value, JsonSerializerOptions options, ref ReadStack state)
         {
-            TCollection collection = (TCollection)state.Current.ReturnValue!;
+            TDictionary collection = (TDictionary)state.Current.ReturnValue!;
             collection[key] = value;
             if (IsValueType)
             {
                 state.Current.ReturnValue = collection;
-            };
+            }
         }
-
-        private JsonConverter<object>? _objectConverter;
-
-        private static JsonConverter<object> GetObjectKeyConverter(JsonSerializerOptions options)
-            => (JsonConverter<object>)options.GetDictionaryKeyConverter(typeof(object));
 
         protected override void CreateCollection(ref Utf8JsonReader reader, ref ReadStack state)
         {
-            JsonClassInfo classInfo = state.Current.JsonClassInfo;
-
-            if (TypeToConvert.IsInterface || TypeToConvert.IsAbstract)
+            base.CreateCollection(ref reader, ref state);
+            TDictionary returnValue = (TDictionary)state.Current.ReturnValue!;
+            if (returnValue.IsReadOnly)
             {
-                if (!TypeToConvert.IsAssignableFrom(RuntimeType))
-                {
-                    ThrowHelper.ThrowNotSupportedException_CannotPopulateCollection(TypeToConvert, ref reader, ref state);
-                }
-
-                // Strings are intentionally used as keys when deserializing non-generic dictionaries.
-                state.Current.ReturnValue = new Dictionary<string, object>();
-            }
-            else
-            {
-                if (classInfo.CreateObject == null)
-                {
-                    ThrowHelper.ThrowNotSupportedException_DeserializeNoConstructor(TypeToConvert, ref reader, ref state);
-                }
-
-                TCollection returnValue = (TCollection)classInfo.CreateObject()!;
-
-                if (returnValue.IsReadOnly)
-                {
-                    ThrowHelper.ThrowNotSupportedException_CannotPopulateCollection(TypeToConvert, ref reader, ref state);
-                }
-
-                state.Current.ReturnValue = returnValue;
+                state.Current.ReturnValue = null; // clear out for more accurate JsonPath reporting.
+                ThrowHelper.ThrowNotSupportedException_CannotPopulateCollection(TypeToConvert, ref reader, ref state);
             }
         }
 
-        protected internal override bool OnWriteResume(Utf8JsonWriter writer, TCollection value, JsonSerializerOptions options, ref WriteStack state)
+        protected internal override bool OnWriteResume(Utf8JsonWriter writer, TDictionary value, JsonSerializerOptions options, ref WriteStack state)
         {
             IDictionaryEnumerator enumerator;
             if (state.Current.CollectionEnumerator == null)
@@ -77,7 +53,9 @@ namespace System.Text.Json.Serialization.Converters
                 enumerator = (IDictionaryEnumerator)state.Current.CollectionEnumerator;
             }
 
-            JsonConverter<object?> valueConverter = _valueConverter ??= GetValueConverter(state.Current.JsonClassInfo.ElementClassInfo!);
+            JsonTypeInfo typeInfo = state.Current.JsonTypeInfo;
+            _valueConverter ??= GetConverter<object?>(typeInfo.ElementTypeInfo!);
+
             do
             {
                 if (ShouldFlush(writer, ref state))
@@ -93,41 +71,37 @@ namespace System.Text.Json.Serialization.Converters
                     // Optimize for string since that's the hot path.
                     if (key is string keyString)
                     {
-                        JsonConverter<string> stringKeyConverter = _keyConverter ??= GetKeyConverter(KeyType, options);
-                        stringKeyConverter.WriteWithQuotes(writer, keyString, options, ref state);
+                        _keyConverter ??= GetConverter<string>(typeInfo.KeyTypeInfo!);
+                        _keyConverter.WriteAsPropertyNameCore(writer, keyString, options, state.Current.IsWritingExtensionDataProperty);
                     }
                     else
                     {
                         // IDictionary is a special case since it has polymorphic object semantics on serialization
                         // but needs to use JsonConverter<string> on deserialization.
-                        JsonConverter<object> objectKeyConverter = _objectConverter ??= GetObjectKeyConverter(options);
-                        objectKeyConverter.WriteWithQuotes(writer, key, options, ref state);
+                        _valueConverter.WriteAsPropertyNameCore(writer, key, options, state.Current.IsWritingExtensionDataProperty);
                     }
                 }
 
                 object? element = enumerator.Value;
-                if (!valueConverter.TryWrite(writer, element, options, ref state))
+                if (!_valueConverter.TryWrite(writer, element, options, ref state))
                 {
                     state.Current.CollectionEnumerator = enumerator;
                     return false;
                 }
 
-                state.Current.EndDictionaryElement();
+                state.Current.EndDictionaryEntry();
             } while (enumerator.MoveNext());
 
             return true;
         }
 
-        internal override Type RuntimeType
+        internal override void ConfigureJsonTypeInfo(JsonTypeInfo jsonTypeInfo, JsonSerializerOptions options)
         {
-            get
+            // Deserialize as Dictionary<TKey,TValue> for interface types that support it.
+            if (jsonTypeInfo.CreateObject is null && TypeToConvert.IsAssignableFrom(typeof(Dictionary<string, object?>)))
             {
-                if (TypeToConvert.IsAbstract || TypeToConvert.IsInterface)
-                {
-                    return typeof(Dictionary<string, object>);
-                }
-
-                return TypeToConvert;
+                Debug.Assert(TypeToConvert.IsInterface);
+                jsonTypeInfo.CreateObject = () => new Dictionary<string, object?>();
             }
         }
     }

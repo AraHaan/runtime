@@ -28,12 +28,11 @@
 FCIMPL3(void, CheckVMForIOPacket, LPOVERLAPPED* lpOverlapped, DWORD* errorCode, DWORD* numBytes)
 {
     FCALL_CONTRACT;
+    _ASSERTE_ALL_BUILDS(__FILE__, !ThreadpoolMgr::UsePortableThreadPoolForIO());
 
 #ifndef TARGET_UNIX
     Thread *pThread = GetThread();
     size_t key=0;
-
-    _ASSERTE(pThread);
 
     //Poll and wait if GC is in progress, to avoid blocking GC for too long.
     FC_GC_POLL();
@@ -93,10 +92,9 @@ FCIMPL1(LPOVERLAPPED, AllocateNativeOverlapped, OverlappedDataObject* overlapped
 {
     FCALL_CONTRACT;
 
-    LPOVERLAPPED lpOverlapped;
-
-    OVERLAPPEDDATAREF   overlapped   = ObjectToOVERLAPPEDDATAREF(overlappedUNSAFE);
-    OBJECTREF       userObject = overlapped->m_userObject;
+    LPOVERLAPPED lpOverlapped       = NULL;
+    OVERLAPPEDDATAREF   overlapped  = ObjectToOVERLAPPEDDATAREF(overlappedUNSAFE);
+    OBJECTREF           userObject  = overlapped->m_userObject;
 
     HELPER_METHOD_FRAME_BEGIN_RET_ATTRIB_2(Frame::FRAME_ATTR_NONE, overlapped, userObject);
 

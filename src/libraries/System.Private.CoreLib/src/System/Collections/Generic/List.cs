@@ -147,7 +147,7 @@ namespace System.Collections.Generic
                 // Following trick can reduce the range check by one
                 if ((uint)index >= (uint)_size)
                 {
-                    ThrowHelper.ThrowArgumentOutOfRange_IndexException();
+                    ThrowHelper.ThrowArgumentOutOfRange_IndexMustBeLessException();
                 }
                 return _items[index];
             }
@@ -156,7 +156,7 @@ namespace System.Collections.Generic
             {
                 if ((uint)index >= (uint)_size)
                 {
-                    ThrowHelper.ThrowArgumentOutOfRange_IndexException();
+                    ThrowHelper.ThrowArgumentOutOfRange_IndexMustBeLessException();
                 }
                 _items[index] = value;
                 _version++;
@@ -213,8 +213,9 @@ namespace System.Collections.Generic
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void AddWithResize(T item)
         {
+            Debug.Assert(_size == _items.Length);
             int size = _size;
-            EnsureCapacity(size + 1);
+            Grow(size + 1);
             _size = size + 1;
             _items[size] = item;
         }
@@ -317,7 +318,7 @@ namespace System.Collections.Generic
             // via EqualityComparer<T>.Default.Equals, we
             // only make one virtual call to EqualityComparer.IndexOf.
 
-            return _size != 0 && IndexOf(item) != -1;
+            return _size != 0 && IndexOf(item) >= 0;
         }
 
         bool IList.Contains(object? item)
@@ -391,22 +392,47 @@ namespace System.Collections.Generic
             Array.Copy(_items, 0, array, arrayIndex, _size);
         }
 
-        // Ensures that the capacity of this list is at least the given minimum
-        // value. If the current capacity of the list is less than min, the
-        // capacity is increased to twice the current capacity or to min,
-        // whichever is larger.
-        //
-        private void EnsureCapacity(int min)
+        /// <summary>
+        /// Ensures that the capacity of this list is at least the specified <paramref name="capacity"/>.
+        /// If the current capacity of the list is less than specified <paramref name="capacity"/>,
+        /// the capacity is increased by continuously twice current capacity until it is at least the specified <paramref name="capacity"/>.
+        /// </summary>
+        /// <param name="capacity">The minimum capacity to ensure.</param>
+        /// <returns>The new capacity of this list.</returns>
+        public int EnsureCapacity(int capacity)
         {
-            if (_items.Length < min)
+            if (capacity < 0)
             {
-                int newCapacity = _items.Length == 0 ? DefaultCapacity : _items.Length * 2;
-                // Allow the list to grow to maximum possible capacity (~2G elements) before encountering overflow.
-                // Note that this check works even when _items.Length overflowed thanks to the (uint) cast
-                if ((uint)newCapacity > Array.MaxArrayLength) newCapacity = Array.MaxArrayLength;
-                if (newCapacity < min) newCapacity = min;
-                Capacity = newCapacity;
+                ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.capacity, ExceptionResource.ArgumentOutOfRange_NeedNonNegNum);
             }
+            if (_items.Length < capacity)
+            {
+                Grow(capacity);
+                _version++;
+            }
+
+            return _items.Length;
+        }
+
+        /// <summary>
+        /// Increase the capacity of this list to at least the specified <paramref name="capacity"/>.
+        /// </summary>
+        /// <param name="capacity">The minimum capacity to ensure.</param>
+        private void Grow(int capacity)
+        {
+            Debug.Assert(_items.Length < capacity);
+
+            int newcapacity = _items.Length == 0 ? DefaultCapacity : 2 * _items.Length;
+
+            // Allow the list to grow to maximum possible capacity (~2G elements) before encountering overflow.
+            // Note that this check works even when _items.Length overflowed thanks to the (uint) cast
+            if ((uint)newcapacity > Array.MaxLength) newcapacity = Array.MaxLength;
+
+            // If the computed capacity is still less than specified, set to the original argument.
+            // Capacities exceeding Array.MaxLength will be surfaced as OutOfMemoryException by Array.Resize.
+            if (newcapacity < capacity) newcapacity = capacity;
+
+            Capacity = newcapacity;
         }
 
         public bool Exists(Predicate<T> match)
@@ -457,7 +483,7 @@ namespace System.Collections.Generic
         {
             if ((uint)startIndex > (uint)_size)
             {
-                ThrowHelper.ThrowStartIndexArgumentOutOfRange_ArgumentOutOfRange_Index();
+                ThrowHelper.ThrowStartIndexArgumentOutOfRange_ArgumentOutOfRange_IndexMustBeLessOrEqual();
             }
 
             if (count < 0 || startIndex > _size - count)
@@ -513,7 +539,7 @@ namespace System.Collections.Generic
                 // Special case for 0 length List
                 if (startIndex != -1)
                 {
-                    ThrowHelper.ThrowStartIndexArgumentOutOfRange_ArgumentOutOfRange_Index();
+                    ThrowHelper.ThrowStartIndexArgumentOutOfRange_ArgumentOutOfRange_IndexMustBeLess();
                 }
             }
             else
@@ -521,7 +547,7 @@ namespace System.Collections.Generic
                 // Make sure we're not out of range
                 if ((uint)startIndex >= (uint)_size)
                 {
-                    ThrowHelper.ThrowStartIndexArgumentOutOfRange_ArgumentOutOfRange_Index();
+                    ThrowHelper.ThrowStartIndexArgumentOutOfRange_ArgumentOutOfRange_IndexMustBeLess();
                 }
             }
 
@@ -633,7 +659,7 @@ namespace System.Collections.Generic
         public int IndexOf(T item, int index)
         {
             if (index > _size)
-                ThrowHelper.ThrowArgumentOutOfRange_IndexException();
+                ThrowHelper.ThrowArgumentOutOfRange_IndexMustBeLessOrEqualException();
             return Array.IndexOf(_items, item, index, _size - index);
         }
 
@@ -649,7 +675,7 @@ namespace System.Collections.Generic
         public int IndexOf(T item, int index, int count)
         {
             if (index > _size)
-                ThrowHelper.ThrowArgumentOutOfRange_IndexException();
+                ThrowHelper.ThrowArgumentOutOfRange_IndexMustBeLessOrEqualException();
 
             if (count < 0 || index > _size - count)
                 ThrowHelper.ThrowCountArgumentOutOfRange_ArgumentOutOfRange_Count();
@@ -668,7 +694,7 @@ namespace System.Collections.Generic
             {
                 ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.index, ExceptionResource.ArgumentOutOfRange_ListInsert);
             }
-            if (_size == _items.Length) EnsureCapacity(_size + 1);
+            if (_size == _items.Length) Grow(_size + 1);
             if (index < _size)
             {
                 Array.Copy(_items, index, _items, index + 1, _size - index);
@@ -706,7 +732,7 @@ namespace System.Collections.Generic
 
             if ((uint)index > (uint)_size)
             {
-                ThrowHelper.ThrowArgumentOutOfRange_IndexException();
+                ThrowHelper.ThrowArgumentOutOfRange_IndexMustBeLessOrEqualException();
             }
 
             if (collection is ICollection<T> c)
@@ -714,7 +740,10 @@ namespace System.Collections.Generic
                 int count = c.Count;
                 if (count > 0)
                 {
-                    EnsureCapacity(_size + count);
+                    if (_items.Length - _size < count)
+                    {
+                        Grow(_size + count);
+                    }
                     if (index < _size)
                     {
                         Array.Copy(_items, index, _items, index + count, _size - index);
@@ -780,7 +809,7 @@ namespace System.Collections.Generic
         public int LastIndexOf(T item, int index)
         {
             if (index >= _size)
-                ThrowHelper.ThrowArgumentOutOfRange_IndexException();
+                ThrowHelper.ThrowArgumentOutOfRange_IndexMustBeLessException();
             return LastIndexOf(item, index, index + 1);
         }
 
@@ -890,7 +919,7 @@ namespace System.Collections.Generic
         {
             if ((uint)index >= (uint)_size)
             {
-                ThrowHelper.ThrowArgumentOutOfRange_IndexException();
+                ThrowHelper.ThrowArgumentOutOfRange_IndexMustBeLessException();
             }
             _size--;
             if (index < _size)

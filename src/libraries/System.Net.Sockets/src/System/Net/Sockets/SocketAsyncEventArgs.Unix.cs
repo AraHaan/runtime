@@ -4,7 +4,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
 
 namespace System.Net.Sockets
 {
@@ -15,27 +15,13 @@ namespace System.Net.Sockets
         private SocketFlags _receivedFlags;
         private Action<int, byte[]?, int, SocketFlags, SocketError>? _transferCompletionCallback;
 
-        private void InitializeInternals()
-        {
-            // No-op for *nix.
-        }
+        partial void InitializeInternals();
 
-        private void FreeInternals()
-        {
-            // No-op for *nix.
-        }
+        partial void FreeInternals();
 
-        private void SetupSingleBuffer()
-        {
-            // No-op for *nix.
-        }
+        partial void SetupMultipleBuffers();
 
-        private void SetupMultipleBuffers()
-        {
-            // No-op for *nix.
-        }
-
-        private void CompleteCore() { }
+        partial void CompleteCore();
 
         private void AcceptCompletionCallback(IntPtr acceptedFileDescriptor, byte[] socketAddress, int socketAddressSize, SocketError socketError)
         {
@@ -51,7 +37,7 @@ namespace System.Net.Sockets
             _acceptAddressBufferCount = socketAddressSize;
         }
 
-        internal unsafe SocketError DoOperationAccept(Socket socket, SafeSocketHandle handle, SafeSocketHandle? acceptHandle)
+        internal unsafe SocketError DoOperationAccept(Socket socket, SafeSocketHandle handle, SafeSocketHandle? acceptHandle, CancellationToken cancellationToken)
         {
             if (!_buffer.Equals(default))
             {
@@ -64,7 +50,7 @@ namespace System.Net.Sockets
 
             IntPtr acceptedFd;
             int socketAddressLen = _acceptAddressBufferCount / 2;
-            SocketError socketError = handle.AsyncContext.AcceptAsync(_acceptBuffer!, ref socketAddressLen, out acceptedFd, AcceptCompletionCallback);
+            SocketError socketError = handle.AsyncContext.AcceptAsync(_acceptBuffer!, ref socketAddressLen, out acceptedFd, AcceptCompletionCallback, cancellationToken);
 
             if (socketError != SocketError.IOPending)
             {
@@ -93,7 +79,7 @@ namespace System.Net.Sockets
             return socketError;
         }
 
-        internal SocketError DoOperationDisconnect(Socket socket, SafeSocketHandle handle)
+        internal SocketError DoOperationDisconnect(Socket socket, SafeSocketHandle handle, CancellationToken cancellationToken)
         {
             SocketError socketError = SocketPal.Disconnect(socket, handle, _disconnectReuseSocket);
             FinishOperationSync(socketError, 0, SocketFlags.None);
@@ -101,7 +87,7 @@ namespace System.Net.Sockets
         }
 
         private Action<int, byte[]?, int, SocketFlags, SocketError> TransferCompletionCallback =>
-            _transferCompletionCallback ?? (_transferCompletionCallback = TransferCompletionCallbackCore);
+            _transferCompletionCallback ??= TransferCompletionCallbackCore;
 
         private void TransferCompletionCallbackCore(int bytesTransferred, byte[]? socketAddress, int socketAddressSize, SocketFlags receivedFlags, SocketError socketError)
         {
@@ -160,7 +146,7 @@ namespace System.Net.Sockets
 
             SocketFlags flags;
             SocketError errorCode;
-            int bytesReceived = 0;
+            int bytesReceived;
             int socketAddressLen = _socketAddress!.Size;
             if (_bufferList == null)
             {
@@ -244,11 +230,11 @@ namespace System.Net.Sockets
             return errorCode;
         }
 
-        internal SocketError DoOperationSendPackets(Socket socket, SafeSocketHandle handle)
+        internal SocketError DoOperationSendPackets(Socket socket, SafeSocketHandle handle, CancellationToken cancellationToken)
         {
             Debug.Assert(_sendPacketsElements != null);
             SendPacketsElement[] elements = (SendPacketsElement[])_sendPacketsElements.Clone();
-            FileStream[] files = new FileStream[elements.Length];
+            SafeFileHandle[] fileHandles = new SafeFileHandle[elements.Length];
 
             // Open all files synchronously ahead of time so that any exceptions are propagated
             // to the caller, to match Windows behavior.
@@ -259,14 +245,14 @@ namespace System.Net.Sockets
                     string? path = elements[i]?.FilePath;
                     if (path != null)
                     {
-                        files[i] = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 0x1000, useAsync: true);
+                        fileHandles[i] = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.Asynchronous);
                     }
                 }
             }
             catch (Exception exc)
             {
                 // Clean up any files that were already opened.
-                foreach (FileStream s in files)
+                foreach (SafeFileHandle s in fileHandles)
                 {
                     s?.Dispose();
                 }
@@ -288,7 +274,7 @@ namespace System.Net.Sockets
                 throw;
             }
 
-            SocketPal.SendPacketsAsync(socket, SendPacketsFlags, elements, files, (bytesTransferred, error) =>
+            _ = SocketPal.SendPacketsAsync(socket, SendPacketsFlags, elements, fileHandles, cancellationToken, (bytesTransferred, error) =>
             {
                 if (error == SocketError.Success)
                 {
@@ -355,7 +341,7 @@ namespace System.Net.Sockets
             return SocketError.Success;
         }
 
-        private SocketError FinishOperationConnect()
+        private static SocketError FinishOperationConnect()
         {
             // No-op for *nix.
             return SocketError.Success;
@@ -366,15 +352,9 @@ namespace System.Net.Sockets
             return _socketAddressSize;
         }
 
-        private unsafe void FinishOperationReceiveMessageFrom()
-        {
-            // No-op for *nix.
-        }
+        partial void FinishOperationReceiveMessageFrom();
 
-        private void FinishOperationSendPackets()
-        {
-            // No-op for *nix.
-        }
+        partial void FinishOperationSendPackets();
 
         private void CompletionCallback(int bytesTransferred, SocketFlags flags, SocketError socketError)
         {

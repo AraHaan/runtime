@@ -314,7 +314,7 @@ namespace System.ComponentModel.Composition.ReflectionModel
         }
     }
 
-    internal class ReflectionPartCreationInfo : IReflectionPartCreationInfo
+    internal sealed class ReflectionPartCreationInfo : IReflectionPartCreationInfo
     {
         private readonly Lazy<Type> _partType;
         private readonly Lazy<IEnumerable<ImportDefinition>>? _imports;
@@ -332,10 +332,7 @@ namespace System.ComponentModel.Composition.ReflectionModel
             Lazy<IDictionary<string, object?>>? metadata,
             ICompositionElement? origin)
         {
-            if (partType == null)
-            {
-                throw new ArgumentNullException(nameof(partType));
-            }
+            ArgumentNullException.ThrowIfNull(partType);
 
             _partType = partType;
             _isDisposalRequired = isDisposalRequired;
@@ -397,7 +394,7 @@ namespace System.ComponentModel.Composition.ReflectionModel
 
         public IDictionary<string, object?>? GetMetadata()
         {
-            return (_metadata != null) ? _metadata.Value : null;
+            return _metadata?.Value;
         }
 
         public IEnumerable<ExportDefinition> GetExports()
@@ -463,7 +460,7 @@ namespace System.ComponentModel.Composition.ReflectionModel
         }
     }
 
-    internal class LazyExportDefinition : ExportDefinition
+    internal sealed class LazyExportDefinition : ExportDefinition
     {
         private readonly Lazy<IDictionary<string, object?>> _metadata;
 

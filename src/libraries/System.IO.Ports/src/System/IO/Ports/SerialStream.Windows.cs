@@ -144,7 +144,7 @@ namespace System.IO.Ports
             set
             {
                 int fNullFlag = GetDcbFlag(Interop.Kernel32.DCBFlags.FNULL);
-                if (value == true && fNullFlag == 0 || value == false && fNullFlag == 1)
+                if (value && fNullFlag == 0 || !value && fNullFlag == 1)
                 {
                     int fNullOld = fNullFlag;
                     SetDcbFlag(Interop.Kernel32.DCBFlags.FNULL, value ? 1 : 0);
@@ -429,7 +429,7 @@ namespace System.IO.Ports
             {
                 Debug.Assert(!(value < StopBits.One || value > StopBits.OnePointFive), "An invalid value was passed to StopBits");
 
-                byte nativeValue = 0;
+                byte nativeValue;
                 if (value == StopBits.One)
                 {
                     nativeValue = Interop.Kernel32.DCBStopBits.ONESTOPBIT;
@@ -558,13 +558,16 @@ namespace System.IO.Ports
         internal SerialStream(string portName, int baudRate, Parity parity, int dataBits, StopBits stopBits, int readTimeout, int writeTimeout, Handshake handshake,
             bool dtrEnable, bool rtsEnable, bool discardNull, byte parityReplace)
         {
-            if (portName == null)
-            {
-                throw new ArgumentNullException(nameof(portName));
-            }
+            ArgumentNullException.ThrowIfNull(portName);
 
             if (!portName.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
-                !uint.TryParse(portName.Substring(3), out uint portNumber))
+                !uint.TryParse(
+#if NETCOREAPP
+                    portName.AsSpan(3),
+#else
+                    portName.Substring(3),
+#endif
+                    out uint portNumber))
             {
                 throw new ArgumentException(SR.Format(SR.Arg_InvalidSerialPort, portName), nameof(portName));
             }
@@ -762,14 +765,12 @@ namespace System.IO.Ports
                     // If we are disposing synchronize closing with raising SerialPort events
                     if (disposing)
                     {
-#pragma warning disable CA2002
                         lock (this)
                         {
                             _handle.Close();
                             _handle = null;
                             _threadPoolBinding.Dispose();
                         }
-#pragma warning restore CA2002
                     }
                     else
                     {
@@ -850,7 +851,7 @@ namespace System.IO.Ports
         // Async companion to BeginRead.
         // Note, assumed IAsyncResult argument is of derived type SerialStreamAsyncResult,
         // and throws an exception if untrue.
-        public unsafe override int EndRead(IAsyncResult asyncResult)
+        public override unsafe int EndRead(IAsyncResult asyncResult)
         {
             if (!_isAsync)
                 return base.EndRead(asyncResult);
@@ -879,7 +880,7 @@ namespace System.IO.Ports
                 try
                 {
                     wh.WaitOne();
-                    Debug.Assert(afsar._isComplete == true, "SerialStream::EndRead - AsyncFSCallback didn't set _isComplete to true!");
+                    Debug.Assert(afsar._isComplete, "SerialStream::EndRead - AsyncFSCallback didn't set _isComplete to true!");
 
                     // InfiniteTimeout is not something native to the underlying serial device,
                     // we specify the timeout to be a very large value (MAXWORD-1) to achieve
@@ -925,7 +926,7 @@ namespace System.IO.Ports
         // Note, assumed IAsyncResult argument is of derived type SerialStreamAsyncResult,
         // and throws an exception if untrue.
         // Also fails if called in port's break state.
-        public unsafe override void EndWrite(IAsyncResult asyncResult)
+        public override unsafe void EndWrite(IAsyncResult asyncResult)
         {
             if (!_isAsync)
             {
@@ -957,7 +958,7 @@ namespace System.IO.Ports
                 try
                 {
                     wh.WaitOne();
-                    Debug.Assert(afsar._isComplete == true, "SerialStream::EndWrite - AsyncFSCallback didn't set _isComplete to true!");
+                    Debug.Assert(afsar._isComplete, "SerialStream::EndWrite - AsyncFSCallback didn't set _isComplete to true!");
                 }
                 finally
                 {
@@ -1005,7 +1006,7 @@ namespace System.IO.Ports
 
             if (count == 0) return 0; // return immediately if no bytes requested; no need for overhead.
 
-            Debug.Assert(timeout == SerialPort.InfiniteTimeout || timeout >= 0, "Serial Stream Read - called with timeout " + timeout);
+            Debug.Assert(timeout == SerialPort.InfiniteTimeout || timeout >= 0, $"Serial Stream Read - called with timeout {timeout}");
 
             int numBytes = 0;
             if (_isAsync)
@@ -1015,8 +1016,7 @@ namespace System.IO.Ports
             }
             else
             {
-                int hr;
-                numBytes = ReadFileNative(array, offset, count, null, out hr);
+                numBytes = ReadFileNative(array, offset, count, null, out _);
                 if (numBytes == -1)
                 {
                     throw Win32Marshal.GetExceptionForLastWin32Error();
@@ -1041,8 +1041,7 @@ namespace System.IO.Ports
             }
             else
             {
-                int hr;
-                numBytes = ReadFileNative(_tempBuf, 0, 1, null, out hr);
+                numBytes = ReadFileNative(_tempBuf, 0, 1, null, out _);
                 if (numBytes == -1)
                 {
                     throw Win32Marshal.GetExceptionForLastWin32Error();
@@ -1069,7 +1068,7 @@ namespace System.IO.Ports
 
             if (count == 0) return; // no need to expend overhead in creating asyncResult, etc.
 
-            Debug.Assert(timeout == SerialPort.InfiniteTimeout || timeout >= 0, "Serial Stream Write - write timeout is " + timeout);
+            Debug.Assert(timeout == SerialPort.InfiniteTimeout || timeout >= 0, $"Serial Stream Write - write timeout is {timeout}");
 
             int numBytes;
             if (_isAsync)
@@ -1115,7 +1114,6 @@ namespace System.IO.Ports
 
 
             int numBytes;
-            int hr;
             if (_isAsync)
             {
                 IAsyncResult result = BeginWriteCore(_tempBuf, 0, 1, null, null);
@@ -1127,7 +1125,7 @@ namespace System.IO.Ports
             }
             else
             {
-                numBytes = WriteFileNative(_tempBuf, 0, 1, null, out hr);
+                numBytes = WriteFileNative(_tempBuf, 0, 1, null, out _);
                 if (numBytes == -1)
                 {
                     // This is how writes timeout on Win9x.
@@ -1282,7 +1280,7 @@ namespace System.IO.Ports
         internal void SetDcbFlag(int whichFlag, int setting)
         {
             uint mask;
-            setting = setting << whichFlag;
+            setting <<= whichFlag;
 
             Debug.Assert(whichFlag >= Interop.Kernel32.DCBFlags.FBINARY && whichFlag <= Interop.Kernel32.DCBFlags.FDUMMY2, "SetDcbFlag needs to fit into enum!");
 
@@ -1328,8 +1326,7 @@ namespace System.IO.Ports
 
             // queue an async ReadFile operation and pass in a packed overlapped
             //int r = ReadFile(_handle, array, numBytes, null, intOverlapped);
-            int hr = 0;
-            int r = ReadFileNative(array, offset, numBytes, intOverlapped, out hr);
+            int r = ReadFileNative(array, offset, numBytes, intOverlapped, out int hr);
 
             // ReadFile, the OS version, will return 0 on failure.  But
             // my ReadFileNative wrapper returns -1.  My wrapper will return
@@ -1373,9 +1370,8 @@ namespace System.IO.Ports
 
             asyncResult._overlapped = intOverlapped;
 
-            int hr = 0;
             // queue an async WriteFile operation and pass in a packed overlapped
-            int r = WriteFileNative(array, offset, numBytes, intOverlapped, out hr);
+            int r = WriteFileNative(array, offset, numBytes, intOverlapped, out int hr);
 
             // WriteFile, the OS version, will return 0 on failure.  But
             // my WriteFileNative wrapper returns -1.  My wrapper will return
@@ -1627,7 +1623,7 @@ namespace System.IO.Ports
                                 // if we get IO pending, MSDN says we should wait on the WaitHandle, then call GetOverlappedResult
                                 // to get the results of WaitCommEvent.
                                 bool success = waitCommEventWaitHandle.WaitOne();
-                                Debug.Assert(success, "waitCommEventWaitHandle.WaitOne() returned error " + Marshal.GetLastWin32Error());
+                                Debug.Assert(success, $"waitCommEventWaitHandle.WaitOne() returned error {Marshal.GetLastWin32Error()}");
 
                                 do
                                 {
@@ -1709,7 +1705,7 @@ namespace System.IO.Ports
                         return;
                     }
 
-                    errors = errors & ErrorEvents;
+                    errors &= ErrorEvents;
                     // TODO: what about CE_BREAK?  Is this the same as EV_BREAK?  EV_BREAK happens as one of the pin events,
                     //       but CE_BREAK is returned from ClreaCommError.
                     // TODO: what about other error conditions not covered by the enum?  Should those produce some other error?
@@ -1756,8 +1752,6 @@ namespace System.IO.Ports
                     if ((errors & (int)SerialError.Frame) != 0)
                         stream.ErrorReceived(stream, new SerialErrorReceivedEventArgs(SerialError.Frame));
                 }
-
-                stream = null;
             }
 
             private void CallReceiveEvents(object state)
@@ -1774,8 +1768,6 @@ namespace System.IO.Ports
                     if ((nativeEvents & (int)SerialData.Eof) != 0)
                         stream.DataReceived(stream, new SerialDataReceivedEventArgs(SerialData.Eof));
                 }
-
-                stream = null;
             }
 
             private void CallPinEvents(object state)
@@ -1803,8 +1795,6 @@ namespace System.IO.Ports
                     if ((nativeEvents & (int)SerialPinChange.Break) != 0)
                         stream.PinChanged(stream, new SerialPinChangedEventArgs(SerialPinChange.Break));
                 }
-
-                stream = null;
             }
 
         }
@@ -1813,7 +1803,7 @@ namespace System.IO.Ports
         // This is an internal object implementing IAsyncResult with fields
         // for all of the relevant data necessary to complete the IO operation.
         // This is used by AsyncFSCallback and all async methods.
-        internal unsafe sealed class SerialStreamAsyncResult : IAsyncResult
+        internal sealed unsafe class SerialStreamAsyncResult : IAsyncResult
         {
             // User code callback
             internal AsyncCallback _userCallback;

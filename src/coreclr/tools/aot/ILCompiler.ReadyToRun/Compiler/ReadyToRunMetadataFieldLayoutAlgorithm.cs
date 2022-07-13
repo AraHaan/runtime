@@ -18,15 +18,9 @@ namespace ILCompiler
 {
     public static class ReadyToRunTypeExtensions
     {
-        public static LayoutInt FieldBaseOffset(this TypeDesc type)
+        public static LayoutInt FieldBaseOffset(this MetadataType type)
         {
-            LayoutInt baseOffset = type.BaseType.InstanceByteCount;
-            if (type.RequiresAlign8())
-            {
-                baseOffset = LayoutInt.AlignUp(baseOffset, new LayoutInt(8), type.Context.Target);
-            }
-
-            return baseOffset;
+            return ((ReadyToRunCompilerContext)type.Context).CalculateFieldBaseOffset(type);
         }
     }
 
@@ -202,9 +196,9 @@ namespace ILCompiler
                         }
                     }
 
-                    if (nonGcBytes[StaticIndex.Regular] != 0 || 
+                    if (nonGcBytes[StaticIndex.Regular] != 0 ||
                         nonGcBytes[StaticIndex.ThreadLocal] != 0 ||
-                        gcBytes[StaticIndex.Regular] != 0 || 
+                        gcBytes[StaticIndex.Regular] != 0 ||
                         gcBytes[StaticIndex.ThreadLocal] != 0)
                     {
                         OffsetsForType offsetsForType = new OffsetsForType(LayoutInt.Indeterminate, LayoutInt.Indeterminate, LayoutInt.Indeterminate, LayoutInt.Indeterminate);
@@ -259,7 +253,7 @@ namespace ILCompiler
                     size = fieldType.GetElementSize().AsInt;
                     alignment = size;
                 }
-                else if (fieldType.IsByRef || fieldType.IsByRefLike || fieldType.IsByReferenceOfT)
+                else if (fieldType.IsByRef || fieldType.IsByRefLike)
                 {
                     ThrowHelper.ThrowTypeLoadException(ExceptionStringID.ClassLoadGeneral, fieldDesc.OwningType);
                 }
@@ -296,14 +290,14 @@ namespace ILCompiler
             }
 
             private void GetElementTypeInfo(
-                EcmaModule module, 
+                EcmaModule module,
                 FieldDesc fieldDesc,
-                EntityHandle valueTypeHandle, 
+                EntityHandle valueTypeHandle,
                 CorElementType elementType,
                 int pointerSize,
                 bool moduleLayout,
-                out int alignment, 
-                out int size, 
+                out int alignment,
+                out int size,
                 out bool isGcPointerField,
                 out bool isGcBoxedField)
             {
@@ -363,7 +357,7 @@ namespace ILCompiler
                         ThrowHelper.ThrowTypeLoadException(ExceptionStringID.ClassLoadGeneral, fieldDesc.OwningType);
                         break;
 
-                    // Statics for valuetypes where the valuetype is defined in this module are handled here. 
+                    // Statics for valuetypes where the valuetype is defined in this module are handled here.
                     // Other valuetype statics utilize the pessimistic model below.
                     case CorElementType.ELEMENT_TYPE_VALUETYPE:
                         if (IsTypeByRefLike(valueTypeHandle, module.MetadataReader))
@@ -528,7 +522,7 @@ namespace ILCompiler
                     offsetsForType.GcOffsets[StaticIndex.ThreadLocal],
                 };
 
-                LayoutInt[] gcPointerFieldOffsets = new LayoutInt[StaticIndex.Count] 
+                LayoutInt[] gcPointerFieldOffsets = new LayoutInt[StaticIndex.Count]
                 {
                     offsetsForType.GcOffsets[StaticIndex.Regular] + new LayoutInt(gcBoxedCount[StaticIndex.Regular] * pointerSize),
                     offsetsForType.GcOffsets[StaticIndex.ThreadLocal] + new LayoutInt(gcBoxedCount[StaticIndex.ThreadLocal] * pointerSize)
@@ -774,10 +768,10 @@ namespace ILCompiler
             private ConcurrentDictionary<DefType, FieldAndOffset[]> _genericTypeToFieldMap;
 
             public ModuleFieldLayout(
-                EcmaModule module, 
-                StaticsBlock gcStatics, 
-                StaticsBlock nonGcStatics, 
-                StaticsBlock threadGcStatics, 
+                EcmaModule module,
+                StaticsBlock gcStatics,
+                StaticsBlock nonGcStatics,
+                StaticsBlock threadGcStatics,
                 StaticsBlock threadNonGcStatics,
                 IReadOnlyDictionary<TypeDefinitionHandle, OffsetsForType> typeOffsets)
             {
@@ -808,8 +802,7 @@ namespace ILCompiler
             {
                 return ComputeExplicitFieldLayout(type, numInstanceFields);
             }
-            else
-            if (type.IsEnum || MarshalUtils.IsBlittableType(type) || IsManagedSequentialType(type))
+            else if (type.IsSequentialLayout && !type.ContainsGCPointers)
             {
                 return ComputeSequentialFieldLayout(type, numInstanceFields);
             }
@@ -820,60 +813,17 @@ namespace ILCompiler
         }
 
         /// <summary>
-        /// This method decides whether the type needs aligned base offset in order to have layout resilient to 
+        /// This method decides whether the type needs aligned base offset in order to have layout resilient to
         /// base class layout changes.
         /// </summary>
-        protected override void AlignBaseOffsetIfNecessary(MetadataType type, ref LayoutInt baseOffset, bool requiresAlign8)
+        protected override void AlignBaseOffsetIfNecessary(MetadataType type, ref LayoutInt baseOffset, bool requiresAlign8, bool requiresAlignedBase)
         {
-            DefType baseType = type.BaseType;
-            
-            if (!_compilationGroup.NeedsAlignmentBetweenBaseTypeAndDerived(baseType: (MetadataType)baseType, derivedType: type))
+            if (requiresAlignedBase || _compilationGroup.NeedsAlignmentBetweenBaseTypeAndDerived(baseType: (MetadataType)type.BaseType, derivedType: type))
             {
-                // The type is defined in the module that's currently being compiled and the type layout doesn't depend on other modules
-                return;
+                bool use8Align = (requiresAlign8 || type.BaseType.RequiresAlign8()) && type.Context.Target.Architecture != TargetArchitecture.X86;
+                LayoutInt alignment = new LayoutInt(use8Align ? 8 : type.Context.Target.PointerSize);
+                baseOffset = LayoutInt.AlignUp(baseOffset, alignment, type.Context.Target);
             }
-
-            LayoutInt alignment = new LayoutInt(type.Context.Target.PointerSize);
-
-            if (requiresAlign8)
-            {
-                alignment = new LayoutInt(8);
-            }
-            baseOffset = LayoutInt.AlignUp(baseOffset, alignment, type.Context.Target);
-        }
-
-        public static bool IsManagedSequentialType(TypeDesc type)
-        {
-            if (type.IsPointer)
-            {
-                return true;
-            }
-
-            if (!type.IsValueType)
-            {
-                return false;
-            }
-
-            MetadataType metadataType = (MetadataType)type;
-            if (metadataType.IsExplicitLayout || !metadataType.IsSequentialLayout)
-            {
-                return false;
-            }
-
-            if (type.IsPrimitive)
-            {
-                return true;
-            }
-
-            foreach (FieldDesc field in type.GetFields())
-            {
-                if (!field.IsStatic && !IsManagedSequentialType(field.FieldType.UnderlyingType))
-                {
-                    return false;
-                }
-            }
-
-            return true;
         }
     }
 }

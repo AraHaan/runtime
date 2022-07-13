@@ -97,7 +97,7 @@ struct LookupHolder
 {
     static void InitializeStatic();
 
-    void  Initialize(PCODE resolveWorkerTarget, size_t dispatchToken);
+    void  Initialize(LookupHolder* pLookupHolderRX, PCODE resolveWorkerTarget, size_t dispatchToken);
 
     LookupStub*    stub()         { LIMITED_METHOD_CONTRACT;  return &_stub;    }
 
@@ -317,7 +317,7 @@ struct DispatchHolder
 {
     static void InitializeStatic();
 
-    void  Initialize(PCODE implTarget, PCODE failTarget, size_t expectedMT,
+    void  Initialize(DispatchHolder* pDispatchHolderRX, PCODE implTarget, PCODE failTarget, size_t expectedMT,
                      DispatchStub::DispatchStubType type);
 
     static size_t GetHolderSize(DispatchStub::DispatchStubType type)
@@ -398,11 +398,12 @@ struct ResolveStub
 private:
     friend struct ResolveHolder;
 
-    BYTE    _resolveEntryPoint[3];//                resolveStub:
+    BYTE    _resolveEntryPoint[6];//                resolveStub:
+                                  // 48 8B XX                 mov    rax, [THIS_REG]
                                   // 52                       push   rdx
                                   // 49 BA                    mov    r10,
     size_t  _cacheAddress;        // xx xx xx xx xx xx xx xx              64-bit address
-    BYTE    part1 [15];           // 48 8B XX                 mov    rax, [THIS_REG]     ; Compute hash = ((MT + MT>>12) ^ prehash)
+    BYTE    part1 [12];           //                                                     ; Compute hash = ((MT + MT>>12) ^ prehash)
                                   // 48 8B D0                 mov    rdx, rax            ; rdx <- current MethodTable
                                   // 48 C1 E8 0C              shr    rax, 12
                                   // 48 03 C2                 add    rax, rdx
@@ -453,7 +454,8 @@ struct ResolveHolder
 {
     static void  InitializeStatic();
 
-    void  Initialize(PCODE resolveWorkerTarget, PCODE patcherTarget,
+    void  Initialize(ResolveHolder* pResolveHolderRX, 
+                     PCODE resolveWorkerTarget, PCODE patcherTarget,
                      size_t dispatchToken, UINT32 hashedToken,
                      void * cacheAddr, INT32* counterAddr);
 
@@ -573,7 +575,7 @@ void LookupHolder::InitializeStatic()
     lookupInit.part3 [1]           = 0xE0;
 }
 
-void  LookupHolder::Initialize(PCODE resolveWorkerTarget, size_t dispatchToken)
+void  LookupHolder::Initialize(LookupHolder* pLookupHolderRX, PCODE resolveWorkerTarget, size_t dispatchToken)
 {
     _stub = lookupInit;
 
@@ -595,9 +597,7 @@ void DispatchHolder::InitializeStatic()
 
     static_assert_no_msg(((sizeof(DispatchStub) + sizeof(DispatchStubShort)) % sizeof(void*)) == 0);
     static_assert_no_msg(((sizeof(DispatchStub) + sizeof(DispatchStubLong)) % sizeof(void*)) == 0);
-    // TODO: This should be a static_assert_no_msg(), but there were reports of build failure with VS 2019 due to the expression
-    // not being a compile-time constant, see https://github.com/dotnet/runtime/issues/11858
-    _ASSERTE((DispatchStubLong_offsetof_failLabel - DispatchStubLong_offsetof_failDisplBase) < INT8_MAX);
+    static_assert_no_msg((DispatchStubLong_offsetof_failLabel - DispatchStubLong_offsetof_failDisplBase) < INT8_MAX);
 
     // Common dispatch stub initialization
     dispatchInit._entryPoint [0]      = 0x48;
@@ -634,7 +634,7 @@ void DispatchHolder::InitializeStatic()
     dispatchLongInit.part5 [1]        = 0xE0;
 };
 
-void  DispatchHolder::Initialize(PCODE implTarget, PCODE failTarget, size_t expectedMT,
+void  DispatchHolder::Initialize(DispatchHolder* pDispatchHolderRX, PCODE implTarget, PCODE failTarget, size_t expectedMT,
                                DispatchStub::DispatchStubType type)
 {
     //
@@ -652,17 +652,18 @@ void  DispatchHolder::Initialize(PCODE implTarget, PCODE failTarget, size_t expe
     //
     if (type == DispatchStub::e_TYPE_SHORT)
     {
-        DispatchStubShort *shortStub = const_cast<DispatchStubShort *>(stub()->getShortStub());
+        DispatchStubShort *shortStubRW = const_cast<DispatchStubShort *>(stub()->getShortStub());
+        DispatchStubShort *shortStubRX = const_cast<DispatchStubShort *>(pDispatchHolderRX->stub()->getShortStub());
 
         // initialize the static data
-        *shortStub = dispatchShortInit;
+        *shortStubRW = dispatchShortInit;
 
         // fill in the dynamic data
-        size_t displ = (failTarget - ((PCODE) &shortStub->_failDispl + sizeof(DISPL)));
+        size_t displ = (failTarget - ((PCODE) &shortStubRX->_failDispl + sizeof(DISPL)));
         CONSISTENCY_CHECK(FitsInI4(displ));
-        shortStub->_failDispl   = (DISPL) displ;
-        shortStub->_implTarget  = (size_t) implTarget;
-        CONSISTENCY_CHECK((PCODE)&shortStub->_failDispl + sizeof(DISPL) + shortStub->_failDispl == failTarget);
+        shortStubRW->_failDispl   = (DISPL) displ;
+        shortStubRW->_implTarget  = (size_t) implTarget;
+        CONSISTENCY_CHECK((PCODE)&shortStubRX->_failDispl + sizeof(DISPL) + shortStubRX->_failDispl == failTarget);
     }
     else
     {
@@ -687,25 +688,25 @@ void ResolveHolder::InitializeStatic()
 {
     static_assert_no_msg((sizeof(ResolveHolder) % sizeof(void*)) == 0);
 
-    resolveInit._resolveEntryPoint [0] = 0x52;
-    resolveInit._resolveEntryPoint [1] = 0x49;
-    resolveInit._resolveEntryPoint [2] = 0xBA;
+    resolveInit._resolveEntryPoint [0] = X64_INSTR_MOV_RAX_IND_THIS_REG & 0xff;
+    resolveInit._resolveEntryPoint [1] = (X64_INSTR_MOV_RAX_IND_THIS_REG >> 8) & 0xff;
+    resolveInit._resolveEntryPoint [2] = (X64_INSTR_MOV_RAX_IND_THIS_REG >> 16) & 0xff;
+    resolveInit._resolveEntryPoint [3] = 0x52;
+    resolveInit._resolveEntryPoint [4] = 0x49;
+    resolveInit._resolveEntryPoint [5] = 0xBA;
     resolveInit._cacheAddress          = 0xcccccccccccccccc;
-    resolveInit.part1 [ 0]             = X64_INSTR_MOV_RAX_IND_THIS_REG & 0xff;
-    resolveInit.part1 [ 1]             = (X64_INSTR_MOV_RAX_IND_THIS_REG >> 8) & 0xff;
-    resolveInit.part1 [ 2]             = (X64_INSTR_MOV_RAX_IND_THIS_REG >> 16) & 0xff;
+    resolveInit.part1 [ 0]             = 0x48;
+    resolveInit.part1 [ 1]             = 0x8B;
+    resolveInit.part1 [ 2]             = 0xD0;
     resolveInit.part1 [ 3]             = 0x48;
-    resolveInit.part1 [ 4]             = 0x8B;
-    resolveInit.part1 [ 5]             = 0xD0;
-    resolveInit.part1 [ 6]             = 0x48;
-    resolveInit.part1 [ 7]             = 0xC1;
-    resolveInit.part1 [ 8]             = 0xE8;
-    resolveInit.part1 [ 9]             = CALL_STUB_CACHE_NUM_BITS;
+    resolveInit.part1 [ 4]             = 0xC1;
+    resolveInit.part1 [ 5]             = 0xE8;
+    resolveInit.part1 [ 6]             = CALL_STUB_CACHE_NUM_BITS;
+    resolveInit.part1 [ 7]             = 0x48;
+    resolveInit.part1 [ 8]             = 0x03;
+    resolveInit.part1 [ 9]             = 0xC2;
     resolveInit.part1 [10]             = 0x48;
-    resolveInit.part1 [11]             = 0x03;
-    resolveInit.part1 [12]             = 0xC2;
-    resolveInit.part1 [13]             = 0x48;
-    resolveInit.part1 [14]             = 0x35;
+    resolveInit.part1 [11]             = 0x35;
 // Review truncation from unsigned __int64 to UINT32 of a constant value.
 #if defined(_MSC_VER)
 #pragma warning(push)
@@ -771,7 +772,8 @@ void ResolveHolder::InitializeStatic()
     resolveInit.part10 [1]             = 0xE0;
 };
 
-void  ResolveHolder::Initialize(PCODE resolveWorkerTarget, PCODE patcherTarget,
+void  ResolveHolder::Initialize(ResolveHolder* pResolveHolderRX, 
+                                PCODE resolveWorkerTarget, PCODE patcherTarget,
                                 size_t dispatchToken, UINT32 hashedToken,
                                 void * cacheAddr, INT32* counterAddr)
 {
@@ -826,7 +828,6 @@ void VTableCallHolder::Initialize(unsigned slot)
 {
     unsigned offsetOfIndirection = MethodTable::GetVtableOffset() + MethodTable::GetIndexOfVtableIndirection(slot) * TARGET_POINTER_SIZE;
     unsigned offsetAfterIndirection = MethodTable::GetIndexAfterVtableIndirection(slot) * TARGET_POINTER_SIZE;
-    _ASSERTE(MethodTable::VTableIndir_t::isRelative == false /* TODO: NYI */);
 
     VTableCallStub* pStub = stub();
     BYTE* p = (BYTE*)pStub->entryPoint();

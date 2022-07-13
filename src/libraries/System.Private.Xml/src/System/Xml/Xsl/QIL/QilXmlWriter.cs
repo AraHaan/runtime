@@ -35,10 +35,10 @@ namespace System.Xml.Xsl.Qil
     /// Annotations are serialized as processing-instructions in front of a node.</para>
     /// <para>Feel free to subclass this visitor to customize its behavior.</para>
     /// </remarks>
-    internal class QilXmlWriter : QilScopedVisitor
+    internal sealed class QilXmlWriter : QilScopedVisitor
     {
-        protected XmlWriter writer;
-        protected Options options;
+        private XmlWriter writer;
+        private Options options;
         private readonly NameGenerator _ngen;
 
         [Flags]
@@ -90,7 +90,7 @@ namespace System.Xml.Xsl.Qil
         ///     3. IList{object} -- recursively call WriteAnnotations for each object in list
         ///     4. otherwise, do not write the annotation
         /// </summary>
-        protected virtual void WriteAnnotations(object? ann)
+        private void WriteAnnotations(object? ann)
         {
             string? s = null, name = null;
 
@@ -115,13 +115,13 @@ namespace System.Xml.Xsl.Qil
             }
 
             if (s != null && s.Length != 0)
-                this.writer.WriteComment(name != null && name.Length != 0 ? name + ": " + s : s);
+                this.writer.WriteComment(name != null && name.Length != 0 ? $"{name}: {s}" : s);
         }
 
         /// <summary>
         /// Called in order to write out source line information.
         /// </summary>
-        protected virtual void WriteLineInfo(QilNode node)
+        private void WriteLineInfo(QilNode node)
         {
             this.writer.WriteAttributeString("lineInfo", string.Format(CultureInfo.InvariantCulture, "[{0},{1} -- {2},{3}]",
                 node.SourceLine!.Start.Line, node.SourceLine.Start.Pos,
@@ -132,7 +132,7 @@ namespace System.Xml.Xsl.Qil
         /// <summary>
         /// Called in order to write out the xml type of a node.
         /// </summary>
-        protected virtual void WriteXmlType(QilNode node)
+        private void WriteXmlType(QilNode node)
         {
             this.writer.WriteAttributeString("xmlType", node.XmlType!.ToString((this.options & Options.RoundTripTypeInfo) != 0 ? "S" : "G"));
         }
@@ -153,10 +153,8 @@ namespace System.Xml.Xsl.Qil
                 this.writer.WriteValue(Convert.ToString(((QilLiteral)node).Value, CultureInfo.InvariantCulture));
                 return node;
             }
-            else if (node is QilReference)
+            else if (node is QilReference reference)
             {
-                QilReference reference = (QilReference)node;
-
                 // Write the generated identifier for this iterator
                 this.writer.WriteAttributeString("id", _ngen.NameOf(node));
 
@@ -185,9 +183,7 @@ namespace System.Xml.Xsl.Qil
         protected override QilNode VisitReference(QilNode node)
         {
             QilReference reference = (QilReference)node;
-            string name = _ngen.NameOf(node);
-            if (name == null)
-                name = "OUT-OF-SCOPE REFERENCE";
+            string name = _ngen.NameOf(node) ?? "OUT-OF-SCOPE REFERENCE";
 
             this.writer.WriteStartElement("RefTo");
             this.writer.WriteAttributeString("id", name);
@@ -265,7 +261,7 @@ namespace System.Xml.Xsl.Qil
         /// </summary>
         protected override void EndScope(QilNode node)
         {
-            _ngen.ClearName(node);
+            NameGenerator.ClearName(node);
         }
 
         /// <summary>
@@ -316,7 +312,7 @@ namespace System.Xml.Xsl.Qil
         /// <summary>
         /// Find list of all iterators and functions which are referenced before they have been declared.
         /// </summary>
-        internal class ForwardRefFinder : QilVisitor
+        internal sealed class ForwardRefFinder : QilVisitor
         {
             private readonly List<QilNode> _fwdrefs = new List<QilNode>();
             private readonly List<QilNode> _backrefs = new List<QilNode>();
@@ -410,7 +406,7 @@ namespace System.Xml.Xsl.Qil
             /// <returns>the node name (unique across nodes)</returns>
             public string NameOf(QilNode n)
             {
-                string? name = null;
+                string? name;
 
                 object? old = n.Annotation;
                 NameAnnotation? a = old as NameAnnotation;
@@ -430,7 +426,7 @@ namespace System.Xml.Xsl.Qil
             /// Clear name annotation from a node.
             /// </summary>
             /// <param name="n">the node</param>
-            public void ClearName(QilNode n)
+            public static void ClearName(QilNode n)
             {
                 if (n.Annotation is NameAnnotation)
                     n.Annotation = ((NameAnnotation)n.Annotation).PriorAnnotation;
@@ -439,7 +435,7 @@ namespace System.Xml.Xsl.Qil
             /// <summary>
             /// Class used to hold our annotations on the graph
             /// </summary>
-            private class NameAnnotation : ListBase<object?>
+            private sealed class NameAnnotation : ListBase<object?>
             {
                 public string Name;
                 public object? PriorAnnotation;

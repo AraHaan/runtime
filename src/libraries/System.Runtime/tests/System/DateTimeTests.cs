@@ -130,6 +130,71 @@ namespace System.Tests
             VerifyDateTime(dateTime, year, month, day, hour, minute, second, millisecond, DateTimeKind.Local);
         }
 
+        public static IEnumerable<object[]> Ctor_Int_Int_Int_Int_Int_Int_Int_Int_Int_TestData()
+        {
+            yield return new object[] { 1986, 8, 15, 10, 20, 5, 600, 300 };
+            yield return new object[] { 1986, 2, 28, 10, 20, 5, 600, 300 };
+            yield return new object[] { 1986, 12, 31, 10, 20, 5, 600, 300 };
+            yield return new object[] { 2000, 2, 28, 10, 20, 5, 600, 300 };
+            yield return new object[] { 2000, 2, 29, 10, 20, 5, 600, 300 };
+            yield return new object[] { 2000, 12, 31, 10, 20, 5, 600, 300 };
+            yield return new object[] { 1900, 2, 28, 10, 20, 5, 600, 300 };
+            yield return new object[] { 1900, 12, 31, 10, 20, 5, 600, 300 };
+        }
+
+        [Theory]
+        [MemberData(nameof(Ctor_Int_Int_Int_Int_Int_Int_Int_Int_Int_TestData))]
+        public void Ctor_Int_Int_Int_Int_Int_Int_Int_Int(int year, int month, int day, int hour, int minute, int second, int millisecond, int microsecond)
+        {
+            var dateTime = new DateTime(year, month, day, hour, minute, second, millisecond, microsecond);
+            VerifyDateTime(dateTime, year, month, day, hour, minute, second, millisecond, microsecond, DateTimeKind.Unspecified);
+        }
+
+        [Theory]
+        [MemberData(nameof(Ctor_Int_Int_Int_Int_Int_Int_Int_Int_Int_TestData))]
+        public void Ctor_Int_Int_Int_Int_Int_Int_Int_Int_Calendar(int year, int month, int day, int hour, int minute, int second, int millisecond, int microsecond)
+        {
+            var dateTime = new DateTime(year, month, day, hour, minute, second, millisecond, microsecond, new GregorianCalendar());
+            VerifyDateTime(dateTime, year, month, day, hour, minute, second, millisecond, microsecond, DateTimeKind.Unspecified);
+        }
+
+        [Theory]
+        [MemberData(nameof(Ctor_Int_Int_Int_Int_Int_Int_Int_Int_Int_TestData))]
+        public void Ctor_Int_Int_Int_Int_Int_Int_Int_Int_Int_DateTimeKind(int year, int month, int day, int hour, int minute, int second, int millisecond, int microsecond)
+        {
+            var dateTime = new DateTime(year, month, day, hour, minute, second, millisecond, microsecond, DateTimeKind.Local);
+            VerifyDateTime(dateTime, year, month, day, hour, minute, second, millisecond, microsecond, DateTimeKind.Local);
+        }
+
+        [Theory]
+        [MemberData(nameof(Ctor_Int_Int_Int_Int_Int_Int_Int_Int_Int_TestData))]
+        public void Ctor_Int_Int_Int_Int_Int_Int_Int_Int_Int_Calendar_DateTimeKind(int year, int month, int day, int hour, int minute, int second, int millisecond, int microsecond)
+        {
+            var dateTime = new DateTime(year, month, day, hour, minute, second, millisecond, microsecond, new GregorianCalendar(), DateTimeKind.Local);
+            VerifyDateTime(dateTime, year, month, day, hour, minute, second, millisecond, microsecond, DateTimeKind.Local);
+        }
+
+        public static IEnumerable<object[]> Ctor_Int_Int_Int_Int_Int_Int_Int_Int_Int_WithNanoseconds_TestData()
+        {
+            yield return new object[] { 1986, 8, 15, 10, 20, 5, 600, 300, 0 };
+            yield return new object[] { 1986, 2, 28, 10, 20, 5, 600, 300, 100 };
+            yield return new object[] { 1986, 12, 31, 10, 20, 5, 600, 300, 200 };
+            yield return new object[] { 2000, 2, 28, 10, 20, 5, 600, 300, 300 };
+            yield return new object[] { 2000, 2, 29, 10, 20, 5, 600, 300, 400 };
+            yield return new object[] { 2000, 12, 31, 10, 20, 5, 600, 300, 500 };
+            yield return new object[] { 1900, 2, 28, 10, 20, 5, 600, 300, 600 };
+            yield return new object[] { 1900, 12, 31, 10, 20, 5, 600, 300, 900 };
+        }
+
+        [Theory]
+        [MemberData(nameof(Ctor_Int_Int_Int_Int_Int_Int_Int_Int_Int_WithNanoseconds_TestData))]
+        public void Ctor_Int_Int_Int_Int_Int_Int_Int_Int_Int_WithNanoseconds(int year, int month, int day, int hour, int minute, int second, int millisecond, int microsecond, int nanosecond)
+        {
+            var dateTime = new DateTime(year, month, day, hour, minute, second, millisecond, microsecond);
+            dateTime = dateTime.AddTicks(nanosecond / 100);
+            VerifyDateTime(dateTime, year, month, day, hour, minute, second, millisecond, microsecond, nanosecond, DateTimeKind.Unspecified);
+        }
+
         [Theory]
         [InlineData(0)]
         [InlineData(10000)]
@@ -144,6 +209,10 @@ namespace System.Tests
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(year, 1, 1, 1, 1, 1, 1, DateTimeKind.Utc));
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(year, 1, 1, 1, 1, 1, 1, new GregorianCalendar()));
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(year, 1, 1, 1, 1, 1, 1, new GregorianCalendar(), DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(year, 1, 1, 1, 1, 1, 1, 1));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(year, 1, 1, 1, 1, 1, 1, 1, DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(year, 1, 1, 1, 1, 1, 1, 1, new GregorianCalendar()));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(year, 1, 1, 1, 1, 1, 1, 1, new GregorianCalendar(), DateTimeKind.Utc));
         }
 
         [Theory]
@@ -160,6 +229,10 @@ namespace System.Tests
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, month, 1, 1, 1, 1, 1, DateTimeKind.Utc));
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, month, 1, 1, 1, 1, 1, new GregorianCalendar()));
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, month, 1, 1, 1, 1, 1, new GregorianCalendar(), DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, month, 1, 1, 1, 1, 1, 1));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, month, 1, 1, 1, 1, 1, 1, DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, month, 1, 1, 1, 1, 1, 1, new GregorianCalendar()));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, month, 1, 1, 1, 1, 1, 1, new GregorianCalendar(), DateTimeKind.Utc));
         }
 
         [Theory]
@@ -176,6 +249,10 @@ namespace System.Tests
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, day, 1, 1, 1, 1, DateTimeKind.Utc));
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, day, 1, 1, 1, 1, new GregorianCalendar()));
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, day, 1, 1, 1, 1, new GregorianCalendar(), DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, day, 1, 1, 1, 1, 1));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, day, 1, 1, 1, 1, 1, DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, day, 1, 1, 1, 1, 1, new GregorianCalendar()));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, day, 1, 1, 1, 1, 1, new GregorianCalendar(), DateTimeKind.Utc));
         }
 
         [Theory]
@@ -190,6 +267,10 @@ namespace System.Tests
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, hour, 1, 1, 1, DateTimeKind.Utc));
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, hour, 1, 1, 1, new GregorianCalendar()));
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, hour, 1, 1, 1, new GregorianCalendar(), DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, hour, 1, 1, 1, 1));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, hour, 1, 1, 1, 1, DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, hour, 1, 1, 1, 1, new GregorianCalendar()));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, hour, 1, 1, 1, 1, new GregorianCalendar(), DateTimeKind.Utc));
         }
 
         [Theory]
@@ -204,6 +285,10 @@ namespace System.Tests
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, minute, 1, 1, DateTimeKind.Utc));
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, minute, 1, 1, new GregorianCalendar()));
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, minute, 1, 1, new GregorianCalendar(), DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, minute, 1, 1, 1));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, minute, 1, 1, 1, DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, minute, 1, 1, 1, new GregorianCalendar()));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, minute, 1, 1, 1, new GregorianCalendar(), DateTimeKind.Utc));
         }
 
         [Theory]
@@ -217,6 +302,9 @@ namespace System.Tests
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, 1, second, 1));
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, 1, second, 1, DateTimeKind.Utc));
             AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, 1, second, 1, new GregorianCalendar(), DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, 1, second, 1, 1));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, 1, second, 1, 1, DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>(null, () => new DateTime(1, 1, 1, 1, 1, second, 1, 1, new GregorianCalendar(), DateTimeKind.Utc));
         }
 
         [Theory]
@@ -228,6 +316,21 @@ namespace System.Tests
             AssertExtensions.Throws<ArgumentOutOfRangeException>("millisecond", () => new DateTime(1, 1, 1, 1, 1, 1, millisecond, DateTimeKind.Utc));
             AssertExtensions.Throws<ArgumentOutOfRangeException>("millisecond", () => new DateTime(1, 1, 1, 1, 1, 1, millisecond, new GregorianCalendar()));
             AssertExtensions.Throws<ArgumentOutOfRangeException>("millisecond", () => new DateTime(1, 1, 1, 1, 1, 1, millisecond, new GregorianCalendar(), DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>("millisecond", () => new DateTime(1, 1, 1, 1, 1, 1, millisecond, 1));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>("millisecond", () => new DateTime(1, 1, 1, 1, 1, 1, millisecond, 1, DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>("millisecond", () => new DateTime(1, 1, 1, 1, 1, 1, millisecond, 1, new GregorianCalendar()));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>("millisecond", () => new DateTime(1, 1, 1, 1, 1, 1, millisecond, 1, new GregorianCalendar(), DateTimeKind.Utc));
+        }
+
+        [Theory]
+        [InlineData(-1)]
+        [InlineData(1000)]
+        public void Ctor_InvalidMicrosecond_ThrowsArgumentOutOfRangeException(int microsecond)
+        {
+            AssertExtensions.Throws<ArgumentOutOfRangeException>("microsecond", () => new DateTime(1, 1, 1, 1, 1, 1, 1, microsecond));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>("microsecond", () => new DateTime(1, 1, 1, 1, 1, 1, 1, microsecond, DateTimeKind.Utc));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>("microsecond", () => new DateTime(1, 1, 1, 1, 1, 1, 1, microsecond, new GregorianCalendar()));
+            AssertExtensions.Throws<ArgumentOutOfRangeException>("microsecond", () => new DateTime(1, 1, 1, 1, 1, 1, 1, microsecond, new GregorianCalendar(), DateTimeKind.Utc));
         }
 
         [Theory]
@@ -239,6 +342,8 @@ namespace System.Tests
             AssertExtensions.Throws<ArgumentException>("kind", () => new DateTime(1, 1, 1, 1, 1, 1, kind));
             AssertExtensions.Throws<ArgumentException>("kind", () => new DateTime(1, 1, 1, 1, 1, 1, 1, kind));
             AssertExtensions.Throws<ArgumentException>("kind", () => new DateTime(1, 1, 1, 1, 1, 1, 1, new GregorianCalendar(), kind));
+            AssertExtensions.Throws<ArgumentException>("kind", () => new DateTime(1, 1, 1, 1, 1, 1, 1, 1, kind));
+            AssertExtensions.Throws<ArgumentException>("kind", () => new DateTime(1, 1, 1, 1, 1, 1, 1, 1, new GregorianCalendar(), kind));
         }
 
         [Fact]
@@ -248,6 +353,8 @@ namespace System.Tests
             AssertExtensions.Throws<ArgumentNullException>("calendar", () => new DateTime(1, 1, 1, 1, 1, 1, null));
             AssertExtensions.Throws<ArgumentNullException>("calendar", () => new DateTime(1, 1, 1, 1, 1, 1, 1, null));
             AssertExtensions.Throws<ArgumentNullException>("calendar", () => new DateTime(1, 1, 1, 1, 1, 1, 1, null, DateTimeKind.Local));
+            AssertExtensions.Throws<ArgumentNullException>("calendar", () => new DateTime(1, 1, 1, 1, 1, 1, 1, 1, null));
+            AssertExtensions.Throws<ArgumentNullException>("calendar", () => new DateTime(1, 1, 1, 1, 1, 1, 1, 1, null, DateTimeKind.Local));
         }
 
         [Theory]
@@ -571,6 +678,35 @@ namespace System.Tests
         public void AddMilliseconds_NewDateOutOfRange_ThrowsArgumentOutOfRangeException(DateTime date, double milliseconds)
         {
             AssertExtensions.Throws<ArgumentOutOfRangeException>("value", () => date.AddMilliseconds(milliseconds));
+        }
+
+        public static IEnumerable<object[]> AddMicroseconds_TestData()
+        {
+            yield return new object[] { new DateTime(1986, 8, 15, 10, 20, 5, 70, 70), 10, new DateTime(1986, 8, 15, 10, 20, 5, 70, 80) };
+            yield return new object[] { new DateTime(1986, 8, 15, 10, 20, 5, 70, 70), 0, new DateTime(1986, 8, 15, 10, 20, 5, 70, 70) };
+            yield return new object[] { new DateTime(1986, 8, 15, 10, 20, 5, 70, 70), -10, new DateTime(1986, 8, 15, 10, 20, 5, 70, 60) };
+        }
+
+        [Theory]
+        [MemberData(nameof(AddMicroseconds_TestData))]
+        public void AddMicroseconds_Invoke_ReturnsExpected(DateTime dateTime, double microseconds, DateTime expected)
+        {
+            Assert.Equal(expected, dateTime.AddMicroseconds(microseconds));
+        }
+
+        public static IEnumerable<object[]> AddMicroseconds_OutOfRange_TestData()
+        {
+            yield return new object[] { DateTime.MaxValue, 1 };
+            yield return new object[] { DateTime.MinValue, -1 };
+            yield return new object[] { DateTime.Now, double.MaxValue };
+            yield return new object[] { DateTime.Now, double.MinValue };
+        }
+
+        [Theory]
+        [MemberData(nameof(AddMicroseconds_OutOfRange_TestData))]
+        public void AddMicroseconds_NewDateOutOfRange_ThrowsArgumentOutOfRangeException(DateTime date, double microseconds)
+        {
+            AssertExtensions.Throws<ArgumentOutOfRangeException>("value", () => date.AddMicroseconds(microseconds));
         }
 
         public static IEnumerable<object[]> AddTicks_TestData()
@@ -1024,6 +1160,43 @@ namespace System.Tests
             Assert.Equal(expected, DateTime.Parse(expectedString, cultureInfo));
         }
 
+        private static bool IsNotOSXOrBrowser => !PlatformDetection.IsOSXLike && !PlatformDetection.IsBrowser;
+
+        [ConditionalTheory(nameof(IsNotOSXOrBrowser))]
+        [InlineData("ar")]
+        [InlineData("ar-EG")]
+        [InlineData("ar-IQ")]
+        [InlineData("ar-SA")]
+        [InlineData("ar-YE")]
+        public static void DateTimeParsingWithBiDiCultureTest(string cultureName)
+        {
+            DateTime dt = new DateTime(2021, 11, 30, 14, 30, 40);
+            CultureInfo ci = CultureInfo.GetCultureInfo(cultureName);
+            string formatted = dt.ToString("d", ci);
+            Assert.Equal(dt.Date, DateTime.Parse(formatted, ci));
+            formatted = dt.ToString("g", ci);
+            DateTime parsed = DateTime.Parse(formatted, ci);
+            Assert.Equal(dt.Date, parsed.Date);
+            Assert.Equal(dt.Hour, parsed.Hour);
+            Assert.Equal(dt.Minute, parsed.Minute);
+        }
+
+        [Fact]
+        public static void DateTimeParsingWithSpaceTimeSeparators()
+        {
+            DateTime dt = new DateTime(2021, 11, 30, 14, 30, 40);
+            CultureInfo ci = CultureInfo.GetCultureInfo("en-US");
+            // It is possible we find some cultures use such formats. dz-BT is example of that
+            string formatted = dt.ToString("yyyy/MM/dd hh mm tt", ci);
+            DateTime parsed = DateTime.Parse(formatted, ci);
+            Assert.Equal(dt.Hour, parsed.Hour);
+            Assert.Equal(dt.Minute, parsed.Minute);
+
+            formatted = dt.ToString("yyyy/MM/dd hh mm ss tt", ci);
+            parsed = DateTime.Parse(formatted, ci);
+            Assert.Equal(dt, parsed);
+        }
+
         [Fact]
         public static void Parse_InvalidArguments_Throws()
         {
@@ -1038,11 +1211,11 @@ namespace System.Tests
             Assert.Throws<FormatException>(() => DateTime.Parse("2020-5-7T09:37:00.0000000-07:00c"));
             Assert.Throws<FormatException>(() => DateTime.Parse("2020-5-7T09:37:00.0000000-07:00c", new MyFormatter()));
             Assert.Throws<FormatException>(() => DateTime.Parse("2020-5-7T09:37:00.0000000-07:00c", new MyFormatter(), DateTimeStyles.NoCurrentDateDefault));
-			
+
             Assert.Throws<FormatException>(() => DateTime.Parse("2020-5-7T09:37:00.0000000+00:00#"));
             Assert.Throws<FormatException>(() => DateTime.Parse("2020-5-7T09:37:00.0000000+00:00#", new MyFormatter()));
             Assert.Throws<FormatException>(() => DateTime.Parse("2020-5-7T09:37:00.0000000+00:00#", new MyFormatter(), DateTimeStyles.NoCurrentDateDefault));
-			
+
             Assert.Throws<FormatException>(() => DateTime.Parse("2020-5-7T09:37:00.0000000+00:00#\0"));
             Assert.Throws<FormatException>(() => DateTime.Parse("2020-5-7T09:37:00.0000000+00:00#\0", new MyFormatter()));
             Assert.Throws<FormatException>(() => DateTime.Parse("2020-5-7T09:37:00.0000000+00:00#\0", new MyFormatter(), DateTimeStyles.NoCurrentDateDefault));
@@ -1247,7 +1420,7 @@ namespace System.Tests
         public static IEnumerable<object[]> ParseExact_TestData_R()
         {
             // Lowest, highest, and random DateTime in lower, upper, and normal casing
-            var pairs = new(DateTime, string)[]
+            var pairs = new (DateTime, string)[]
             {
                 (DateTime.MaxValue, "Fri, 31 Dec 9999 23:59:59"),
                 (DateTime.MinValue, "Mon, 01 Jan 0001 00:00:00"),
@@ -1544,7 +1717,15 @@ namespace System.Tests
         [Fact]
         public static void ParseExact_EscapedSingleQuotes()
         {
-            var formatInfo = DateTimeFormatInfo.GetInstance(new CultureInfo("mt-MT"));
+            DateTimeFormatInfo formatInfo;
+            if (PlatformDetection.IsBrowser)
+            {
+                formatInfo = DateTimeFormatInfo.GetInstance(new CultureInfo("id-ID"));
+            }
+            else
+            {
+                formatInfo = DateTimeFormatInfo.GetInstance(new CultureInfo("mt-MT"));
+            }
             const string format = @"dddd, d' ta\' 'MMMM yyyy";
 
             DateTime expected = new DateTime(1999, 2, 28, 17, 00, 01);
@@ -1676,6 +1857,20 @@ namespace System.Tests
             Assert.Equal(kind, dateTime.Kind);
         }
 
+        private static void VerifyDateTime(DateTime dateTime, int year, int month, int day, int hour, int minute,
+            int second, int millisecond, int microsecond, DateTimeKind kind)
+        {
+            VerifyDateTime(dateTime, year, month, day, hour, minute, second, millisecond, kind);
+            Assert.Equal(microsecond, dateTime.Microsecond);
+        }
+
+        private static void VerifyDateTime(DateTime dateTime, int year, int month, int day, int hour, int minute,
+            int second, int millisecond, int microsecond, int nanosecond, DateTimeKind kind)
+        {
+            VerifyDateTime(dateTime, year, month, day, hour, minute, second, millisecond, microsecond, kind);
+            Assert.Equal(nanosecond, dateTime.Nanosecond);
+        }
+
         private class MyFormatter : IFormatProvider
         {
             public object GetFormat(Type formatType)
@@ -1728,8 +1923,16 @@ namespace System.Tests
                 hebrewCulture.DateTimeFormat.Calendar = new HebrewCalendar();
                 yield return new object[] { today.ToString(hebrewCulture), hebrewCulture, today };
 
-                var mongolianCulture = new CultureInfo("mn-MN");
-                yield return new object[] { today.ToString(mongolianCulture), mongolianCulture, today };
+                CultureInfo culture;
+                if (PlatformDetection.IsBrowser)
+                {
+                    culture = new CultureInfo("pl-PL");
+                }
+                else
+                {
+                    culture = new CultureInfo("mn-MN");
+                }
+                yield return new object[] { today.ToString(culture), culture, today };
             }
         }
 
@@ -2045,7 +2248,56 @@ namespace System.Tests
         }
 
         [Theory]
+        [MemberData(nameof(Parse_ValidInput_Succeeds_MemberData))]
+        public static void Parse_Span_ValidInput_Succeeds(string input, CultureInfo culture, DateTime? expected)
+        {
+            Assert.Equal(expected, DateTime.Parse(input.AsSpan(), culture));
+        }
+
+        [Theory]
+        [MemberData(nameof(ParseExact_ValidInput_Succeeds_MemberData))]
+        public static void ParseExact_Span_ValidInput_Succeeds(string input, string format, CultureInfo culture, DateTimeStyles style, DateTime? expected)
+        {
+            DateTime result1 = DateTime.ParseExact(input.AsSpan(), format, culture, style);
+            DateTime result2 = DateTime.ParseExact(input.AsSpan(), new[] { format }, culture, style);
+
+            Assert.True(DateTime.TryParseExact(input.AsSpan(), format, culture, style, out DateTime result3));
+            Assert.True(DateTime.TryParseExact(input.AsSpan(), new[] { format }, culture, style, out DateTime result4));
+
+            Assert.Equal(result1, result2);
+            Assert.Equal(result1, result3);
+            Assert.Equal(result1, result4);
+
+            if (expected != null) // some inputs don't roundtrip well
+            {
+                // Normalize values to make comparison easier
+                if (expected.Value.Kind != DateTimeKind.Utc)
+                {
+                    expected = expected.Value.ToUniversalTime();
+                }
+                if (result1.Kind != DateTimeKind.Utc)
+                {
+                    result1 = result1.ToUniversalTime();
+                }
+
+                Assert.Equal(expected, result1);
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(ParseExact_InvalidInputs_Fail_MemberData))]
+        public static void ParseExact_Span_InvalidInputs_Fail(string input, string format, CultureInfo culture, DateTimeStyles style)
+        {
+            Assert.Throws<FormatException>(() => DateTime.ParseExact(input.AsSpan(), format, culture, style));
+            Assert.Throws<FormatException>(() => DateTime.ParseExact(input.AsSpan(), new[] { format }, culture, style));
+
+            Assert.False(DateTime.TryParseExact(input.AsSpan(), format, culture, style, out DateTime result));
+            Assert.False(DateTime.TryParseExact(input.AsSpan(), new[] { format }, culture, style, out result));
+        }
+
+        [Theory]
         [MemberData(nameof(ToString_MatchesExpected_MemberData))]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/60562", TestPlatforms.Android | TestPlatforms.LinuxBionic)]
         public void ToString_Invoke_ReturnsExpected(DateTime dateTime, string format, IFormatProvider provider, string expected)
         {
             if (provider == null)
@@ -2291,6 +2543,7 @@ namespace System.Tests
 
         [ConditionalTheory(typeof(PlatformDetection), nameof(PlatformDetection.IsNotInvariantGlobalization))]
         [MemberData(nameof(ToString_MatchesExpected_MemberData))]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/60562", TestPlatforms.Android | TestPlatforms.LinuxBionic)]
         public static void TryFormat_MatchesExpected(DateTime dateTime, string format, IFormatProvider provider, string expected)
         {
             var destination = new char[expected.Length];
@@ -2300,54 +2553,6 @@ namespace System.Tests
             Assert.True(dateTime.TryFormat(destination, out int charsWritten, format, provider));
             Assert.Equal(destination.Length, charsWritten);
             Assert.Equal(expected, new string(destination));
-        }
-
-        [Theory]
-        [MemberData(nameof(Parse_ValidInput_Succeeds_MemberData))]
-        public static void Parse_Span_ValidInput_Succeeds(string input, CultureInfo culture, DateTime? expected)
-        {
-            Assert.Equal(expected, DateTime.Parse(input.AsSpan(), culture));
-        }
-
-        [Theory]
-        [MemberData(nameof(ParseExact_ValidInput_Succeeds_MemberData))]
-        public static void ParseExact_Span_ValidInput_Succeeds(string input, string format, CultureInfo culture, DateTimeStyles style, DateTime? expected)
-        {
-            DateTime result1 = DateTime.ParseExact(input.AsSpan(), format, culture, style);
-            DateTime result2 = DateTime.ParseExact(input.AsSpan(), new[] { format }, culture, style);
-
-            Assert.True(DateTime.TryParseExact(input.AsSpan(), format, culture, style, out DateTime result3));
-            Assert.True(DateTime.TryParseExact(input.AsSpan(), new[] { format }, culture, style, out DateTime result4));
-
-            Assert.Equal(result1, result2);
-            Assert.Equal(result1, result3);
-            Assert.Equal(result1, result4);
-
-            if (expected != null) // some inputs don't roundtrip well
-            {
-                // Normalize values to make comparison easier
-                if (expected.Value.Kind != DateTimeKind.Utc)
-                {
-                    expected = expected.Value.ToUniversalTime();
-                }
-                if (result1.Kind != DateTimeKind.Utc)
-                {
-                    result1 = result1.ToUniversalTime();
-                }
-
-                Assert.Equal(expected, result1);
-            }
-        }
-
-        [Theory]
-        [MemberData(nameof(ParseExact_InvalidInputs_Fail_MemberData))]
-        public static void ParseExact_Span_InvalidInputs_Fail(string input, string format, CultureInfo culture, DateTimeStyles style)
-        {
-            Assert.Throws<FormatException>(() => DateTime.ParseExact(input.AsSpan(), format, culture, style));
-            Assert.Throws<FormatException>(() => DateTime.ParseExact(input.AsSpan(), new[] { format }, culture, style));
-
-            Assert.False(DateTime.TryParseExact(input.AsSpan(), format, culture, style, out DateTime result));
-            Assert.False(DateTime.TryParseExact(input.AsSpan(), new[] { format }, culture, style, out result));
         }
 
         [Fact]

@@ -98,6 +98,7 @@ namespace System.Web.Tests
                 new object[] {"\u00E1\u00C1\u00E2\u00C2\u00B4", @"&aacute;&Aacute;&acirc;&Acirc;&acute;"},
                 new object[] {"\u00E6\u00C6\u00E0\u00C0\u2135", @"&aelig;&AElig;&agrave;&Agrave;&alefsym;"},
                 new object[] {"\u03B1\u0391&\u2227\u2220", @"&alpha;&Alpha;&amp;&and;&ang;"},
+                new object[] {"\u0027\u0027&\u2227\u2220", @"&apos;&apos;&amp;&and;&ang;"},
                 new object[] {"\u00E5\u00C5\u2248\u00E3\u00C3", @"&aring;&Aring;&asymp;&atilde;&Atilde;"},
                 new object[] {"\u00E4\u00C4\u201E\u03B2\u0392", @"&auml;&Auml;&bdquo;&beta;&Beta;"},
                 new object[] {"\u00A6\u2022\u2229\u00E7\u00C7", @"&brvbar;&bull;&cap;&ccedil;&Ccedil;"},
@@ -442,6 +443,16 @@ namespace System.Web.Tests
             Assert.Equal(expected, HttpUtility.ParseQueryString(expected).ToString());
         }
 
+
+        [Fact]
+        public void ParseQueryString_nullValue_ToString()
+        {
+            var nameValueCollection = System.Web.HttpUtility.ParseQueryString(string.Empty);
+            nameValueCollection.Add("baz", null);
+            var s = nameValueCollection.ToString();
+            Assert.Equal(string.Empty, s);
+        }
+
         #endregion ParseQueryString
 
         #region UrlDecode(ToBytes)
@@ -562,7 +573,7 @@ namespace System.Web.Tests
 
         static bool IsUrlSafeChar(char c)
         {
-            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
+            if (char.IsAsciiLetterOrDigit(c))
             {
                 return true;
             }

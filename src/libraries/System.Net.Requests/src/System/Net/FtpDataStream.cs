@@ -12,7 +12,7 @@ namespace System.Net
     ///     The FtpDataStream class implements the FTP data connection.
     /// </para>
     /// </summary>
-    internal class FtpDataStream : Stream, ICloseEx
+    internal sealed class FtpDataStream : Stream, ICloseEx
     {
         private readonly FtpWebRequest _request;
         private readonly NetworkStream _networkStream;
@@ -63,7 +63,7 @@ namespace System.Net
 
             lock (this)
             {
-                if (_closing == true)
+                if (_closing)
                     return;
                 _closing = true;
                 _writeable = false;
@@ -193,12 +193,47 @@ namespace System.Net
             return readBytes;
         }
 
+        public override int Read(Span<byte> buffer)
+        {
+            CheckError();
+            int readBytes;
+            try
+            {
+                readBytes = _networkStream.Read(buffer);
+            }
+            catch
+            {
+                CheckError();
+                throw;
+            }
+            if (readBytes == 0)
+            {
+                _isFullyRead = true;
+                Close();
+            }
+            return readBytes;
+        }
+
         public override void Write(byte[] buffer, int offset, int size)
         {
             CheckError();
             try
             {
                 _networkStream.Write(buffer, offset, size);
+            }
+            catch
+            {
+                CheckError();
+                throw;
+            }
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            CheckError();
+            try
+            {
+                _networkStream.Write(buffer);
             }
             catch
             {

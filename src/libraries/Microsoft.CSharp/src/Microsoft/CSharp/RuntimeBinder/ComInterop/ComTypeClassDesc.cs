@@ -3,27 +3,27 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Dynamic;
 using System.Linq.Expressions;
 using ComTypes = System.Runtime.InteropServices.ComTypes;
 
 namespace Microsoft.CSharp.RuntimeBinder.ComInterop
 {
-    internal class ComTypeClassDesc : ComTypeDesc, IDynamicMetaObjectProvider
+    internal sealed class ComTypeClassDesc : ComTypeDesc, IDynamicMetaObjectProvider
     {
         private LinkedList<string> _itfs; // implemented interfaces
         private LinkedList<string> _sourceItfs; // source interfaces supported by this coclass
         private Type _typeObj;
 
+        [RequiresUnreferencedCode(Binder.TrimmerWarning)]
         public object CreateInstance()
         {
-            if (_typeObj == null)
-            {
-                _typeObj = Type.GetTypeFromCLSID(Guid);
-            }
+            _typeObj ??= Type.GetTypeFromCLSID(Guid);
             return Activator.CreateInstance(Type.GetTypeFromCLSID(Guid));
         }
 
+        [RequiresUnreferencedCode(Binder.TrimmerWarning)]
         internal ComTypeClassDesc(ComTypes.ITypeInfo typeInfo, ComTypeLibDesc typeLibDesc) :
             base(typeInfo, typeLibDesc)
         {
@@ -47,19 +47,12 @@ namespace Microsoft.CSharp.RuntimeBinder.ComInterop
 
             if (isSourceItf)
             {
-                if (_sourceItfs == null)
-                {
-                    _sourceItfs = new LinkedList<string>();
-                }
+                _sourceItfs ??= new LinkedList<string>();
                 _sourceItfs.AddLast(itfName);
             }
             else
             {
-                if (_itfs == null)
-                {
-                    _itfs = new LinkedList<string>();
-                }
-
+                _itfs ??= new LinkedList<string>();
                 _itfs.AddLast(itfName);
             }
         }
@@ -74,6 +67,8 @@ namespace Microsoft.CSharp.RuntimeBinder.ComInterop
 
         #region IDynamicMetaObjectProvider Members
 
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode",
+            Justification = "This whole class is unsafe. Constructors are marked as such.")]
         public DynamicMetaObject GetMetaObject(Expression parameter)
         {
             return new ComClassMetaObject(parameter, this);

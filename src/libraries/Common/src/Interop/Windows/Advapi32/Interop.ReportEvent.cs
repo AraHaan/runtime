@@ -5,12 +5,13 @@ using System;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Advapi32
+    internal static partial class Advapi32
     {
-        [DllImport(Libraries.Advapi32, CharSet = CharSet.Unicode, SetLastError = true)]
-        public static extern bool ReportEvent(
+        [LibraryImport(Libraries.Advapi32, EntryPoint = "ReportEventW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool ReportEvent(
             SafeEventLogWriteHandle hEventLog,
             short wType,
             ushort wcategory,

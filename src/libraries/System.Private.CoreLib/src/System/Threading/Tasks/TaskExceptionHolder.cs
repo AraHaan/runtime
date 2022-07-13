@@ -24,7 +24,7 @@ namespace System.Threading.Tasks
     /// is ever GC'd without the holder's contents ever having been requested
     /// (e.g. by a Task.Wait, Task.get_Exception, etc).
     /// </summary>
-    internal class TaskExceptionHolder
+    internal sealed class TaskExceptionHolder
     {
         /// <summary>The task with which this holder is associated.</summary>
         private readonly Task m_task;
@@ -145,9 +145,7 @@ namespace System.Threading.Tasks
             Debug.Assert(exceptionObject != null, "AddFaultException(): Expected a non-null exceptionObject");
 
             // Initialize the exceptions list if necessary.  The list should be non-null iff it contains exceptions.
-            List<ExceptionDispatchInfo>? exceptions = m_faultExceptions;
-            if (exceptions == null) m_faultExceptions = exceptions = new List<ExceptionDispatchInfo>(1);
-            else Debug.Assert(exceptions.Count > 0, "Expected existing exceptions list to have > 0 exceptions.");
+            List<ExceptionDispatchInfo>? exceptions = m_faultExceptions ??= new List<ExceptionDispatchInfo>(1);
 
             // Handle Exception by capturing it into an ExceptionDispatchInfo and storing that
             if (exceptionObject is Exception exception)

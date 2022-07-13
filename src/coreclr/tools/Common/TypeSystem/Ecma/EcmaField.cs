@@ -98,7 +98,7 @@ namespace Internal.TypeSystem.Ecma
             var metadataReader = MetadataReader;
             BlobReader signatureReader = metadataReader.GetBlobReader(metadataReader.GetFieldDefinition(_handle).Signature);
 
-            EcmaSignatureParser parser = new EcmaSignatureParser(Module, signatureReader);
+            EcmaSignatureParser parser = new EcmaSignatureParser(Module, signatureReader, NotFoundBehavior.Throw);
             var fieldType = parser.ParseFieldSignature();
             return (_fieldType = fieldType);
         }
@@ -112,6 +112,19 @@ namespace Internal.TypeSystem.Ecma
                 return _fieldType;
             }
         }
+
+        // This is extremely rarely needed. Don't cache it at all.
+        public override EmbeddedSignatureData[] GetEmbeddedSignatureData()
+        {
+            var metadataReader = MetadataReader;
+            BlobReader signatureReader = metadataReader.GetBlobReader(metadataReader.GetFieldDefinition(_handle).Signature);
+
+            EcmaSignatureParser parser = new EcmaSignatureParser(Module, signatureReader, NotFoundBehavior.Throw);
+            var fieldType = parser.ParseFieldSignature(out var embeddedSig);
+            Debug.Assert(fieldType == FieldType);
+            return embeddedSig;
+        }
+
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private int InitializeFieldFlags(int mask)
@@ -264,7 +277,7 @@ namespace Internal.TypeSystem.Ecma
             if ((definition.Attributes & FieldAttributes.HasFieldMarshal) != 0)
             {
                 BlobReader marshalAsReader = reader.GetBlobReader(definition.GetMarshallingDescriptor());
-                EcmaSignatureParser parser = new EcmaSignatureParser(_type.EcmaModule, marshalAsReader);
+                EcmaSignatureParser parser = new EcmaSignatureParser(_type.EcmaModule, marshalAsReader, NotFoundBehavior.Throw);
                 return parser.ParseMarshalAsDescriptor();
             }
 

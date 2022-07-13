@@ -11,11 +11,12 @@ using Xunit;
 
 namespace System.Net.Security.Tests
 {
-    using Configuration =   System.Net.Test.Common.Configuration;
+    using Configuration = System.Net.Test.Common.Configuration;
 
     public class SslStreamEKUTest
     {
         public static bool IsRootCertificateInstalled => Capability.IsTrustedRootCertificateInstalled();
+        public static bool DoesNotSendCAListByDefault => !PlatformDetection.SendsCAListByDefault;
 
         public const int TestTimeoutMilliseconds = 15 * 1000;
 
@@ -46,7 +47,7 @@ namespace System.Net.Security.Tests
                 tasks[0] = server.AcceptHttpsClientAsync();
                 tasks[1] = client.HttpsRequestAsync();
 
-                await Task.WhenAll(tasks).TimeoutAfter(TestTimeoutMilliseconds);
+                await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromMilliseconds(TestTimeoutMilliseconds));
             }
         }
 
@@ -94,7 +95,7 @@ namespace System.Net.Security.Tests
                 tasks[0] = server.AcceptHttpsClientAsync();
                 tasks[1] = client.HttpsRequestAsync();
 
-                await Task.WhenAll(tasks).TimeoutAfter(TestTimeoutMilliseconds);
+                await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromMilliseconds(TestTimeoutMilliseconds));
             }
         }
 
@@ -134,7 +135,7 @@ namespace System.Net.Security.Tests
             }
         }
 
-        [ConditionalFact(nameof(IsRootCertificateInstalled))]
+        [ConditionalFact(nameof(IsRootCertificateInstalled), nameof(DoesNotSendCAListByDefault))]
         public async Task SslStream_SelfSignedClientEKUClientAuth_Ok()
         {
             var serverOptions = new HttpsTestServer.Options();
@@ -156,7 +157,7 @@ namespace System.Net.Security.Tests
                 tasks[0] = server.AcceptHttpsClientAsync();
                 tasks[1] = client.HttpsRequestAsync();
 
-                await Task.WhenAll(tasks).TimeoutAfter(TestTimeoutMilliseconds);
+                await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromMilliseconds(TestTimeoutMilliseconds));
             }
         }
     }

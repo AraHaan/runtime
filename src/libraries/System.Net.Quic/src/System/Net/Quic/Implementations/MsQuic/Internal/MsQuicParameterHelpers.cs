@@ -1,97 +1,101 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using static System.Net.Quic.Implementations.MsQuic.Internal.MsQuicNativeMethods;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Net.Sockets;
+using Microsoft.Quic;
+using static Microsoft.Quic.MsQuic;
 
 namespace System.Net.Quic.Implementations.MsQuic.Internal
 {
     internal static class MsQuicParameterHelpers
     {
-        internal static unsafe SOCKADDR_INET GetINetParam(MsQuicApi api, IntPtr nativeObject, uint level, uint param)
+        internal static unsafe IPEndPoint GetIPEndPointParam(MsQuicApi api, MsQuicSafeHandle nativeObject, uint param, AddressFamily? addressFamilyOverride = null)
         {
-            byte* ptr = stackalloc byte[sizeof(SOCKADDR_INET)];
-            QuicBuffer buffer = new QuicBuffer
+            // MsQuic always uses storage size as if IPv6 was used
+            uint valueLen = (uint)Internals.SocketAddress.IPv6AddressSize;
+            Span<byte> address = stackalloc byte[Internals.SocketAddress.IPv6AddressSize];
+
+            fixed (byte* paddress = &MemoryMarshal.GetReference(address))
             {
-                Length = (uint)sizeof(SOCKADDR_INET),
-                Buffer = ptr
-            };
+                ThrowHelper.ThrowIfMsQuicError(api.ApiTable->GetParam(
+                    nativeObject.QuicHandle,
+                    param,
+                    &valueLen,
+                    paddress), "GetIPEndPointParam failed.");
+            }
 
-            QuicExceptionHelpers.ThrowIfFailed(
-                api.UnsafeGetParam(nativeObject, level, param, ref buffer),
-                "Could not get SOCKADDR_INET.");
+            address = address.Slice(0, (int)valueLen);
 
-            return *(SOCKADDR_INET*)ptr;
+            return new Internals.SocketAddress(addressFamilyOverride ?? SocketAddressPal.GetAddressFamily(address), address).GetIPEndPoint();
         }
 
-        internal static unsafe ushort GetUShortParam(MsQuicApi api, IntPtr nativeObject, uint level, uint param)
+        internal static unsafe void SetIPEndPointParam(MsQuicApi api, MsQuicSafeHandle nativeObject, uint param, IPEndPoint value)
         {
-            byte* ptr = stackalloc byte[sizeof(ushort)];
-            QuicBuffer buffer = new QuicBuffer()
+            Internals.SocketAddress socketAddress = IPEndPointExtensions.Serialize(value);
+
+            // MsQuic always reads same amount of memory as if IPv6 was used, so we can't pass pointer to socketAddress.Buffer directly
+            Span<byte> address = stackalloc byte[Internals.SocketAddress.IPv6AddressSize];
+            socketAddress.Buffer.AsSpan(0, socketAddress.Size).CopyTo(address);
+            address.Slice(socketAddress.Size).Clear();
+
+            fixed (byte* paddress = &MemoryMarshal.GetReference(address))
             {
-                Length = sizeof(ushort),
-                Buffer = ptr
-            };
-
-            QuicExceptionHelpers.ThrowIfFailed(
-                api.UnsafeGetParam(nativeObject, level, param, ref buffer),
-                "Could not get ushort.");
-
-            return *(ushort*)ptr;
+                ThrowHelper.ThrowIfMsQuicError(api.ApiTable->SetParam(
+                    nativeObject.QuicHandle,
+                    param,
+                    (uint)address.Length,
+                    paddress), "Could not set IPEndPoint");
+            }
         }
 
-        internal static unsafe void SetUshortParam(MsQuicApi api, IntPtr nativeObject, uint level, uint param, ushort value)
+        internal static unsafe ushort GetUShortParam(MsQuicApi api, MsQuicSafeHandle nativeObject, uint param)
         {
-            QuicBuffer buffer = new QuicBuffer()
-            {
-                Length = sizeof(ushort),
-                Buffer = (byte*)&value
-            };
+            ushort value;
+            uint valueLen = (uint)sizeof(ushort);
 
-            QuicExceptionHelpers.ThrowIfFailed(
-                api.UnsafeSetParam(nativeObject, level, param, buffer),
-                "Could not set ushort.");
+            ThrowHelper.ThrowIfMsQuicError(api.ApiTable->GetParam(
+                nativeObject.QuicHandle,
+                param,
+                &valueLen,
+                (byte*)&value), "GetUShortParam failed");
+            Debug.Assert(valueLen == sizeof(ushort));
+
+            return value;
         }
 
-        internal static unsafe ulong GetULongParam(MsQuicApi api, IntPtr nativeObject, uint level, uint param)
+        internal static unsafe void SetUShortParam(MsQuicApi api, MsQuicSafeHandle nativeObject, uint param, ushort value)
         {
-            byte* ptr = stackalloc byte[sizeof(ulong)];
-            QuicBuffer buffer = new QuicBuffer()
-            {
-                Length = sizeof(ulong),
-                Buffer = ptr
-            };
-
-            QuicExceptionHelpers.ThrowIfFailed(
-                api.UnsafeGetParam(nativeObject, level, param, ref buffer),
-                "Could not get ulong.");
-
-            return *(ulong*)ptr;
+            ThrowHelper.ThrowIfMsQuicError(api.ApiTable->SetParam(
+                nativeObject.QuicHandle,
+                param,
+                sizeof(ushort),
+                (byte*)&value), "Could not set ushort");
         }
 
-        internal static unsafe void SetULongParam(MsQuicApi api, IntPtr nativeObject, uint level, uint param, ulong value)
+        internal static unsafe ulong GetULongParam(MsQuicApi api, MsQuicSafeHandle nativeObject, uint param)
         {
-            QuicBuffer buffer = new QuicBuffer()
-            {
-                Length = sizeof(ulong),
-                Buffer = (byte*)&value
-            };
+            ulong value;
+            uint valueLen = (uint)sizeof(ulong);
 
-            QuicExceptionHelpers.ThrowIfFailed(
-                api.UnsafeGetParam(nativeObject, level, param, ref buffer),
-                "Could not set ulong.");
+            ThrowHelper.ThrowIfMsQuicError(api.ApiTable->GetParam(
+                nativeObject.QuicHandle,
+                param,
+                &valueLen,
+                (byte*)&value), "GetULongParam failed");
+            Debug.Assert(valueLen == sizeof(ulong));
+
+            return value;
         }
 
-        internal static unsafe void SetSecurityConfig(MsQuicApi api, IntPtr nativeObject, uint level, uint param, IntPtr value)
+        internal static unsafe void SetULongParam(MsQuicApi api, MsQuicSafeHandle nativeObject, uint param, ulong value)
         {
-            QuicBuffer buffer = new QuicBuffer()
-            {
-                Length = (uint)sizeof(void*),
-                Buffer = (byte*)&value
-            };
-
-            QuicExceptionHelpers.ThrowIfFailed(
-                api.UnsafeSetParam(nativeObject, level, param, buffer),
-                "Could not set security configuration.");
+            ThrowHelper.ThrowIfMsQuicError(api.ApiTable->SetParam(
+                nativeObject.QuicHandle,
+                param,
+                sizeof(ulong),
+                (byte*)&value), "Could not set ulong");
         }
     }
 }

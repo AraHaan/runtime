@@ -2,7 +2,9 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
+using System.IO;
 
 namespace System.Net.Sockets
 {
@@ -14,12 +16,18 @@ namespace System.Net.Sockets
         private readonly string _path;
         private readonly byte[] _encodedPath;
 
+        // Tracks the file Socket should delete on Dispose.
+        internal string? BoundFileName { get; }
+
         public UnixDomainSocketEndPoint(string path)
+            : this(path, null)
+        { }
+
+        private UnixDomainSocketEndPoint(string path, string? boundFileName)
         {
-            if (path == null)
-            {
-                throw new ArgumentNullException(nameof(path));
-            }
+            ArgumentNullException.ThrowIfNull(path);
+
+            BoundFileName = boundFileName;
 
             // Pathname socket addresses should be null-terminated.
             // Linux abstract socket addresses start with a zero byte, they must not be null-terminated.
@@ -53,10 +61,7 @@ namespace System.Net.Sockets
 
         internal UnixDomainSocketEndPoint(SocketAddress socketAddress)
         {
-            if (socketAddress == null)
-            {
-                throw new ArgumentNullException(nameof(socketAddress));
-            }
+            ArgumentNullException.ThrowIfNull(socketAddress);
 
             if (socketAddress.Family != EndPointAddressFamily ||
                 socketAddress.Size > s_nativeAddressSize)
@@ -118,6 +123,31 @@ namespace System.Net.Sockets
             {
                 return _path;
             }
+        }
+
+        public override bool Equals([NotNullWhen(true)] object? obj)
+            => obj is UnixDomainSocketEndPoint ep && _path == ep._path;
+
+        public override int GetHashCode() => _path.GetHashCode();
+
+        internal UnixDomainSocketEndPoint CreateBoundEndPoint()
+        {
+            if (IsAbstract(_path))
+            {
+                return this;
+            }
+
+            return new UnixDomainSocketEndPoint(_path, Path.GetFullPath(_path));
+        }
+
+        internal UnixDomainSocketEndPoint CreateUnboundEndPoint()
+        {
+            if (IsAbstract(_path) || BoundFileName is null)
+            {
+                return this;
+            }
+
+            return new UnixDomainSocketEndPoint(_path, null);
         }
 
         private static bool IsAbstract(string path) => path.Length > 0 && path[0] == '\0';

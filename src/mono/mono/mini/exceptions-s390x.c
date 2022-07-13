@@ -51,18 +51,15 @@
 #include <ucontext.h>
 
 #include <mono/arch/s390x/s390x-codegen.h>
-#include <mono/metadata/appdomain.h>
 #include <mono/metadata/tabledefs.h>
 #include <mono/metadata/threads.h>
 #include <mono/metadata/debug-helpers.h>
 #include <mono/metadata/exception.h>
 #include <mono/metadata/mono-debug.h>
 #include <mono/utils/mono-hwcap.h>
-#include <mono/utils/mono-state.h>
 
 #include "mini.h"
 #include "mini-s390x.h"
-#include "support-s390x.h"
 #include "mini-runtime.h"
 #include "aot-runtime.h"
 #include "mono/utils/mono-tls-inline.h"
@@ -73,9 +70,9 @@
 /*                   P r o t o t y p e s                            */
 /*------------------------------------------------------------------*/
 
-static void throw_exception (MonoObject *, unsigned long, unsigned long, 
+static void throw_exception (MonoObject *, unsigned long, unsigned long,
 		 host_mgreg_t *, gdouble *, gint32 *, guint, gboolean, gboolean);
-static gpointer mono_arch_get_throw_exception_generic (int, MonoTrampInfo **, 
+static gpointer mono_arch_get_throw_exception_generic (int, MonoTrampInfo **,
 				int, gboolean, gboolean, gboolean);
 static void handle_signal_exception (gpointer);
 
@@ -120,7 +117,7 @@ mono_arch_get_call_filter (MonoTrampInfo **info, gboolean aot)
 
 	inited = 1;
 	/* call_filter (MonoContext *ctx, unsigned long eip, gpointer exc) */
-	code = start = mono_global_codeman_reserve (512);
+	code = start = (guint8 *) mono_global_codeman_reserve (512);
 
 	mono_add_unwind_op_def_cfa (unwind_ops, code, start, STK_BASE, S390_CFA_OFFSET);
 	s390_stmg (code, s390_r6, s390_r15, STK_BASE, S390_REG_SAVE_OFFSET);
@@ -172,7 +169,7 @@ mono_arch_get_call_filter (MonoTrampInfo **info, gboolean aot)
 	/*------------------------------------------------------*/
 	/* Load all registers with values from the context	*/
 	/*------------------------------------------------------*/
-	s390_lmg  (code, s390_r3, s390_r12, s390_r13, 
+	s390_lmg  (code, s390_r3, s390_r12, s390_r13,
 		   G_STRUCT_OFFSET(MonoContext, uc_mcontext.gregs[3]));
 	pos = G_STRUCT_OFFSET(MonoContext, uc_mcontext.fpregs.fprs[0]);
 	for (i = 0; i < 16; ++i) {
@@ -225,7 +222,7 @@ mono_arch_get_call_filter (MonoTrampInfo **info, gboolean aot)
 	s390_lmg  (code, s390_r6, s390_r14, STK_BASE, S390_REG_SAVE_OFFSET);
 	s390_br   (code, s390_r14);
 
-	g_assert ((code - start) < SZ_THROW); 
+	g_assert ((code - start) < SZ_THROW);
 
 	mono_arch_flush_icache(start, code - start);
 	MONO_PROFILER_RAISE (jit_code_buffer, (start, code - start, MONO_PROFILER_CODE_BUFFER_EXCEPTION_HANDLING, NULL));
@@ -249,7 +246,7 @@ mono_arch_get_call_filter (MonoTrampInfo **info, gboolean aot)
 /*------------------------------------------------------------------*/
 
 static void
-throw_exception (MonoObject *exc, unsigned long ip, unsigned long sp, 
+throw_exception (MonoObject *exc, unsigned long ip, unsigned long sp,
 		 host_mgreg_t *int_regs, gdouble *fp_regs, gint32 *acc_regs,
 		 guint fpc, gboolean rethrow, gboolean preserve_ips)
 {
@@ -274,7 +271,7 @@ throw_exception (MonoObject *exc, unsigned long ip, unsigned long sp,
 
 	MONO_CONTEXT_SET_BP (&ctx, sp);
 	MONO_CONTEXT_SET_IP (&ctx, ip);
-	
+
 	if (mono_object_isinst_checked (exc, mono_defaults.exception_class, error)) {
 		MonoException *mono_ex = (MonoException*)exc;
 		if (!rethrow && !mono_ex->caught_in_unmanaged) {
@@ -306,8 +303,8 @@ throw_exception (MonoObject *exc, unsigned long ip, unsigned long sp,
 /*                                                                  */
 /*------------------------------------------------------------------*/
 
-static gpointer 
-mono_arch_get_throw_exception_generic (int size, MonoTrampInfo **info, int corlib, 
+static gpointer
+mono_arch_get_throw_exception_generic (int size, MonoTrampInfo **info, int corlib,
 				       gboolean rethrow, gboolean aot, gboolean preserve_ips)
 {
 	guint8 *code, *start;
@@ -315,7 +312,7 @@ mono_arch_get_throw_exception_generic (int size, MonoTrampInfo **info, int corli
 	MonoJumpInfo *ji = NULL;
 	GSList *unwind_ops = NULL;
 
-	code = start = mono_global_codeman_reserve(size);
+	code = start = (guint8 *) mono_global_codeman_reserve(size);
 
 	mono_add_unwind_op_def_cfa (unwind_ops, code, start, STK_BASE, S390_CFA_OFFSET);
 	s390_stmg (code, s390_r6, s390_r15, STK_BASE, S390_REG_SAVE_OFFSET);
@@ -390,9 +387,9 @@ mono_arch_get_throw_exception_generic (int size, MonoTrampInfo **info, int corli
 	MONO_PROFILER_RAISE (jit_code_buffer, (start, code - start, MONO_PROFILER_CODE_BUFFER_EXCEPTION_HANDLING, NULL));
 
 	if (info)
-		*info = mono_tramp_info_create (corlib ? "throw_corlib_exception" 
-                                                      : (rethrow ? "rethrow_exception" 
-                                                      : (preserve_ips ? "rethrow_preserve_exception" 
+		*info = mono_tramp_info_create (corlib ? "throw_corlib_exception"
+                                                      : (rethrow ? "rethrow_exception"
+                                                      : (preserve_ips ? "rethrow_preserve_exception"
                                                       : "throw_exception")),
 						start, code - start, ji, unwind_ops);
 
@@ -436,7 +433,7 @@ mono_arch_get_throw_exception (MonoTrampInfo **info, gboolean aot)
 /*                                                                  */
 /*------------------------------------------------------------------*/
 
-gpointer 
+gpointer
 mono_arch_get_rethrow_preserve_exception (MonoTrampInfo **info, gboolean aot)
 {
 	g_assert (!aot);
@@ -459,7 +456,7 @@ mono_arch_get_rethrow_preserve_exception (MonoTrampInfo **info, gboolean aot)
 /*                                                                  */
 /*------------------------------------------------------------------*/
 
-gpointer 
+gpointer
 mono_arch_get_rethrow_exception (MonoTrampInfo **info, gboolean aot)
 {
 	g_assert (!aot);
@@ -490,7 +487,7 @@ mono_arch_get_throw_corlib_exception (MonoTrampInfo **info, gboolean aot)
 		*info = NULL;
 
 	return (mono_arch_get_throw_exception_generic (SZ_THROW, info, TRUE, FALSE, aot, FALSE));
-}	
+}
 
 /*========================= End of Function ========================*/
 
@@ -503,8 +500,8 @@ mono_arch_get_throw_corlib_exception (MonoTrampInfo **info, gboolean aot)
 /*------------------------------------------------------------------*/
 
 gboolean
-mono_arch_unwind_frame (MonoDomain *domain, MonoJitTlsData *jit_tls, 
-			 MonoJitInfo *ji, MonoContext *ctx, 
+mono_arch_unwind_frame (MonoJitTlsData *jit_tls,
+			 MonoJitInfo *ji, MonoContext *ctx,
 			 MonoContext *new_ctx, MonoLMF **lmf,
 			 host_mgreg_t **save_locations,
 			 StackFrameInfo *frame)
@@ -522,7 +519,7 @@ mono_arch_unwind_frame (MonoDomain *domain, MonoJitTlsData *jit_tls,
 		guint8 *cfa;
 		guint32 unwind_info_len;
 		guint8 *unwind_info;
-		host_mgreg_t regs[16];
+		host_mgreg_t regs[32];
 
 		if (ji->is_trampoline)
 			frame->type = FRAME_TYPE_TRAMPOLINE;
@@ -536,28 +533,30 @@ mono_arch_unwind_frame (MonoDomain *domain, MonoJitTlsData *jit_tls,
 		if (ji->has_arch_eh_info)
 			epilog = (guint8*)ji->code_start + ji->code_size - mono_jinfo_get_epilog_size (ji);
 
-		memcpy(&regs, &ctx->uc_mcontext.gregs, sizeof(regs));
+		memcpy (&regs[0], &ctx->uc_mcontext.gregs, 16 * sizeof(host_mgreg_t));
+		memcpy (&regs[16], &ctx->uc_mcontext.fpregs.fprs, 16 * sizeof(host_mgreg_t));
 		gboolean success = mono_unwind_frame (unwind_info, unwind_info_len, ji->code_start,
 						   (guint8 *) ji->code_start + ji->code_size,
-						   ip, epilog ? &epilog : NULL, regs, 16, save_locations,
+						   ip, epilog ? &epilog : NULL, regs, 32, save_locations,
 						   MONO_MAX_IREGS, &cfa);
 
 		if (!success)
 			return FALSE;
 
-		memcpy (&new_ctx->uc_mcontext.gregs, &regs, sizeof(regs));
+		memcpy (&new_ctx->uc_mcontext.gregs, &regs[0], 16 * sizeof(host_mgreg_t));
+		memcpy (&new_ctx->uc_mcontext.fpregs.fprs, &regs[16], 16 * sizeof(host_mgreg_t));
 		MONO_CONTEXT_SET_IP(new_ctx, regs[14] - 2);
 		MONO_CONTEXT_SET_BP(new_ctx, regs[15]);
 		MONO_CONTEXT_SET_SP(new_ctx, regs[15]);
-	
+
 		return TRUE;
 	} else if (*lmf) {
 
-		ji = mini_jit_info_table_find (domain, (gpointer)(*lmf)->eip, NULL);
+		ji = mini_jit_info_table_find ((gpointer)(*lmf)->eip);
 		if (!ji) {
 			if (!(*lmf)->method)
 				return FALSE;
-		
+
 			frame->method = (*lmf)->method;
 		}
 
@@ -568,7 +567,7 @@ mono_arch_unwind_frame (MonoDomain *domain, MonoJitTlsData *jit_tls,
 		memcpy(new_ctx->uc_mcontext.fpregs.fprs, (*lmf)->fregs, sizeof((*lmf)->fregs));
 		MONO_CONTEXT_SET_BP (new_ctx, (*lmf)->ebp);
 		MONO_CONTEXT_SET_IP (new_ctx, (*lmf)->eip - 2);
-		*lmf = (*lmf)->previous_lmf;
+		*lmf = (struct MonoLMF *) (*lmf)->previous_lmf;
 
 		return TRUE;
 	}
@@ -582,13 +581,12 @@ static void
 altstack_handle_and_restore (MonoContext *ctx, MONO_SIG_HANDLER_INFO_TYPE *siginfo, gpointer obj, guint32 flags)
 {
 	MonoContext mctx;
-	MonoJitInfo *ji = mini_jit_info_table_find (mono_domain_get (), MONO_CONTEXT_GET_IP (ctx), NULL);
+	MonoJitInfo *ji = mini_jit_info_table_find (MONO_CONTEXT_GET_IP (ctx));
 	gboolean stack_ovf = (flags & 1) != 0;
 	gboolean nullref = (flags & 2) != 0;
 
 	if (!ji || (!stack_ovf && !nullref)) {
-		if (mono_dump_start ())
-			mono_handle_native_crash (mono_get_signame (SIGSEGV), ctx, siginfo);
+		mono_handle_native_crash (mono_get_signame (SIGSEGV), ctx, siginfo);
 		/* if couldn't dump or if mono_handle_native_crash returns, abort */
 		abort ();
 	}
@@ -630,7 +628,7 @@ mono_arch_handle_altstack_exception (void *sigctx, MONO_SIG_HANDLER_INFO_TYPE *s
 		nullref = FALSE;
 
 	if (stack_ovf)
-		exc = mono_domain_get ()->stack_overflow_ex;
+		exc = mini_get_stack_overflow_ex ();
 
 	/*
 	 * Setup the call frame on the application stack so that control is
@@ -639,7 +637,7 @@ mono_arch_handle_altstack_exception (void *sigctx, MONO_SIG_HANDLER_INFO_TYPE *s
 	 * requires allocation on the stack, as this wouldn't be encoded in unwind
 	 * information for the caller frame.
 	 */
-	sp = (uintptr_t) (UCONTEXT_SP(uc));
+	sp = (uintptr_t) (UCONTEXT_REG_Rn(uc, 15));
 	sp = sp - S390_MINIMAL_STACK_SIZE;
 
 	mono_sigctx_to_monoctx (uc, uc_copy);
@@ -784,7 +782,7 @@ mono_arch_get_restore_context (MonoTrampInfo **info, gboolean aot)
 /*========================= End of Function ========================*/
 
 /**
- * 
+ *
  * @brief Setup CTX so execution resumes at FUNC
  *
  * @param[in] Context to be resumed
@@ -831,19 +829,19 @@ mono_arch_is_int_overflow (void *uc, void *info)
 	/*----------------------------------------------------------*/
 	switch (code[0]) {
 		case 0x1d :		/* Divide Register	    */
-			regNo = code[1] & 0x0f;	
+			regNo = code[1] & 0x0f;
 			if (ctx->uc_mcontext.gregs[regNo] == 0)
 				arithExc = FALSE;
 		break;
 		case 0x5d :		/* Divide		    */
-			regNo   = (code[2] & 0xf0 >> 8);	
+			regNo   = (code[2] & 0xf0 >> 8);
 			idxNo   = (code[1] & 0x0f);
 			offset  = *((guint16 *) code+2) & 0x0fff;
 			operand = (guint64*)(ctx->uc_mcontext.gregs[regNo] + offset);
 			if (idxNo != 0)
 				operand += ctx->uc_mcontext.gregs[idxNo];
 			if (*operand == 0)
-				arithExc = FALSE; 
+				arithExc = FALSE;
 		break;
 		case 0xb9 :		/* DL[GR] or DS[GR]         */
 			if ((code[1] == 0x97) || (code[1] == 0x87) ||
@@ -856,15 +854,15 @@ mono_arch_is_int_overflow (void *uc, void *info)
 		case 0xe3 :		/* DL[G] | DS[G]  	    */
 			if ((code[5] == 0x97) || (code[5] == 0x87) ||
 			    (code[5] == 0x0d) || (code[5] == 0x1d)) {
-				regNo   = (code[2] & 0xf0 >> 8);	
+				regNo   = (code[2] & 0xf0 >> 8);
 				idxNo   = (code[1] & 0x0f);
-				offset  = (code[2] & 0x0f << 8) + 
+				offset  = (code[2] & 0x0f << 8) +
 					  code[3] + (code[4] << 12);
 				operand = (guint64*)(ctx->uc_mcontext.gregs[regNo] + offset);
 				if (idxNo != 0)
 					operand += ctx->uc_mcontext.gregs[idxNo];
 				if (*operand == 0)
-					arithExc = FALSE; 
+					arithExc = FALSE;
 			}
 		break;
 		default:

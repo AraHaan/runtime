@@ -13,7 +13,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace System.ComponentModel.Composition.ReflectionModel
 {
-    internal class GenericSpecializationPartCreationInfo : IReflectionPartCreationInfo
+    internal sealed class GenericSpecializationPartCreationInfo : IReflectionPartCreationInfo
     {
         private readonly IReflectionPartCreationInfo _originalPartCreationInfo;
         private readonly ReflectionComposablePartDefinition _originalPart;
@@ -31,20 +31,9 @@ namespace System.ComponentModel.Composition.ReflectionModel
 
         public GenericSpecializationPartCreationInfo(IReflectionPartCreationInfo originalPartCreationInfo, ReflectionComposablePartDefinition originalPart, Type[] specialization)
         {
-            if (originalPartCreationInfo == null)
-            {
-                throw new ArgumentNullException(nameof(originalPartCreationInfo));
-            }
-
-            if (originalPart == null)
-            {
-                throw new ArgumentNullException(nameof(originalPart));
-            }
-
-            if (specialization == null)
-            {
-                throw new ArgumentNullException(nameof(specialization));
-            }
+            ArgumentNullException.ThrowIfNull(originalPartCreationInfo);
+            ArgumentNullException.ThrowIfNull(originalPart);
+            ArgumentNullException.ThrowIfNull(specialization);
 
             _originalPartCreationInfo = originalPartCreationInfo;
             _originalPart = originalPart;
@@ -99,10 +88,7 @@ namespace System.ComponentModel.Composition.ReflectionModel
                 Thread.MemoryBarrier();
                 lock (_lock)
                 {
-                    if (_constructor == null)
-                    {
-                        _constructor = result;
-                    }
+                    _constructor ??= result;
                 }
             }
 
@@ -190,10 +176,7 @@ namespace System.ComponentModel.Composition.ReflectionModel
 
         private Dictionary<LazyMemberInfo, MemberInfo[]> BuildMembersTable(List<LazyMemberInfo> members)
         {
-            if (members == null)
-            {
-                throw new ArgumentNullException(nameof(members));
-            }
+            ArgumentNullException.ThrowIfNull(members);
 
             Dictionary<LazyMemberInfo, MemberInfo[]> membersTable = new Dictionary<LazyMemberInfo, MemberInfo[]>();
             Dictionary<int, MemberInfo> specializedPartMembers = new Dictionary<int, MemberInfo>();
@@ -550,7 +533,7 @@ namespace System.ComponentModel.Composition.ReflectionModel
             get { return _originalPartCreationInfo.Origin; }
         }
 
-        public override bool Equals(object? obj)
+        public override bool Equals([NotNullWhen(true)] object? obj)
         {
             return obj is GenericSpecializationPartCreationInfo that && (_originalPartCreationInfo.Equals(that._originalPartCreationInfo)) &&
                 (_specialization.IsArrayEqual(that._specialization));

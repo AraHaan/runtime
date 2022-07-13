@@ -228,7 +228,7 @@ ArrayNative::AssignArrayEnum ArrayNative::CanAssignArrayType(const BASEARRAYREF 
     TypeHandle srcTH = pSrcMT->GetArrayElementTypeHandle();
     TypeHandle destTH = pDestMT->GetArrayElementTypeHandle();
     _ASSERTE(srcTH != destTH);  // Handled by fast path
-    
+
     // Value class boxing
     if (srcTH.IsValueType() && !destTH.IsValueType())
     {
@@ -815,10 +815,9 @@ FCIMPLEND
 void ArrayNative::CheckElementType(TypeHandle elementType)
 {
     // Checks apply recursively for arrays of arrays etc.
-    if (elementType.IsArray())
+    while (elementType.IsArray())
     {
-        CheckElementType(elementType.GetArrayElementTypeHandle());
-        return;
+        elementType = elementType.GetArrayElementTypeHandle();
     }
 
     // Check for simple types first.
@@ -837,28 +836,16 @@ void ArrayNative::CheckElementType(TypeHandle elementType)
         // Check for Void.
         if (elementType.GetSignatureCorElementType() == ELEMENT_TYPE_VOID)
             COMPlusThrow(kNotSupportedException, W("NotSupported_VoidArray"));
-
-        // That's all the dangerous simple types we know, it must be OK.
-        return;
     }
-
-    // ByRefs and generic type variables are never allowed.
-    if (elementType.IsByRef() || elementType.IsGenericVariable())
-        COMPlusThrow(kNotSupportedException, W("NotSupported_Type"));
-
-    // We can create pointers and function pointers, but it requires skip verification permission.
-    CorElementType etType = elementType.GetSignatureCorElementType();
-    if (etType == ELEMENT_TYPE_PTR || etType == ELEMENT_TYPE_FNPTR)
+    else
     {
-        return;
+        // ByRefs and generic type variables are never allowed.
+        if (elementType.IsByRef() || elementType.IsGenericVariable())
+            COMPlusThrow(kNotSupportedException, W("NotSupported_Type"));
     }
-
-    // We shouldn't get here (it means we've encountered a new type of typehandle if we do).
-    _ASSERTE(!"Shouldn't get here, unknown type handle type");
-    COMPlusThrow(kNotSupportedException);
 }
 
-FCIMPL4(Object*, ArrayNative::CreateInstance, void* elementTypeHandle, INT32 rank, INT32* pLengths, INT32* pLowerBounds)
+FCIMPL4(Object*, ArrayNative::CreateInstance, ReflectClassBaseObject* pElementTypeUNSAFE, INT32 rank, INT32* pLengths, INT32* pLowerBounds)
 {
     CONTRACTL {
         FCALL_CHECK;
@@ -868,12 +855,13 @@ FCIMPL4(Object*, ArrayNative::CreateInstance, void* elementTypeHandle, INT32 ran
     } CONTRACTL_END;
 
     OBJECTREF pRet = NULL;
-    TypeHandle elementType = TypeHandle::FromPtr(elementTypeHandle);
 
-    _ASSERTE(!elementType.IsNull());
+    REFLECTCLASSBASEREF pElementType = (REFLECTCLASSBASEREF)ObjectToOBJECTREF(pElementTypeUNSAFE);
 
     // pLengths and pLowerBounds are pinned buffers. No need to protect them.
-    HELPER_METHOD_FRAME_BEGIN_RET_0();
+    HELPER_METHOD_FRAME_BEGIN_RET_PROTECT(pElementType);
+
+    TypeHandle elementType(pElementType->GetType());
 
     CheckElementType(elementType);
 
@@ -913,34 +901,28 @@ FCIMPL4(Object*, ArrayNative::CreateInstance, void* elementTypeHandle, INT32 ran
         // Find the Array class...
         TypeHandle typeHnd = ClassLoader::LoadArrayTypeThrowing(elementType, kind, rank);
 
+        _ASSERTE(rank < MAX_RANK); // Ensures that the stack buffer size allocations below won't overlow
+
         DWORD boundsSize = 0;
         INT32* bounds;
-        if (pLowerBounds != NULL) {
-            if (!ClrSafeInt<DWORD>::multiply(rank, 2, boundsSize))
-                COMPlusThrowOM();
-            DWORD dwAllocaSize = 0;
-            if (!ClrSafeInt<DWORD>::multiply(boundsSize, sizeof(INT32), dwAllocaSize))
-                COMPlusThrowOM();
-
-            bounds = (INT32*) _alloca(dwAllocaSize);
+        if (pLowerBounds != NULL)
+        {
+            boundsSize = 2 * rank;
+            bounds = (INT32*) _alloca(boundsSize * sizeof(INT32));
 
             for (int i=0;i<rank;i++) {
                 bounds[2*i] = pLowerBounds[i];
                 bounds[2*i+1] = pLengths[i];
             }
         }
-        else {
+        else
+        {
             boundsSize = rank;
-
-            DWORD dwAllocaSize = 0;
-            if (!ClrSafeInt<DWORD>::multiply(boundsSize, sizeof(INT32), dwAllocaSize))
-                COMPlusThrowOM();
-
-            bounds = (INT32*) _alloca(dwAllocaSize);
+            bounds = (INT32*) _alloca(boundsSize * sizeof(INT32));
 
             // We need to create a private copy of pLengths to avoid holes caused
             // by caller mutating the array
-            for (int i=0;i<rank;i++)
+            for (int i=0; i < rank; i++)
                 bounds[i] = pLengths[i];
         }
 
@@ -954,130 +936,74 @@ Done: ;
 }
 FCIMPLEND
 
-
-FCIMPL4(void, ArrayNative::GetReference, ArrayBase* refThisUNSAFE, TypedByRef* elemRef, INT32 rank, INT32* pIndices)
-{
-    CONTRACTL {
-        FCALL_CHECK;
-        PRECONDITION(rank >= 0);
-    } CONTRACTL_END;
-
-    // FC_GC_POLL not necessary. We poll for GC in Array.Rank that's always called
-    // right before this function
-    FC_GC_POLL_NOT_NEEDED();
-
-    BASEARRAYREF    refThis  = (BASEARRAYREF) refThisUNSAFE;
-
-    _ASSERTE(rank == (INT32)refThis->GetRank());
-
-    SIZE_T Offset               = 0;
-    const INT32 *pBoundsPtr     = refThis->GetBoundsPtr();
-
-    if (rank == 1)
-    {
-        Offset = pIndices[0] - refThis->GetLowerBoundsPtr()[0];
-
-        // Bounds check each index
-        // Casting to unsigned allows us to use one compare for [0..limit-1]
-        if (((UINT32) Offset) >= ((UINT32) pBoundsPtr[0]))
-            FCThrowVoid(kIndexOutOfRangeException);
-    }
-    else
-    {
-        // Avoid redundant computation in GetLowerBoundsPtr
-        const INT32 *pLowerBoundsPtr = pBoundsPtr + rank;
-        _ASSERTE(refThis->GetLowerBoundsPtr() == pLowerBoundsPtr);
-
-        SIZE_T Multiplier = 1;
-
-        for (int i = rank; i >= 1; i--) {
-            INT32 curIndex = pIndices[i-1] - pLowerBoundsPtr[i-1];
-
-            // Bounds check each index
-            // Casting to unsigned allows us to use one compare for [0..limit-1]
-            if (((UINT32) curIndex) >= ((UINT32) pBoundsPtr[i-1]))
-                FCThrowVoid(kIndexOutOfRangeException);
-
-            Offset += curIndex * Multiplier;
-            Multiplier *= pBoundsPtr[i-1];
-        }
-    }
-
-    TypeHandle arrayElementType = refThis->GetArrayElementTypeHandle();
-
-    // Legacy behavior
-    if (arrayElementType.IsTypeDesc())
-    {
-        CorElementType elemtype = arrayElementType.AsTypeDesc()->GetInternalCorElementType();
-        if (elemtype == ELEMENT_TYPE_PTR || elemtype == ELEMENT_TYPE_FNPTR)
-            FCThrowResVoid(kNotSupportedException, W("NotSupported_Type"));
-    }
-#ifdef _DEBUG
-    CorElementType elemtype = arrayElementType.GetInternalCorElementType();
-    _ASSERTE(elemtype != ELEMENT_TYPE_PTR && elemtype != ELEMENT_TYPE_FNPTR);
-#endif
-
-    elemRef->data = refThis->GetDataPtr() + (Offset * refThis->GetComponentSize());
-    elemRef->type = arrayElementType;
-}
-FCIMPLEND
-
-FCIMPL2(void, ArrayNative::SetValue, TypedByRef * target, Object* objUNSAFE)
+FCIMPL3(void, ArrayNative::SetValue, ArrayBase* refThisUNSAFE, Object* objUNSAFE, INT_PTR flattenedIndex)
 {
     FCALL_CONTRACT;
 
-    OBJECTREF obj = ObjectToOBJECTREF(objUNSAFE);
+    BASEARRAYREF refThis(refThisUNSAFE);
+    OBJECTREF obj(objUNSAFE);
 
-    TypeHandle thTarget(target->type);
+    TypeHandle arrayElementType = refThis->GetArrayElementTypeHandle();
 
-    MethodTable* pTargetMT = thTarget.AsMethodTable();
-    PREFIX_ASSUME(NULL != pTargetMT);
+    // Legacy behavior (this handles pointers and function pointers)
+    if (arrayElementType.IsTypeDesc())
+    {
+        FCThrowResVoid(kNotSupportedException, W("NotSupported_Type"));
+    }
+
+    _ASSERTE((SIZE_T)flattenedIndex < refThis->GetNumComponents());
+
+    MethodTable* pElementTypeMT = arrayElementType.GetMethodTable();
+    PREFIX_ASSUME(NULL != pElementTypeMT);
+
+    void* pData = refThis->GetDataPtr() + flattenedIndex * refThis->GetComponentSize();
 
     if (obj == NULL)
     {
         // Null is the universal zero...
-        if (pTargetMT->IsValueType())
-            InitValueClass(target->data,pTargetMT);
+        if (pElementTypeMT->IsValueType())
+            InitValueClass(pData,pElementTypeMT);
         else
-            ClearObjectReference((OBJECTREF*)target->data);
+            ClearObjectReference((OBJECTREF*)pData);
     }
     else
-    if (thTarget == TypeHandle(g_pObjectClass))
+    if (arrayElementType == TypeHandle(g_pObjectClass))
     {
         // Everything is compatible with Object
-        SetObjectReference((OBJECTREF*)target->data,(OBJECTREF)obj);
+        SetObjectReference((OBJECTREF*)pData,(OBJECTREF)obj);
     }
     else
-    if (!pTargetMT->IsValueType())
+    if (!pElementTypeMT->IsValueType())
     {
-        if (ObjIsInstanceOfCached(OBJECTREFToObject(obj), thTarget) != TypeHandle::CanCast)
+        if (ObjIsInstanceOfCached(OBJECTREFToObject(obj), arrayElementType) != TypeHandle::CanCast)
         {
-            // target->data is protected by the caller
-            HELPER_METHOD_FRAME_BEGIN_1(obj);
+            HELPER_METHOD_FRAME_BEGIN_2(refThis, obj);
 
-            if (!ObjIsInstanceOf(OBJECTREFToObject(obj), thTarget))
+            if (!ObjIsInstanceOf(OBJECTREFToObject(obj), arrayElementType))
                 COMPlusThrow(kInvalidCastException,W("InvalidCast_StoreArrayElement"));
 
             HELPER_METHOD_FRAME_END();
+
+            // Refresh pData in case GC moved objects around
+            pData = refThis->GetDataPtr() + flattenedIndex * refThis->GetComponentSize();
         }
 
-        SetObjectReference((OBJECTREF*)target->data,obj);
+        SetObjectReference((OBJECTREF*)pData,obj);
     }
     else
     {
         // value class or primitive type
 
-        if (!pTargetMT->UnBoxInto(target->data, obj))
+        if (!pElementTypeMT->UnBoxInto(pData, obj))
         {
-            // target->data is protected by the caller
-            HELPER_METHOD_FRAME_BEGIN_1(obj);
+            HELPER_METHOD_FRAME_BEGIN_2(refThis, obj);
 
             ARG_SLOT value = 0;
 
             // Allow enum -> primitive conversion, disallow primitive -> enum conversion
             TypeHandle thSrc = obj->GetTypeHandle();
             CorElementType srcType = thSrc.GetVerifierCorElementType();
-            CorElementType targetType = thTarget.GetSignatureCorElementType();
+            CorElementType targetType = arrayElementType.GetSignatureCorElementType();
 
             if (!InvokeUtil::IsPrimitiveType(srcType) || !InvokeUtil::IsPrimitiveType(targetType))
                 COMPlusThrow(kInvalidCastException, W("InvalidCast_StoreArrayElement"));
@@ -1085,8 +1011,11 @@ FCIMPL2(void, ArrayNative::SetValue, TypedByRef * target, Object* objUNSAFE)
             // Get a properly widened type
             InvokeUtil::CreatePrimitiveValue(targetType,srcType,obj,&value);
 
+            // Refresh pData in case GC moved objects around
+            pData = refThis->GetDataPtr() + flattenedIndex * refThis->GetComponentSize();
+
             UINT cbSize = CorTypeInfo::Size(targetType);
-            memcpyNoGCRefs(target->data, ArgSlotEndianessFixup(&value, cbSize), cbSize);
+            memcpyNoGCRefs(pData, ArgSlotEndianessFixup(&value, cbSize), cbSize);
 
             HELPER_METHOD_FRAME_END();
         }
@@ -1111,9 +1040,6 @@ FCIMPL2_IV(void, ArrayNative::InitializeArray, ArrayBase* pArrayRef, FCALLRuntim
 
     if (!pField->IsRVA())
         COMPlusThrow(kArgumentException);
-
-    // Report the RVA field to the logger.
-    g_IBCLogger.LogRVADataAccess(pField);
 
     // Note that we do not check that the field is actually in the PE file that is initializing
     // the array. Basically the data being published is can be accessed by anyone with the proper
@@ -1164,5 +1090,48 @@ FCIMPL2_IV(void, ArrayNative::InitializeArray, ArrayBase* pArrayRef, FCALLRuntim
 #endif
 
     HELPER_METHOD_FRAME_END();
+}
+FCIMPLEND
+
+FCIMPL3_VVI(void*, ArrayNative::GetSpanDataFrom, FCALLRuntimeFieldHandle structField, FCALLRuntimeTypeHandle targetTypeUnsafe, INT32* count)
+{
+    FCALL_CONTRACT;
+    struct
+    {
+        REFLECTFIELDREF refField;
+        REFLECTCLASSBASEREF refClass;
+    } gc;
+    gc.refField = (REFLECTFIELDREF)ObjectToOBJECTREF(FCALL_RFH_TO_REFLECTFIELD(structField));
+    gc.refClass = (REFLECTCLASSBASEREF)ObjectToOBJECTREF(FCALL_RTH_TO_REFLECTCLASS(targetTypeUnsafe));
+    void* data = NULL;
+    HELPER_METHOD_FRAME_BEGIN_RET_PROTECT(gc);
+
+    FieldDesc* pField = (FieldDesc*)gc.refField->GetField();
+
+    if (!pField->IsRVA())
+        COMPlusThrow(kArgumentException);
+
+    TypeHandle targetTypeHandle = gc.refClass->GetType();
+    if (!CorTypeInfo::IsPrimitiveType(targetTypeHandle.GetSignatureCorElementType()) && !targetTypeHandle.IsEnum())
+        COMPlusThrow(kArgumentException);
+
+    DWORD totalSize = pField->LoadSize();
+    DWORD targetTypeSize = targetTypeHandle.GetSize();
+
+    data = pField->GetStaticAddressHandle(NULL);
+    _ASSERTE(data != NULL);
+    _ASSERTE(count != NULL);
+
+    if (AlignUp((UINT_PTR)data, targetTypeSize) != (UINT_PTR)data)
+        COMPlusThrow(kArgumentException);
+
+    *count = (INT32)totalSize / targetTypeSize;
+
+#if BIGENDIAN
+    COMPlusThrow(kPlatformNotSupportedException);
+#endif
+
+   HELPER_METHOD_FRAME_END();
+   return data;
 }
 FCIMPLEND

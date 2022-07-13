@@ -69,7 +69,7 @@ typedef MonoVTable *MonoVTable_ptr;
 typedef unsigned *unsigned_ptr;
 typedef mono_unichar2 *mono_unichar2_ptr;
 typedef mono_unichar4 *mono_unichar4_ptr;
-typedef WSABUF *WSABUF_ptr;
+typedef MonoSpanOfObjects *MonoSpanOfObjects_ref;
 
 typedef char **char_ptr_ref;
 typedef gint32  *gint32_ref;
@@ -149,10 +149,10 @@ typedef MonoStringHandle MonoStringOutHandle;
 #define MONO_HANDLE_TYPE_WRAP_MonoClassField_ptr	ICALL_HANDLES_WRAP_NONE
 #define MONO_HANDLE_TYPE_WRAP_MonoMarshalNative		ICALL_HANDLES_WRAP_NONE
 #define MONO_HANDLE_TYPE_WRAP_MonoProperty_ptr		ICALL_HANDLES_WRAP_NONE
-#define MONO_HANDLE_TYPE_WRAP_MonoProtocolType		ICALL_HANDLES_WRAP_NONE
 #define MONO_HANDLE_TYPE_WRAP_size_t			ICALL_HANDLES_WRAP_NONE
 #define MONO_HANDLE_TYPE_WRAP_MonoVTable_ptr		ICALL_HANDLES_WRAP_NONE
-#define MONO_HANDLE_TYPE_WRAP_WSABUF_ptr		ICALL_HANDLES_WRAP_NONE
+#define MONO_HANDLE_TYPE_WRAP_MonoQCallTypeHandle	ICALL_HANDLES_WRAP_NONE
+#define MONO_HANDLE_TYPE_WRAP_MonoQCallAssemblyHandle	ICALL_HANDLES_WRAP_NONE
 
 #define MONO_HANDLE_TYPE_WRAP_MonoAssemblyName_ref	ICALL_HANDLES_WRAP_VALUETYPE_REF
 #define MONO_HANDLE_TYPE_WRAP_MonoBoolean_ref 		ICALL_HANDLES_WRAP_VALUETYPE_REF
@@ -176,6 +176,7 @@ typedef MonoStringHandle MonoStringOutHandle;
 #define MONO_HANDLE_TYPE_WRAP_char_ptr_ref		ICALL_HANDLES_WRAP_VALUETYPE_REF
 #define MONO_HANDLE_TYPE_WRAP_guint8_ptr_ref		ICALL_HANDLES_WRAP_VALUETYPE_REF
 #define MONO_HANDLE_TYPE_WRAP_MonoResolveTokenError_ref	ICALL_HANDLES_WRAP_VALUETYPE_REF
+#define MONO_HANDLE_TYPE_WRAP_MonoSpanOfObjects_ref		ICALL_HANDLES_WRAP_VALUETYPE_REF
 
 // HANDLE is not used just to avoid duplicate typedef warnings with some compilers.
 // gpointer == void* == HANDLE == FILE_HANDLE == PROCESS_HANDLE.
@@ -192,6 +193,7 @@ typedef MonoStringHandle MonoStringOutHandle;
 #define MONO_HANDLE_TYPE_WRAP_gint32_ptr   		ICALL_HANDLES_WRAP_NONE
 #define MONO_HANDLE_TYPE_WRAP_gpointer_ptr		ICALL_HANDLES_WRAP_NONE
 #define MONO_HANDLE_TYPE_WRAP_PROCESS_HANDLE		ICALL_HANDLES_WRAP_NONE
+#define MONO_HANDLE_TYPE_WRAP_MonoObjectHandleOnStack  		ICALL_HANDLES_WRAP_NONE
 
 // Please keep this sorted (grep ICALL_HANDLES_WRAP_OBJ$ | sort)
 #define MONO_HANDLE_TYPE_WRAP_MonoAppContext 			ICALL_HANDLES_WRAP_OBJ

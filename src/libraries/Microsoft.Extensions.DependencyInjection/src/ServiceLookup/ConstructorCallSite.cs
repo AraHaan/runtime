@@ -6,7 +6,7 @@ using System.Reflection;
 
 namespace Microsoft.Extensions.DependencyInjection.ServiceLookup
 {
-    internal class ConstructorCallSite : ServiceCallSite
+    internal sealed class ConstructorCallSite : ServiceCallSite
     {
         internal ConstructorInfo ConstructorInfo { get; }
         internal ServiceCallSite[] ParameterCallSites { get; }
@@ -29,7 +29,7 @@ namespace Microsoft.Extensions.DependencyInjection.ServiceLookup
 
         public override Type ServiceType { get; }
 
-        public override Type ImplementationType => ConstructorInfo.DeclaringType;
+        public override Type? ImplementationType => ConstructorInfo.DeclaringType;
         public override CallSiteKind Kind { get; } = CallSiteKind.Constructor;
     }
 }

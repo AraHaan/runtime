@@ -2328,7 +2328,7 @@ namespace CorUnix
                 }
                 else if (0 > iRet)
                 {
-                    ERROR("Unable to read %d bytes from the the process pipe "
+                    ERROR("Unable to read %d bytes from the process pipe "
                           "[pipe=%d ret=%d errno=%d (%s)]\n", iBytes - iBytesRead,
                           m_iProcessPipeRead, iRet, errno, strerror(errno));
                     goto RBFPP_exit;
@@ -2977,7 +2977,7 @@ namespace CorUnix
     Method:
       CPalSynchronizationManager::MarkWaitForDelegatedObjectSignalingInProgress
 
-    Marks all the thread waiting list nodes involved in the the current wait-all
+    Marks all the thread waiting list nodes involved in the current wait-all
     for "delegated object signaling in progress", so that this wait cannot be
     involved in another delegated object signaling that may happen while the
     current object singaling is being tranfered to the target process (while
@@ -4623,7 +4623,11 @@ namespace CorUnix
                 ptsAbsTmo->tv_nsec = tv.tv_usec * tccMicroSecondsToNanoSeconds;
             }
 #else
-            #error "Don't know how to get hi-res current time on this platform"
+#ifdef DBI_COMPONENT_MONO
+    return ERROR_INTERNAL_ERROR;
+#else
+    #error "Don't know how to get hi-res current time on this platform"
+#endif
 #endif // HAVE_WORKING_CLOCK_GETTIME, HAVE_WORKING_GETTIMEOFDAY
 #if HAVE_CLOCK_MONOTONIC && HAVE_PTHREAD_CONDATTR_SETCLOCK
         }

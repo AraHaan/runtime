@@ -54,7 +54,7 @@ HRESULT CeeFileGenWriter::MapTokens(
     while ((hr = pImport->EnumMethods(&hEnum, mdTokenNil, &md, 1, &count)) == S_OK)
     {
         hr = pImport->GetMethodProps(md, NULL,
-                    rcwName, lengthof(rcwName), NULL,
+                    rcwName, ARRAY_SIZE(rcwName), NULL,
                     &dwFlags, NULL, NULL,
                     &MethodRVA, &iFlags);
         _ASSERTE(SUCCEEDED(hr));
@@ -80,7 +80,7 @@ HRESULT CeeFileGenWriter::MapTokens(
         while ((hr = pImport->EnumMethods(&hEnum, td, &md, 1, &count)) == S_OK)
         {
             hr = pImport->GetMethodProps(md, NULL,
-                        rcwName, lengthof(rcwName), NULL,
+                        rcwName, ARRAY_SIZE(rcwName), NULL,
                         &dwFlags, NULL, NULL,
                         &MethodRVA, &iFlags);
             _ASSERTE(SUCCEEDED(hr));
@@ -125,11 +125,6 @@ HRESULT CeeFileGenWriter::MapTokensForMethod(
     DWORD       PC;
 
     COR_ILMETHOD_DECODER method((COR_ILMETHOD*) pCode);
-
-    // If compressed IL is being emitted, this routine will have no idea how to walk the tokens,
-    // so don't do it
-    if (m_dwMacroDefinitionSize != 0)
-        return S_OK;
 
     pCode = const_cast<BYTE*>(method.Code);
 

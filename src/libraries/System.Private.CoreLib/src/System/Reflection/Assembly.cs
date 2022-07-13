@@ -8,8 +8,8 @@ using System.Configuration.Assemblies;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Serialization;
 using System.Security;
-using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
+using System.Runtime.CompilerServices;
 
 namespace System.Reflection
 {
@@ -81,6 +81,10 @@ namespace System.Reflection
         [RequiresUnreferencedCode("Types might be removed")]
         public virtual Type[] GetForwardedTypes() { throw NotImplemented.ByDesign; }
 
+        internal const string ThrowingMessageInRAF = "This member throws an exception for assemblies embedded in a single-file app";
+
+        [Obsolete("Assembly.CodeBase and Assembly.EscapedCodeBase are only included for .NET Framework compatibility. Use Assembly.Location.", DiagnosticId = "SYSLIB0012", UrlFormat = "https://aka.ms/dotnet-warnings/{0}")]
+        [RequiresAssemblyFiles(ThrowingMessageInRAF)]
         public virtual string? CodeBase => throw NotImplemented.ByDesign;
         public virtual MethodInfo? EntryPoint => throw NotImplemented.ByDesign;
         public virtual string? FullName => throw NotImplemented.ByDesign;
@@ -115,6 +119,8 @@ namespace System.Reflection
         public virtual object[] GetCustomAttributes(bool inherit) { throw NotImplemented.ByDesign; }
         public virtual object[] GetCustomAttributes(Type attributeType, bool inherit) { throw NotImplemented.ByDesign; }
 
+        [Obsolete("Assembly.CodeBase and Assembly.EscapedCodeBase are only included for .NET Framework compatibility. Use Assembly.Location.", DiagnosticId = "SYSLIB0012", UrlFormat = "https://aka.ms/dotnet-warnings/{0}")]
+        [RequiresAssemblyFiles(ThrowingMessageInRAF)]
         public virtual string EscapedCodeBase => AssemblyName.EscapeCodeBase(CodeBase);
 
         [RequiresUnreferencedCode("Assembly.CreateInstance is not supported with trimming. Use Type.GetType instead.")]
@@ -151,8 +157,11 @@ namespace System.Reflection
         public virtual Assembly GetSatelliteAssembly(CultureInfo culture) { throw NotImplemented.ByDesign; }
         public virtual Assembly GetSatelliteAssembly(CultureInfo culture, Version? version) { throw NotImplemented.ByDesign; }
 
+        [RequiresAssemblyFiles(ThrowingMessageInRAF)]
         public virtual FileStream? GetFile(string name) { throw NotImplemented.ByDesign; }
+        [RequiresAssemblyFiles(ThrowingMessageInRAF)]
         public virtual FileStream[] GetFiles() => GetFiles(getResourceModules: false);
+        [RequiresAssemblyFiles(ThrowingMessageInRAF)]
         public virtual FileStream[] GetFiles(bool getResourceModules) { throw NotImplemented.ByDesign; }
 
         public virtual void GetObjectData(SerializationInfo info, StreamingContext context) { throw NotImplemented.ByDesign; }
@@ -179,12 +188,11 @@ namespace System.Reflection
             // so it can become a simple test
             if (right is null)
             {
-                // return true/false not the test result https://github.com/dotnet/runtime/issues/4207
-                return (left is null) ? true : false;
+                return left is null;
             }
 
             // Try fast reference equality and opposite null check prior to calling the slower virtual Equals
-            if ((object?)left == (object)right)
+            if (ReferenceEquals(left, right))
             {
                 return true;
             }
@@ -198,14 +206,12 @@ namespace System.Reflection
 
         public static Assembly? GetAssembly(Type type)
         {
-            if (type == null)
-                throw new ArgumentNullException(nameof(type));
+            if (type is null)
+            {
+                ThrowHelper.ThrowArgumentNullException(ExceptionArgument.type);
+            }
 
-            Module m = type.Module;
-            if (m == null)
-                return null;
-            else
-                return m.Assembly;
+            return type.Module?.Assembly;
         }
 
         // internal test hook
@@ -228,8 +234,7 @@ namespace System.Reflection
         [RequiresUnreferencedCode("Types and members the loaded assembly depends on might be removed")]
         public static Assembly Load(byte[] rawAssembly, byte[]? rawSymbolStore)
         {
-            if (rawAssembly == null)
-                throw new ArgumentNullException(nameof(rawAssembly));
+            ArgumentNullException.ThrowIfNull(rawAssembly);
 
             if (rawAssembly.Length == 0)
                 throw new BadImageFormatException(SR.BadImageFormat_BadILFormat);
@@ -244,8 +249,7 @@ namespace System.Reflection
         [RequiresUnreferencedCode("Types and members the loaded assembly depends on might be removed")]
         public static Assembly LoadFile(string path)
         {
-            if (path == null)
-                throw new ArgumentNullException(nameof(path));
+            ArgumentNullException.ThrowIfNull(path);
 
             if (PathInternal.IsPartiallyQualified(path))
             {
@@ -260,7 +264,13 @@ namespace System.Reflection
                 if (s_loadfile.TryGetValue(normalizedPath, out result))
                     return result;
 
-                AssemblyLoadContext alc = new IndividualAssemblyLoadContext(string.Format("Assembly.LoadFile({0})", normalizedPath));
+                // we cannot check for file presence on BROWSER. The files could be embedded and not physically present.
+#if !TARGET_BROWSER
+                if (!File.Exists(normalizedPath))
+                    throw new FileNotFoundException(SR.Format(SR.FileNotFound_LoadFile, normalizedPath), normalizedPath);
+#endif // !TARGET_BROWSER
+
+                AssemblyLoadContext alc = new IndividualAssemblyLoadContext($"Assembly.LoadFile({normalizedPath})");
                 result = alc.LoadFromAssemblyPath(normalizedPath);
                 s_loadfile.Add(normalizedPath, result);
             }
@@ -268,6 +278,8 @@ namespace System.Reflection
         }
 
         [RequiresUnreferencedCode("Types and members the loaded assembly depends on might be removed")]
+        [UnconditionalSuppressMessage("SingleFile", "IL3000:Avoid accessing Assembly file path when publishing as a single file",
+            Justification = "The assembly is loaded by specifying a path outside of the single-file bundle, the location of the path will not be empty if the path exist, otherwise it will be handled as null")]
         private static Assembly? LoadFromResolveHandler(object? sender, ResolveEventArgs args)
         {
             Assembly? requestingAssembly = args.RequestingAssembly;
@@ -283,9 +295,11 @@ namespace System.Reflection
 
             // Get the path where requesting assembly lives and check if it is in the list
             // of assemblies for which LoadFrom was invoked.
-            string requestorPath = Path.GetFullPath(requestingAssembly.Location);
+            string requestorPath = requestingAssembly.Location;
             if (string.IsNullOrEmpty(requestorPath))
                 return null;
+
+            requestorPath = Path.GetFullPath(requestorPath);
 
             lock (s_loadFromAssemblyList)
             {
@@ -328,8 +342,7 @@ namespace System.Reflection
         [RequiresUnreferencedCode("Types and members the loaded assembly depends on might be removed")]
         public static Assembly LoadFrom(string assemblyFile)
         {
-            if (assemblyFile == null)
-                throw new ArgumentNullException(nameof(assemblyFile));
+            ArgumentNullException.ThrowIfNull(assemblyFile);
 
             string fullPath = Path.GetFullPath(assemblyFile);
 
@@ -372,10 +385,13 @@ namespace System.Reflection
         [RequiresUnreferencedCode("Types and members the loaded module depends on might be removed")]
         public virtual Module LoadModule(string moduleName, byte[]? rawModule, byte[]? rawSymbolStore) { throw NotImplemented.ByDesign; }
 
+        [Obsolete(Obsoletions.ReflectionOnlyLoadingMessage, DiagnosticId = Obsoletions.ReflectionOnlyLoadingDiagId, UrlFormat = Obsoletions.SharedUrlFormat)]
         [RequiresUnreferencedCode("Types and members the loaded assembly depends on might be removed")]
         public static Assembly ReflectionOnlyLoad(byte[] rawAssembly) { throw new PlatformNotSupportedException(SR.PlatformNotSupported_ReflectionOnly); }
+        [Obsolete(Obsoletions.ReflectionOnlyLoadingMessage, DiagnosticId = Obsoletions.ReflectionOnlyLoadingDiagId, UrlFormat = Obsoletions.SharedUrlFormat)]
         [RequiresUnreferencedCode("Types and members the loaded assembly depends on might be removed")]
         public static Assembly ReflectionOnlyLoad(string assemblyString) { throw new PlatformNotSupportedException(SR.PlatformNotSupported_ReflectionOnly); }
+        [Obsolete(Obsoletions.ReflectionOnlyLoadingMessage, DiagnosticId = Obsoletions.ReflectionOnlyLoadingDiagId, UrlFormat = Obsoletions.SharedUrlFormat)]
         [RequiresUnreferencedCode("Types and members the loaded assembly depends on might be removed")]
         public static Assembly ReflectionOnlyLoadFrom(string assemblyFile) { throw new PlatformNotSupportedException(SR.PlatformNotSupported_ReflectionOnly); }
 

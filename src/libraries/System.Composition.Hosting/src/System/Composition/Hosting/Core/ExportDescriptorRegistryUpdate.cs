@@ -8,7 +8,7 @@ using System.Text;
 
 namespace System.Composition.Hosting.Core
 {
-    internal class ExportDescriptorRegistryUpdate : DependencyAccessor
+    internal sealed class ExportDescriptorRegistryUpdate : DependencyAccessor
     {
         private readonly IDictionary<CompositionContract, ExportDescriptor[]> _partDefinitions;
         private readonly ExportDescriptorProvider[] _exportDescriptorProviders;
@@ -111,15 +111,15 @@ namespace System.Composition.Hosting.Core
             CheckTarget(dependency, @checked, checking);
         }
 
-        private StringBuilder DescribeCompositionStack(CompositionDependency import, IEnumerable<CompositionDependency> dependencies)
+        private static StringBuilder DescribeCompositionStack(CompositionDependency import, Stack<CompositionDependency> dependencies)
         {
             var result = new StringBuilder();
-            if (dependencies.FirstOrDefault() == null)
+            if (dependencies.Count == 0 || dependencies.Peek() == null)
             {
                 return result;
             }
 
-            foreach (var step in dependencies)
+            foreach (CompositionDependency step in dependencies)
             {
                 result.AppendFormat(SR.ExportDescriptor_DependencyErrorLine, import.Site, step.Target.Origin);
                 result.AppendLine();

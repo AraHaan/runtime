@@ -66,11 +66,8 @@ namespace System.Collections
         // Fills a Queue with the elements of an ICollection.  Uses the enumerator
         // to get each of the elements.
         //
-        public Queue(ICollection col) : this((col == null ? 32 : col.Count))
+        public Queue(ICollection col) : this(col?.Count ?? throw new ArgumentNullException(nameof(col)))
         {
-            if (col == null)
-                throw new ArgumentNullException(nameof(col));
-
             IEnumerator en = col.GetEnumerator();
             while (en.MoveNext())
                 Enqueue(en.Current);
@@ -131,12 +128,12 @@ namespace System.Collections
         //
         public virtual void CopyTo(Array array, int index)
         {
-            if (array == null)
-                throw new ArgumentNullException(nameof(array));
+            ArgumentNullException.ThrowIfNull(array);
+
             if (array.Rank != 1)
                 throw new ArgumentException(SR.Arg_RankMultiDimNotSupported, nameof(array));
             if (index < 0)
-                throw new ArgumentOutOfRangeException(nameof(index), SR.ArgumentOutOfRange_Index);
+                throw new ArgumentOutOfRangeException(nameof(index), SR.ArgumentOutOfRange_IndexMustBeLess);
 
             int arrayLen = array.Length;
             if (arrayLen - index < _size)
@@ -212,8 +209,7 @@ namespace System.Collections
         //
         public static Queue Synchronized(Queue queue)
         {
-            if (queue == null)
-                throw new ArgumentNullException(nameof(queue));
+            ArgumentNullException.ThrowIfNull(queue);
 
             return new SynchronizedQueue(queue);
         }
@@ -303,7 +299,7 @@ namespace System.Collections
 
 
         // Implements a synchronization wrapper around a queue.
-        private class SynchronizedQueue : Queue
+        private sealed class SynchronizedQueue : Queue
         {
             private readonly Queue _q;
             private readonly object _root;
@@ -423,7 +419,7 @@ namespace System.Collections
         // Implements an enumerator for a Queue.  The enumerator uses the
         // internal version number of the list to ensure that no modifications are
         // made to the list while an enumeration is in progress.
-        private class QueueEnumerator : IEnumerator, ICloneable
+        private sealed class QueueEnumerator : IEnumerator, ICloneable
         {
             private readonly Queue _q;
             private int _index;
@@ -442,7 +438,7 @@ namespace System.Collections
 
             public object Clone() => MemberwiseClone();
 
-            public virtual bool MoveNext()
+            public bool MoveNext()
             {
                 if (_version != _q._version) throw new InvalidOperationException(SR.InvalidOperation_EnumFailedVersion);
 
@@ -460,7 +456,7 @@ namespace System.Collections
                 return true;
             }
 
-            public virtual object? Current
+            public object? Current
             {
                 get
                 {
@@ -475,7 +471,7 @@ namespace System.Collections
                 }
             }
 
-            public virtual void Reset()
+            public void Reset()
             {
                 if (_version != _q._version) throw new InvalidOperationException(SR.InvalidOperation_EnumFailedVersion);
                 if (_q._size == 0)
@@ -486,14 +482,13 @@ namespace System.Collections
             }
         }
 
-        internal class QueueDebugView
+        internal sealed class QueueDebugView
         {
             private readonly Queue _queue;
 
             public QueueDebugView(Queue queue)
             {
-                if (queue == null)
-                    throw new ArgumentNullException(nameof(queue));
+                ArgumentNullException.ThrowIfNull(queue);
 
                 _queue = queue;
             }

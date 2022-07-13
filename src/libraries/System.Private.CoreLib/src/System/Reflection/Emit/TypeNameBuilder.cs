@@ -13,7 +13,7 @@ using System.Diagnostics;
 
 namespace System.Reflection.Emit
 {
-    internal class TypeNameBuilder
+    internal sealed class TypeNameBuilder
     {
         private StringBuilder _str = new StringBuilder();
         private int _instNesting;
@@ -246,11 +246,14 @@ namespace System.Reflection.Emit
 
         private void Append(string pStr)
         {
-            foreach (char c in pStr)
+            int i = pStr.IndexOf('\0');
+            if (i < 0)
             {
-                if (c == '\0')
-                    break;
-                _str.Append(c);
+                _str.Append(pStr);
+            }
+            else if (i > 0)
+            {
+                _str.Append(pStr.AsSpan(0, i));
             }
         }
 

@@ -6,12 +6,12 @@ using Microsoft.Win32.SafeHandles;
 using System;
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class Kernel32
+    internal static partial class Kernel32
     {
-        [DllImport(Libraries.Kernel32, EntryPoint = "CreateFileMappingW", CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern SafeMemoryMappedFileHandle CreateFileMapping(
+        [LibraryImport(Libraries.Kernel32, EntryPoint = "CreateFileMappingW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        internal static partial SafeMemoryMappedFileHandle CreateFileMapping(
             SafeFileHandle hFile,
             ref SECURITY_ATTRIBUTES lpFileMappingAttributes,
             int flProtect,
@@ -19,8 +19,8 @@ internal partial class Interop
             int dwMaximumSizeLow,
             string? lpName);
 
-        [DllImport(Libraries.Kernel32, EntryPoint = "CreateFileMappingW", CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern SafeMemoryMappedFileHandle CreateFileMapping(
+        [LibraryImport(Libraries.Kernel32, EntryPoint = "CreateFileMappingW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        internal static partial SafeMemoryMappedFileHandle CreateFileMapping(
             IntPtr hFile,
             ref SECURITY_ATTRIBUTES lpFileMappingAttributes,
             int flProtect,

@@ -9,13 +9,13 @@ namespace System.Linq.Expressions
 {
     public partial class Expression
     {
-        internal class BinaryExpressionProxy
+        internal sealed class BinaryExpressionProxy
         {
             private readonly BinaryExpression _node;
 
             public BinaryExpressionProxy(BinaryExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -31,13 +31,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class BlockExpressionProxy
+        internal sealed class BlockExpressionProxy
         {
             private readonly BlockExpression _node;
 
             public BlockExpressionProxy(BlockExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -50,13 +50,13 @@ namespace System.Linq.Expressions
             public ReadOnlyCollection<ParameterExpression> Variables => _node.Variables;
         }
 
-        internal class CatchBlockProxy
+        internal sealed class CatchBlockProxy
         {
             private readonly CatchBlock _node;
 
             public CatchBlockProxy(CatchBlock node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -66,13 +66,13 @@ namespace System.Linq.Expressions
             public ParameterExpression? Variable => _node.Variable;
         }
 
-        internal class ConditionalExpressionProxy
+        internal sealed class ConditionalExpressionProxy
         {
             private readonly ConditionalExpression _node;
 
             public ConditionalExpressionProxy(ConditionalExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -85,13 +85,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class ConstantExpressionProxy
+        internal sealed class ConstantExpressionProxy
         {
             private readonly ConstantExpression _node;
 
             public ConstantExpressionProxy(ConstantExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -102,13 +102,13 @@ namespace System.Linq.Expressions
             public object? Value => _node.Value;
         }
 
-        internal class DebugInfoExpressionProxy
+        internal sealed class DebugInfoExpressionProxy
         {
             private readonly DebugInfoExpression _node;
 
             public DebugInfoExpressionProxy(DebugInfoExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -124,13 +124,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class DefaultExpressionProxy
+        internal sealed class DefaultExpressionProxy
         {
             private readonly DefaultExpression _node;
 
             public DefaultExpressionProxy(DefaultExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -140,13 +140,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class GotoExpressionProxy
+        internal sealed class GotoExpressionProxy
         {
             private readonly GotoExpression _node;
 
             public GotoExpressionProxy(GotoExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -159,13 +159,13 @@ namespace System.Linq.Expressions
             public Expression? Value => _node.Value;
         }
 
-        internal class IndexExpressionProxy
+        internal sealed class IndexExpressionProxy
         {
             private readonly IndexExpression _node;
 
             public IndexExpressionProxy(IndexExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -178,13 +178,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class InvocationExpressionProxy
+        internal sealed class InvocationExpressionProxy
         {
             private readonly InvocationExpression _node;
 
             public InvocationExpressionProxy(InvocationExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -196,13 +196,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class LabelExpressionProxy
+        internal sealed class LabelExpressionProxy
         {
             private readonly LabelExpression _node;
 
             public LabelExpressionProxy(LabelExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -214,13 +214,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class LambdaExpressionProxy
+        internal sealed class LambdaExpressionProxy
         {
             private readonly LambdaExpression _node;
 
             public LambdaExpressionProxy(LambdaExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -235,13 +235,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class ListInitExpressionProxy
+        internal sealed class ListInitExpressionProxy
         {
             private readonly ListInitExpression _node;
 
             public ListInitExpressionProxy(ListInitExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -253,13 +253,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class LoopExpressionProxy
+        internal sealed class LoopExpressionProxy
         {
             private readonly LoopExpression _node;
 
             public LoopExpressionProxy(LoopExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -272,13 +272,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class MemberExpressionProxy
+        internal sealed class MemberExpressionProxy
         {
             private readonly MemberExpression _node;
 
             public MemberExpressionProxy(MemberExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -290,13 +290,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class MemberInitExpressionProxy
+        internal sealed class MemberInitExpressionProxy
         {
             private readonly MemberInitExpression _node;
 
             public MemberInitExpressionProxy(MemberInitExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -308,13 +308,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class MethodCallExpressionProxy
+        internal sealed class MethodCallExpressionProxy
         {
             private readonly MethodCallExpression _node;
 
             public MethodCallExpressionProxy(MethodCallExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -327,13 +327,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class NewArrayExpressionProxy
+        internal sealed class NewArrayExpressionProxy
         {
             private readonly NewArrayExpression _node;
 
             public NewArrayExpressionProxy(NewArrayExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -344,13 +344,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class NewExpressionProxy
+        internal sealed class NewExpressionProxy
         {
             private readonly NewExpression _node;
 
             public NewExpressionProxy(NewExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -363,13 +363,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class ParameterExpressionProxy
+        internal sealed class ParameterExpressionProxy
         {
             private readonly ParameterExpression _node;
 
             public ParameterExpressionProxy(ParameterExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -381,13 +381,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class RuntimeVariablesExpressionProxy
+        internal sealed class RuntimeVariablesExpressionProxy
         {
             private readonly RuntimeVariablesExpression _node;
 
             public RuntimeVariablesExpressionProxy(RuntimeVariablesExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -398,13 +398,13 @@ namespace System.Linq.Expressions
             public ReadOnlyCollection<ParameterExpression> Variables => _node.Variables;
         }
 
-        internal class SwitchCaseProxy
+        internal sealed class SwitchCaseProxy
         {
             private readonly SwitchCase _node;
 
             public SwitchCaseProxy(SwitchCase node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -412,13 +412,13 @@ namespace System.Linq.Expressions
             public ReadOnlyCollection<Expression> TestValues => _node.TestValues;
         }
 
-        internal class SwitchExpressionProxy
+        internal sealed class SwitchExpressionProxy
         {
             private readonly SwitchExpression _node;
 
             public SwitchExpressionProxy(SwitchExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -432,13 +432,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class TryExpressionProxy
+        internal sealed class TryExpressionProxy
         {
             private readonly TryExpression _node;
 
             public TryExpressionProxy(TryExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -452,13 +452,13 @@ namespace System.Linq.Expressions
             public Type Type => _node.Type;
         }
 
-        internal class TypeBinaryExpressionProxy
+        internal sealed class TypeBinaryExpressionProxy
         {
             private readonly TypeBinaryExpression _node;
 
             public TypeBinaryExpressionProxy(TypeBinaryExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 
@@ -470,13 +470,13 @@ namespace System.Linq.Expressions
             public Type TypeOperand => _node.TypeOperand;
         }
 
-        internal class UnaryExpressionProxy
+        internal sealed class UnaryExpressionProxy
         {
             private readonly UnaryExpression _node;
 
             public UnaryExpressionProxy(UnaryExpression node)
             {
-                ContractUtils.RequiresNotNull(node, nameof(node));
+                ArgumentNullException.ThrowIfNull(node);
                 _node = node;
             }
 

@@ -4,9 +4,9 @@
 using System;
 using System.Runtime.InteropServices;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class User32
+    internal static partial class User32
     {
         public enum SystemParametersAction : uint
         {
@@ -14,7 +14,8 @@ internal partial class Interop
             SPI_GETNONCLIENTMETRICS = 0x29
         }
 
-        [DllImport(Libraries.User32, ExactSpelling = true, CharSet = CharSet.Unicode)]
-        public static extern unsafe bool SystemParametersInfoW(SystemParametersAction uiAction, uint uiParam, void* pvParam, uint fWinIni);
+        [LibraryImport(Libraries.User32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static unsafe partial bool SystemParametersInfoW(SystemParametersAction uiAction, uint uiParam, void* pvParam, uint fWinIni);
     }
 }

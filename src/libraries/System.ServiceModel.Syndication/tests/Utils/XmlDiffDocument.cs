@@ -659,7 +659,7 @@ namespace System.ServiceModel.Syndication.Tests
             XPathNodeIterator _iter = _nav.Select(expr);
             while (_iter.MoveNext())
             {
-                ((XmlDiffNavigator)_iter.Current).CurrentNode.IgnoreValue = true; ;
+                ((XmlDiffNavigator)_iter.Current).CurrentNode.IgnoreValue = true;
             }
         }
 
@@ -1204,7 +1204,7 @@ namespace System.ServiceModel.Syndication.Tests
 
         public PropertyCollection ExtendedProperties
         {
-            get => _extendedProperties ?? (_extendedProperties = new PropertyCollection());
+            get => _extendedProperties ??= new PropertyCollection();
         }
 
         public virtual void InsertChildAfter(XmlDiffNode child, XmlDiffNode newChild)
@@ -1612,7 +1612,7 @@ namespace System.ServiceModel.Syndication.Tests
                     w.WriteString(Value);
                     break;
                 default:
-                    Debug.Assert(false, "Wrong type for text-like node : " + _nodetype.ToString());
+                    Debug.Assert(false, $"Wrong type for text-like node : {_nodetype}");
                     break;
             }
         }

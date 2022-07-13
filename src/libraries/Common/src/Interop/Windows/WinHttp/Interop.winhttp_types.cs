@@ -3,11 +3,14 @@
 
 using System;
 using System.Runtime.InteropServices;
+#if NET7_0_OR_GREATER
+using System.Runtime.InteropServices.Marshalling;
+#endif
 using System.Text;
 
-internal partial class Interop
+internal static partial class Interop
 {
-    internal partial class WinHttp
+    internal static partial class WinHttp
     {
         public const uint ERROR_SUCCESS = 0;
         public const uint ERROR_FILE_NOT_FOUND = 2;
@@ -61,6 +64,7 @@ internal partial class Interop
 
         public const uint WINHTTP_FLAG_SECURE = 0x00800000;
         public const uint WINHTTP_FLAG_ESCAPE_DISABLE = 0x00000040;
+        public const uint WINHTTP_FLAG_AUTOMATIC_CHUNKING = 0x00000200;
 
         public const uint WINHTTP_QUERY_FLAG_NUMBER = 0x20000000;
         public const uint WINHTTP_QUERY_VERSION = 18;
@@ -68,6 +72,7 @@ internal partial class Interop
         public const uint WINHTTP_QUERY_STATUS_TEXT = 20;
         public const uint WINHTTP_QUERY_RAW_HEADERS = 21;
         public const uint WINHTTP_QUERY_RAW_HEADERS_CRLF = 22;
+        public const uint WINHTTP_QUERY_FLAG_TRAILERS = 0x02000000;
         public const uint WINHTTP_QUERY_CONTENT_ENCODING = 29;
         public const uint WINHTTP_QUERY_SET_COOKIE = 43;
         public const uint WINHTTP_QUERY_CUSTOM = 65535;
@@ -107,6 +112,7 @@ internal partial class Interop
         public const uint WINHTTP_FLAG_SECURE_PROTOCOL_TLS1 = 0x00000080;
         public const uint WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_1 = 0x00000200;
         public const uint WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 = 0x00000800;
+        public const uint WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3 = 0x00002000;
 
         public const uint SECURITY_FLAG_IGNORE_UNKNOWN_CA = 0x00000100;
         public const uint SECURITY_FLAG_IGNORE_CERT_DATE_INVALID = 0x00002000;
@@ -128,10 +134,10 @@ internal partial class Interop
         public const uint WINHTTP_AUTH_TARGET_PROXY = 0x00000001;
 
         public const uint WINHTTP_OPTION_USERNAME = 0x1000;
-        // [SuppressMessage("Microsoft.Security", "CS002:SecretInNextLine", Justification="It is property descriptor, not secret value.")]
+        // [SuppressMessage("Microsoft.Security", "CS002:SecretInNextLine", Justification="Suppression approved. It is property descriptor, not secret value.")]
         public const uint WINHTTP_OPTION_PASSWORD = 0x1001;
         public const uint WINHTTP_OPTION_PROXY_USERNAME = 0x1002;
-        // [SuppressMessage("Microsoft.Security", "CS002:SecretInNextLine", Justification="It is property descriptor, not secret value.")]
+        // [SuppressMessage("Microsoft.Security", "CS002:SecretInNextLine", Justification="Suppression approved. It is property descriptor, not secret value.")]
         public const uint WINHTTP_OPTION_PROXY_PASSWORD = 0x1003;
 
         public const uint WINHTTP_OPTION_SERVER_SPN_USED = 106;
@@ -164,6 +170,8 @@ internal partial class Interop
         public const uint WINHTTP_OPTION_WEB_SOCKET_SEND_BUFFER_SIZE = 123;
 
         public const uint WINHTTP_OPTION_TCP_KEEPALIVE = 152;
+        public const uint WINHTTP_OPTION_STREAM_ERROR_CODE = 159;
+        public const uint WINHTTP_OPTION_REQUIRE_STREAM_END = 160;
 
         public enum WINHTTP_WEB_SOCKET_BUFFER_TYPE
         {
@@ -239,6 +247,9 @@ internal partial class Interop
             IntPtr statusInformation,
             uint statusInformationLength);
 
+#if NET7_0_OR_GREATER
+        [NativeMarshalling(typeof(Marshaller))]
+#endif
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         public struct WINHTTP_AUTOPROXY_OPTIONS
         {
@@ -250,13 +261,61 @@ internal partial class Interop
             public uint Reserved2;
             [MarshalAs(UnmanagedType.Bool)]
             public bool AutoLoginIfChallenged;
+#if NET7_0_OR_GREATER
+            [CustomMarshaller(typeof(WINHTTP_AUTOPROXY_OPTIONS), MarshalMode.Default, typeof(Marshaller))]
+            public static class Marshaller
+            {
+                public static Native ConvertToUnmanaged(WINHTTP_AUTOPROXY_OPTIONS managed) => new(managed);
+
+                public static WINHTTP_AUTOPROXY_OPTIONS ConvertToManaged(Native native) => native.ToManaged();
+
+                public static void Free(Native native) => native.FreeNative();
+
+                public struct Native
+                {
+                    private uint Flags;
+                    private uint AutoDetectFlags;
+                    private IntPtr AutoConfigUrl;
+                    private IntPtr Reserved1;
+                    private uint Reserved2;
+                    private int AutoLoginIfChallenged;
+
+                    public Native(WINHTTP_AUTOPROXY_OPTIONS managed)
+                    {
+                        Flags = managed.Flags;
+                        AutoDetectFlags = managed.AutoDetectFlags;
+                        AutoConfigUrl = managed.AutoConfigUrl is not null ? Marshal.StringToCoTaskMemUni(managed.AutoConfigUrl) : IntPtr.Zero;
+                        Reserved1 = managed.Reserved1;
+                        Reserved2 = managed.Reserved2;
+                        AutoLoginIfChallenged = managed.AutoLoginIfChallenged ? 1 : 0;
+                    }
+
+                    public WINHTTP_AUTOPROXY_OPTIONS ToManaged()
+                    {
+                        return new WINHTTP_AUTOPROXY_OPTIONS
+                        {
+                            Flags = Flags,
+                            AutoDetectFlags = AutoDetectFlags,
+                            AutoConfigUrl = AutoConfigUrl != IntPtr.Zero ? Marshal.PtrToStringUni(AutoConfigUrl) : null,
+                            Reserved1 = Reserved1,
+                            Reserved2 = Reserved2,
+                            AutoLoginIfChallenged = AutoLoginIfChallenged != 0
+                        };
+                    }
+
+                    public void FreeNative()
+                    {
+                        Marshal.FreeCoTaskMem(AutoConfigUrl);
+                    }
+                }
+            }
+#endif
         }
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         public struct WINHTTP_CURRENT_USER_IE_PROXY_CONFIG
         {
-            [MarshalAs(UnmanagedType.Bool)]
-            public bool AutoDetect;
+            public int AutoDetect;
             public IntPtr AutoConfigUrl;
             public IntPtr Proxy;
             public IntPtr ProxyBypass;

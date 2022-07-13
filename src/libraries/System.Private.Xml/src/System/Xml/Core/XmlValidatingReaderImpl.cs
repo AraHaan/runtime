@@ -32,7 +32,7 @@ namespace System.Xml
             None,
         }
 
-        internal class ValidationEventHandling : IValidationEventHandling
+        internal sealed class ValidationEventHandling : IValidationEventHandling
         {
             // Fields
             private readonly XmlValidatingReaderImpl _reader;
@@ -833,7 +833,7 @@ namespace System.Xml
             }
             remove
             {
-                _eventHandling.RemoveHandler(value); ;
+                _eventHandling.RemoveHandler(value);
             }
         }
 
@@ -1082,9 +1082,7 @@ namespace System.Xml
             if (tempResolver == null && !_coreReaderImpl.IsResolverSet)
             {
                 // it is safe to return valid resolver as it'll be used in the schema validation
-                if (s_tempResolver == null)
-                    s_tempResolver = new XmlUrlResolver();
-                return s_tempResolver;
+                return s_tempResolver ??= new XmlUrlResolver();
             }
 
             return tempResolver;

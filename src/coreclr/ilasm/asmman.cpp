@@ -10,7 +10,6 @@
 #include "assembler.h"
 #include "strongnameinternal.h"
 #include <limits.h>
-#include <fusion.h>
 
 extern WCHAR*   pwzInputFiles[];
 
@@ -50,7 +49,7 @@ BinStr* BinStrToUnicode(BinStr* pSource, bool Swap)
     return NULL;
 }
 
-AsmManFile*         AsmMan::GetFileByName(__in __nullterminated char* szFileName)
+AsmManFile*         AsmMan::GetFileByName(_In_ __nullterminated char* szFileName)
 {
     AsmManFile* ret = NULL;
     if(szFileName)
@@ -64,14 +63,14 @@ AsmManFile*         AsmMan::GetFileByName(__in __nullterminated char* szFileName
     return ret;
 }
 
-mdToken             AsmMan::GetFileTokByName(__in __nullterminated char* szFileName)
+mdToken             AsmMan::GetFileTokByName(_In_ __nullterminated char* szFileName)
 {
     AsmManFile* tmp = GetFileByName(szFileName);
     return(tmp ? tmp->tkTok : mdFileNil);
 }
 
-AsmManComType*          AsmMan::GetComTypeByName(__in_opt __nullterminated char* szComTypeName,
-                                                 __in_opt __nullterminated char* szComEnclosingTypeName)
+AsmManComType*          AsmMan::GetComTypeByName(_In_opt_z_ char* szComTypeName,
+                                                 _In_opt_z_ char* szComEnclosingTypeName)
 {
     AsmManComType*  ret = NULL;
     if(szComTypeName)
@@ -103,14 +102,14 @@ AsmManComType*          AsmMan::GetComTypeByName(__in_opt __nullterminated char*
 }
 
 mdToken             AsmMan::GetComTypeTokByName(
-    __in_opt __nullterminated char* szComTypeName,
-    __in_opt __nullterminated char* szComEnclosingTypeName)
+    _In_opt_z_ char* szComTypeName,
+    _In_opt_z_ char* szComEnclosingTypeName)
 {
     AsmManComType* tmp = GetComTypeByName(szComTypeName, szComEnclosingTypeName);
     return(tmp ? tmp->tkTok : mdExportedTypeNil);
 }
 
-AsmManAssembly*     AsmMan::GetAsmRefByName(__in __nullterminated const char* szAsmRefName)
+AsmManAssembly*     AsmMan::GetAsmRefByName(_In_ __nullterminated const char* szAsmRefName)
 {
     AsmManAssembly* ret = NULL;
     if(szAsmRefName)
@@ -125,12 +124,12 @@ AsmManAssembly*     AsmMan::GetAsmRefByName(__in __nullterminated const char* sz
     }
     return ret;
 }
-mdToken             AsmMan::GetAsmRefTokByName(__in __nullterminated const char* szAsmRefName)
+mdToken             AsmMan::GetAsmRefTokByName(_In_ __nullterminated const char* szAsmRefName)
 {
     AsmManAssembly* tmp = GetAsmRefByName(szAsmRefName);
     return(tmp ? tmp->tkTok : mdAssemblyRefNil);
 }
-AsmManAssembly*     AsmMan::GetAsmRefByAsmName(__in __nullterminated const char* szAsmName)
+AsmManAssembly*     AsmMan::GetAsmRefByAsmName(_In_ __nullterminated const char* szAsmName)
 {
     AsmManAssembly* ret = NULL;
     if(szAsmName)
@@ -161,7 +160,7 @@ void    AsmMan::SetModuleName(__inout_opt __nullterminated char* szName)
 }
 //==============================================================================================================
 
-void    AsmMan::AddFile(__in __nullterminated char* szName, DWORD dwAttr, BinStr* pHashBlob)
+void    AsmMan::AddFile(_In_ __nullterminated char* szName, DWORD dwAttr, BinStr* pHashBlob)
 {
     AsmManFile* tmp = GetFileByName(szName);
     Assembler* pAsm = (Assembler*)m_pAssembler;
@@ -245,7 +244,7 @@ void    AsmMan::EmitFiles()
     } //end for(i = 0; tmp=m_FileLst.PEEK(i); i++)
 }
 
-void    AsmMan::StartAssembly(__in __nullterminated char* szName, __in_opt __nullterminated char* szAlias, DWORD dwAttr, BOOL isRef)
+void    AsmMan::StartAssembly(_In_ __nullterminated char* szName, _In_opt_z_ char* szAlias, DWORD dwAttr, BOOL isRef)
 {
     if(!isRef && (0==strcmp(szName, "mscorlib"))) ((Assembler*)m_pAssembler)->m_fIsMscorlib = TRUE;
     if(!isRef && (m_pAssembly != NULL))
@@ -354,7 +353,7 @@ void AsmMan::EmitDebuggableAttribute(mdToken tkOwner)
         pbsSig->appendInt8(ELEMENT_TYPE_VOID);
         pbsSig->append(&bsSigArg);
 
-        bsBytes->appendInt32(pAsm->m_dwIncludeDebugInfo);
+        bsBytes->appendInt32(VAL32(pAsm->m_dwIncludeDebugInfo));
     }
     bsBytes->appendInt8(0);
     bsBytes->appendInt8(0);
@@ -456,7 +455,7 @@ void    AsmMan::EndAssembly()
                     // into the public key buffer).
                     if (m_sStrongName.m_cbPublicKey >= sizeof(PublicKeyBlob) &&
                         (offsetof(PublicKeyBlob, PublicKey) +
-                         ((PublicKeyBlob*)m_sStrongName.m_pbPublicKey)->cbPublicKey) == m_sStrongName.m_cbPublicKey)
+                         VAL32(((PublicKeyBlob*)m_sStrongName.m_pbPublicKey)->cbPublicKey)) == m_sStrongName.m_cbPublicKey)
                         m_sStrongName.m_fFullSign = FALSE;
                     else
                         m_sStrongName.m_fFullSign = TRUE;
@@ -675,7 +674,7 @@ void    AsmMan::SetAssemblyAutodetect()
     }
 }
 
-void    AsmMan::StartComType(__in __nullterminated char* szName, DWORD dwAttr)
+void    AsmMan::StartComType(_In_ __nullterminated char* szName, DWORD dwAttr)
 {
     if((m_pCurComType = new AsmManComType))
     {
@@ -733,7 +732,7 @@ void    AsmMan::EndComType()
     }
 }
 
-void    AsmMan::SetComTypeFile(__in __nullterminated char* szFileName)
+void    AsmMan::SetComTypeFile(_In_ __nullterminated char* szFileName)
 {
     if(m_pCurComType)
     {
@@ -741,7 +740,7 @@ void    AsmMan::SetComTypeFile(__in __nullterminated char* szFileName)
     }
 }
 
-void    AsmMan::SetComTypeAsmRef(__in __nullterminated char* szAsmRefName)
+void    AsmMan::SetComTypeAsmRef(_In_ __nullterminated char* szAsmRefName)
 {
     if(m_pCurComType)
     {
@@ -749,7 +748,7 @@ void    AsmMan::SetComTypeAsmRef(__in __nullterminated char* szAsmRefName)
     }
 }
 
-void    AsmMan::SetComTypeComType(__in __nullterminated char* szComTypeName)
+void    AsmMan::SetComTypeComType(_In_ __nullterminated char* szComTypeName)
 {
     if(m_pCurComType)
     {
@@ -781,7 +780,7 @@ BOOL    AsmMan::SetComTypeClassTok(mdToken tkClass)
     return FALSE;
 }
 
-void    AsmMan::StartManifestRes(__in __nullterminated char* szName, __in __nullterminated char* szAlias, DWORD dwAttr)
+void    AsmMan::StartManifestRes(_In_ __nullterminated char* szName, _In_ __nullterminated char* szAlias, DWORD dwAttr)
 {
     if((m_pCurManRes = new AsmManRes))
     {
@@ -809,7 +808,7 @@ void    AsmMan::EndManifestRes()
 }
 
 
-void    AsmMan::SetManifestResFile(__in __nullterminated char* szFileName, ULONG ulOffset)
+void    AsmMan::SetManifestResFile(_In_ __nullterminated char* szFileName, ULONG ulOffset)
 {
     if(m_pCurManRes)
     {
@@ -818,7 +817,7 @@ void    AsmMan::SetManifestResFile(__in __nullterminated char* szFileName, ULONG
     }
 }
 
-void    AsmMan::SetManifestResAsmRef(__in __nullterminated char* szAsmRefName)
+void    AsmMan::SetManifestResAsmRef(_In_ __nullterminated char* szAsmRefName)
 {
     if(m_pCurManRes)
     {
@@ -843,8 +842,7 @@ HRESULT AsmMan::EmitManifest()
         EmitFiles();
         EmitAssembly();
 
-        if((((Assembler*)m_pAssembler)->m_dwIncludeDebugInfo != 0) && (m_pAssembly == NULL)
-           && !(((Assembler*)m_pAssembler)->m_fENCMode))
+        if((((Assembler*)m_pAssembler)->m_dwIncludeDebugInfo != 0) && (m_pAssembly == NULL))
         {
             mdToken tkOwner, tkMscorlib;
             tkMscorlib = ((Assembler*)m_pAssembler)->GetAsmRef("mscorlib");
@@ -1002,8 +1000,9 @@ HRESULT AsmMan::EmitManifest()
                             m_fMResNew[m_dwMResNum] = TRUE;
                             m_dwMResNum++;
                         }
-                        CloseHandle(hFile);
                     }
+
+                    CloseHandle(hFile);
                 }
             }
             if(fOK || ((Assembler*)m_pAssembler)->OnErrGo)

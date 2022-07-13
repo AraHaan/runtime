@@ -23,6 +23,10 @@ namespace System.Diagnostics.Tests
 {
     public partial class ProcessTests : ProcessTestBase
     {
+        const UnixFileMode ExecutablePermissions = UnixFileMode.UserRead | UnixFileMode.UserExecute | UnixFileMode.UserWrite |
+                                                   UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                                                   UnixFileMode.GroupRead | UnixFileMode.GroupExecute;
+
         private class FinalizingProcess : Process
         {
             public static volatile bool WasFinalized;
@@ -74,6 +78,15 @@ namespace System.Diagnostics.Tests
             }
         }
 
+        [ConditionalTheory(typeof(RemoteExecutor), nameof(RemoteExecutor.IsSupported))]
+        [InlineData(-2)]
+        [InlineData((long)int.MaxValue + 1)]
+        public void TestWaitForExitValidation(long milliseconds)
+        {
+            CreateDefaultProcess();
+            Assert.Throws<ArgumentOutOfRangeException>("timeout", () => _process.WaitForExit(TimeSpan.FromMilliseconds(milliseconds)));
+        }
+
         [ConditionalFact(typeof(RemoteExecutor), nameof(RemoteExecutor.IsSupported))]
         [PlatformSpecific(TestPlatforms.Windows)]  // Expected behavior varies on Windows and Unix
         public void TestBasePriorityOnWindows()
@@ -81,7 +94,7 @@ namespace System.Diagnostics.Tests
             CreateDefaultProcess();
 
             ProcessPriorityClass originalPriority = _process.PriorityClass;
-            Assert.Equal(ProcessPriorityClass.Normal, originalPriority);
+            Assert.Equal(Process.GetCurrentProcess().PriorityClass, originalPriority);
 
             try
             {
@@ -171,25 +184,28 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "Not supported on iOS and tvOS.")]
         public void ProcessStart_TryExitCommandAsFileName_ThrowsWin32Exception()
         {
             Assert.Throws<Win32Exception>(() => Process.Start(new ProcessStartInfo { UseShellExecute = false, FileName = "exit", Arguments = "42" }));
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "Not supported on iOS and tvOS.")]
         public void ProcessStart_UseShellExecuteFalse_FilenameIsUrl_ThrowsWin32Exception()
         {
             Assert.Throws<Win32Exception>(() => Process.Start(new ProcessStartInfo { UseShellExecute = false, FileName = "https://www.github.com/corefx" }));
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "Not supported on iOS and tvOS.")]
         public void ProcessStart_TryOpenFolder_UseShellExecuteIsFalse_ThrowsWin32Exception()
         {
             Assert.Throws<Win32Exception>(() => Process.Start(new ProcessStartInfo { UseShellExecute = false, FileName = Path.GetTempPath() }));
         }
 
         [Fact]
-        [PlatformSpecific(~TestPlatforms.OSX)] // OSX doesn't support throwing on Process.Start
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "Not supported on iOS and tvOS.")]
         public void TestStartWithBadWorkingDirectory()
         {
             string program;
@@ -216,6 +232,8 @@ namespace System.Diagnostics.Tests
 
                 Win32Exception e = Assert.Throws<Win32Exception>(() => Process.Start(psi));
                 Assert.NotEqual(0, e.NativeErrorCode);
+                Assert.Contains(program, e.Message);
+                Assert.Contains(workingDirectory, e.Message);
             }
             else
             {
@@ -225,16 +243,20 @@ namespace System.Diagnostics.Tests
 
         [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.HasWindowsShell))]
         [OuterLoop("Launches File Explorer")]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "Not supported on iOS and tvOS.")]
         public void ProcessStart_UseShellExecute_OnWindows_OpenMissingFile_Throws()
         {
             string fileToOpen = Path.Combine(Environment.CurrentDirectory, "_no_such_file.TXT");
-            Assert.Throws<Win32Exception>(() => Process.Start(new ProcessStartInfo { UseShellExecute = true, FileName = fileToOpen }));
+            AssertExtensions.ThrowsContains<Win32Exception>(
+                () => Process.Start(new ProcessStartInfo { UseShellExecute = true, FileName = fileToOpen }),
+                fileToOpen);
         }
 
         [ConditionalTheory(typeof(PlatformDetection), nameof(PlatformDetection.HasWindowsShell))]
         [InlineData(true)]
         [InlineData(false)]
         [OuterLoop("Launches File Explorer")]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "Not supported on iOS and tvOS.")]
         public void ProcessStart_UseShellExecute_OnWindows_DoesNotThrow(bool isFolder)
         {
             string fileToOpen;
@@ -258,20 +280,27 @@ namespace System.Diagnostics.Tests
                 {
                     if (px != null) // sometimes process is null
                     {
-                        Assert.Equal("notepad", px.ProcessName);
-
-                        px.Kill();
-                        Assert.True(px.WaitForExit(WaitInMS));
-                        px.WaitForExit(); // wait for event handlers to complete
+                        try
+                        {
+                            Assert.Equal("notepad", px.ProcessName.ToLower());
+                        }
+                        finally
+                        {
+                            px.Kill();
+                            Assert.True(px.WaitForExit(WaitInMS));
+                            px.WaitForExit(); // wait for event handlers to complete
+                        }
                     }
                 }
             }
         }
 
         [ConditionalTheory(typeof(PlatformDetection), nameof(PlatformDetection.IsNotWindowsServerCore),
-            nameof(PlatformDetection.IsNotWindowsNanoServer), nameof(PlatformDetection.IsNotWindowsIoTCore))]
+            nameof(PlatformDetection.IsNotWindowsNanoServer), nameof(PlatformDetection.IsNotWindowsIoTCore),
+            nameof(PlatformDetection.IsNotAppSandbox))]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/34685", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
         [InlineData(true), InlineData(false)]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "Not supported on iOS and tvOS.")]
         public void ProcessStart_UseShellExecute_Executes(bool filenameAsUrl)
         {
             string filename = WriteScriptFile(TestDirectory, GetTestFileName(), returnValue: 42);
@@ -294,7 +323,9 @@ namespace System.Diagnostics.Tests
             PlatformDetection.IsNotWindowsIoTCore &&
             RemoteExecutor.IsSupported;
 
-        [ConditionalFact(nameof(UseShellExecuteExecuteOrderIsRunnablePlatform))]
+        private static bool IsNotAppSandbox => PlatformDetection.IsNotAppSandbox;
+
+        [ConditionalFact(nameof(UseShellExecuteExecuteOrderIsRunnablePlatform), nameof(IsNotAppSandbox))]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/34685", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
         public void ProcessStart_UseShellExecute_ExecuteOrder()
         {
@@ -338,8 +369,10 @@ namespace System.Diagnostics.Tests
         }
 
         [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsNotWindowsServerCore),
-            nameof(PlatformDetection.IsNotWindowsNanoServer), nameof(PlatformDetection.IsNotWindowsIoTCore))]
+            nameof(PlatformDetection.IsNotWindowsNanoServer), nameof(PlatformDetection.IsNotWindowsIoTCore),
+            nameof(PlatformDetection.IsNotAppSandbox))]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/34685", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "Not supported on iOS and tvOS.")]
         public void ProcessStart_UseShellExecute_WorkingDirectory()
         {
             // Create a directory that will ProcessStartInfo.WorkingDirectory
@@ -403,6 +436,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void StartTime_GetNotStarted_ThrowsInvalidOperationException()
         {
             var process = new Process();
@@ -461,6 +495,27 @@ namespace System.Diagnostics.Tests
             }
         }
 
+        [ConditionalFact(typeof(RemoteExecutor), nameof(RemoteExecutor.IsSupported))]
+        public void TestToString_OnRunningProcess()
+        {
+            Process p = CreateDefaultProcess();
+            var name = p.ProcessName;
+            Assert.Equal($"System.Diagnostics.Process ({name})", p.ToString());
+
+            KillWait(p);
+        }
+
+        [ConditionalFact(typeof(RemoteExecutor), nameof(RemoteExecutor.IsSupported))]
+        public void TestToString_OnExitedProcess()
+        {
+            Process p = CreateDefaultProcess();
+            KillWait(p);
+
+            // Ensure ToString does not throw an exception, but still returns
+            // a representation of the object.
+            Assert.Contains("System.Diagnostics.Process", p.ToString());
+        }
+
         [Fact]
         public void HasExited_GetNotStarted_ThrowsInvalidOperationException()
         {
@@ -469,6 +524,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "Not supported on iOS and tvOS.")]
         public void Kill_NotStarted_ThrowsInvalidOperationException()
         {
             var process = new Process();
@@ -492,6 +548,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void TestMainModule()
         {
             Process p = Process.GetCurrentProcess();
@@ -541,7 +598,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
-        [PlatformSpecific(~(TestPlatforms.OSX | TestPlatforms.FreeBSD))] // Getting MaxWorkingSet is not supported on OSX and BSD.
+        [SkipOnPlatform(TestPlatforms.OSX | TestPlatforms.FreeBSD | TestPlatforms.iOS | TestPlatforms.MacCatalyst | TestPlatforms.tvOS, "Getting MaxWorkingSet is not supported on OSX, BSD, iOS, MacCatalyst, and tvOS.")]
         public void MaxWorkingSet_GetNotStarted_ThrowsInvalidOperationException()
         {
             var process = new Process();
@@ -596,7 +653,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
-        [PlatformSpecific(~(TestPlatforms.OSX | TestPlatforms.FreeBSD))] // Getting MinWorkingSet is not supported on OSX and BSD.
+        [SkipOnPlatform(TestPlatforms.OSX | TestPlatforms.FreeBSD | TestPlatforms.iOS | TestPlatforms.MacCatalyst | TestPlatforms.tvOS, "Getting MinWorkingSet is not supported on OSX, BSD, iOS, MacCatalyst, and tvOS.")]
         public void MinWorkingSet_GetNotStarted_ThrowsInvalidOperationException()
         {
             var process = new Process();
@@ -735,6 +792,7 @@ namespace System.Diagnostics.Tests
         }
 
         [ConditionalFact(typeof(RemoteExecutor), nameof(RemoteExecutor.IsSupported))]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/49107", typeof(PlatformDetection), nameof(PlatformDetection.IsMacOsAppleSilicon))]
         public void TestVirtualMemorySize64()
         {
             CreateDefaultProcess();
@@ -820,6 +878,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void UserProcessorTime_GetNotStarted_ThrowsInvalidOperationException()
         {
             var process = new Process();
@@ -827,6 +886,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void PriviledgedProcessorTime_GetNotStarted_ThrowsInvalidOperationException()
         {
             var process = new Process();
@@ -834,6 +894,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void TotalProcessorTime_GetNotStarted_ThrowsInvalidOperationException()
         {
             var process = new Process();
@@ -894,7 +955,7 @@ namespace System.Diagnostics.Tests
         }
 
         [ConditionalFact(typeof(RemoteExecutor), nameof(RemoteExecutor.IsSupported))]
-        [PlatformSpecific(~(TestPlatforms.OSX | TestPlatforms.FreeBSD))] // getting/setting affinity not supported on OSX and BSD
+        [SkipOnPlatform(TestPlatforms.OSX | TestPlatforms.FreeBSD, "getting/setting affinity not supported on OSX and BSD")]
         public void TestProcessorAffinity()
         {
             CreateDefaultProcess();
@@ -1070,7 +1131,20 @@ namespace System.Diagnostics.Tests
             Assert.Equal(_process.ProcessName, p.ProcessName);
         }
 
+        [ConditionalFact(typeof(RemoteExecutor), nameof(RemoteExecutor.IsSupported))]
+        public void GetProcessById_KilledProcess_ThrowsArgumentException()
+        {
+            Process process = CreateDefaultProcess();
+            var handle = process.SafeHandle;
+            int processId = process.Id;
+            process.Kill();
+            process.WaitForExit(WaitInMS);
+            Assert.Throws<ArgumentException>(() => Process.GetProcessById(processId));
+            GC.KeepAlive(handle);
+        }
+
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void TestGetProcesses()
         {
             Process currentProcess = Process.GetCurrentProcess();
@@ -1098,7 +1172,7 @@ namespace System.Diagnostics.Tests
         [Fact]
         public void GetProcesses_EmptyMachineName_ThrowsArgumentException()
         {
-            AssertExtensions.Throws<ArgumentException>(null, () => Process.GetProcesses(""));
+            AssertExtensions.Throws<ArgumentException>("machineName", () => Process.GetProcesses(""));
         }
 
         [Fact]
@@ -1135,7 +1209,23 @@ namespace System.Diagnostics.Tests
             }
         }
 
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
+        public void GetProcessesByName_NullEmpty_ReturnsAllProcesses(string name)
+        {
+            Process currentProcess = Process.GetCurrentProcess();
+            Process[] processes = Process.GetProcessesByName(name);
+
+            int expectedCount = (PlatformDetection.IsMobile) ? 1 : 2;
+
+            Assert.Contains(processes, process => process.ProcessName == currentProcess.ProcessName);
+            Assert.InRange(processes.Length, expectedCount, int.MaxValue); // should contain current process and some number of additional processes
+        }
+
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void GetProcessesByName_ProcessName_ReturnsExpected()
         {
             // Get the current process using its name
@@ -1143,18 +1233,21 @@ namespace System.Diagnostics.Tests
             Assert.NotNull(currentProcess.ProcessName);
             Assert.NotEmpty(currentProcess.ProcessName);
 
-            Process[] processes = Process.GetProcessesByName(currentProcess.ProcessName);
-            try
+            foreach (string processName in new[] { currentProcess.ProcessName, currentProcess.ProcessName.ToLowerInvariant(), currentProcess.ProcessName.ToUpperInvariant() })
             {
-                Assert.NotEmpty(processes);
-            }
-            catch (NotEmptyException)
-            {
-                throw new TrueException(PrintProcesses(currentProcess), false);
-            }
+                Process[] processes = Process.GetProcessesByName(processName);
+                try
+                {
+                    Assert.NotEmpty(processes);
+                }
+                catch (NotEmptyException)
+                {
+                    throw new TrueException(PrintProcesses(currentProcess), false);
+                }
 
-            Assert.All(processes, process => Assert.Equal(".", process.MachineName));
-            return;
+                Assert.All(processes, process => Assert.Equal(currentProcess.ProcessName, process.ProcessName));
+                Assert.All(processes, process => Assert.Equal(".", process.MachineName));
+            }
 
             // Outputs a list of active processes in case of failure: https://github.com/dotnet/runtime/issues/28874
             string PrintProcesses(Process currentProcess)
@@ -1162,10 +1255,10 @@ namespace System.Diagnostics.Tests
                 StringBuilder builder = new StringBuilder();
                 foreach (Process process in Process.GetProcesses())
                 {
-                    builder.AppendFormat("Pid: '{0}' Name: '{1}'", process.Id, process.ProcessName);
+                    builder.Append($"Pid: '{process.Id}' Name: '{process.ProcessName}'");
                     try
                     {
-                        builder.AppendFormat(" Main module: '{0}'", process.MainModule.FileName);
+                        builder.Append($" Main module: '{process.MainModule.FileName}'");
                     }
                     catch
                     {
@@ -1174,7 +1267,7 @@ namespace System.Diagnostics.Tests
                     builder.AppendLine();
                 }
 
-                builder.AppendFormat("Current process id: {0} Process name: '{1}'", currentProcess.Id, currentProcess.ProcessName);
+                builder.Append($"Current process id: {currentProcess.Id} Process name: '{currentProcess.ProcessName}'");
                 return builder.ToString();
             }
         }
@@ -1195,6 +1288,7 @@ namespace System.Diagnostics.Tests
 
         [Theory]
         [MemberData(nameof(MachineName_TestData))]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void GetProcessesByName_ProcessNameMachineName_ReturnsExpected(string machineName)
         {
             Process currentProcess = Process.GetCurrentProcess();
@@ -1221,6 +1315,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void GetProcessesByName_NoSuchProcess_ReturnsEmpty()
         {
             string processName = Guid.NewGuid().ToString("N");
@@ -1228,6 +1323,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void GetProcessesByName_NullMachineName_ThrowsArgumentNullException()
         {
             Process currentProcess = Process.GetCurrentProcess();
@@ -1235,10 +1331,11 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void GetProcessesByName_EmptyMachineName_ThrowsArgumentException()
         {
             Process currentProcess = Process.GetCurrentProcess();
-            AssertExtensions.Throws<ArgumentException>(null, () => Process.GetProcessesByName(currentProcess.ProcessName, ""));
+            AssertExtensions.Throws<ArgumentException>("machineName", () => Process.GetProcessesByName(currentProcess.ProcessName, ""));
         }
 
         [Fact]
@@ -1297,6 +1394,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void StartInfo_SetGet_ReturnsExpected()
         {
             var process = new Process() { StartInfo = new ProcessStartInfo(RemoteExecutor.HostRunner) };
@@ -1373,6 +1471,7 @@ namespace System.Diagnostics.Tests
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "Not supported on iOS and tvOS.")]
         public void TestStartWithMissingFile(bool fullPath)
         {
             string path = Guid.NewGuid().ToString("N");
@@ -1389,6 +1488,7 @@ namespace System.Diagnostics.Tests
 
             Win32Exception e = Assert.Throws<Win32Exception>(() => Process.Start(path));
             Assert.NotEqual(0, e.NativeErrorCode);
+            Assert.Contains(path, e.Message);
         }
 
         [Fact]
@@ -1465,6 +1565,56 @@ namespace System.Diagnostics.Tests
             process.Dispose();
 
             Assert.Throws<ObjectDisposedException>(() => process.Start());
+        }
+
+        [Fact]
+        public void StandardInput_Disposed_ThrowsObjectDisposedException()
+        {
+            var process = new Process();
+            process.StartInfo.FileName = "Nothing";
+            process.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => process.StandardInput);
+        }
+
+        [Fact]
+        public void StandardError_Disposed_ThrowsObjectDisposedException()
+        {
+            var process = new Process();
+            process.StartInfo.FileName = "Nothing";
+            process.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => process.StandardError);
+        }
+
+        [Fact]
+        public void StandardOutput_Disposed_ThrowsObjectDisposedException()
+        {
+            var process = new Process();
+            process.StartInfo.FileName = "Nothing";
+            process.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => process.StandardOutput);
+        }
+
+        [Fact]
+        public void CancelOutputRead_Disposed_ThrowsObjectDisposedException()
+        {
+            var process = new Process();
+            process.StartInfo.FileName = "Nothing";
+            process.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => process.CancelOutputRead());
+        }
+
+        [Fact]
+        public void CancelErrorRead_Disposed_ThrowsObjectDisposedException()
+        {
+            var process = new Process();
+            process.StartInfo.FileName = "Nothing";
+            process.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => process.CancelErrorRead());
         }
 
         [Fact]
@@ -1629,6 +1779,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void RefreshResetsAllRefreshableFields()
         {
             // testing Process.Responding using a real unresponsive process would be very hard to do properly
@@ -2035,6 +2186,8 @@ namespace System.Diagnostics.Tests
         [PlatformSpecific(TestPlatforms.AnyUnix)]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/29330", TestPlatforms.OSX)]
         [Fact]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/52852", TestPlatforms.MacCatalyst)]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/53095", TestPlatforms.Android)]
         public void LongProcessNamesAreSupported()
         {
             string sleepPath;
@@ -2044,7 +2197,7 @@ namespace System.Diagnostics.Tests
                 // Instead of using sleep directly, we wrap it with a script.
                 sleepPath = GetTestFilePath();
                 File.WriteAllText(sleepPath, $"#!/bin/sh\nsleep 600\n"); // sleep 10 min.
-                ChMod(sleepPath, "744");
+                File.SetUnixFileMode(sleepPath, ExecutablePermissions);
             }
             else
             {
@@ -2127,6 +2280,18 @@ namespace System.Diagnostics.Tests
         }
 
         [ConditionalFact(typeof(RemoteExecutor), nameof(RemoteExecutor.IsSupported))]
+        public void ArgumentListArgumentNullThrowsOnStart()
+        {
+            ProcessStartInfo psi = new ProcessStartInfo(GetCurrentProcessName());
+            psi.ArgumentList.Add(null);
+
+            Process testProcess = CreateProcess();
+            testProcess.StartInfo = psi;
+
+            AssertExtensions.Throws<ArgumentNullException>("item", () => testProcess.Start());
+        }
+
+        [ConditionalFact(typeof(RemoteExecutor), nameof(RemoteExecutor.IsSupported))]
         [PlatformSpecific(TestPlatforms.Windows)]
         public void StartProcessWithSameArgumentList()
         {
@@ -2183,6 +2348,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void Kill_EntireProcessTree_True_ProcessNotStarted_ThrowsInvalidOperationException()
         {
             var process = new Process();
@@ -2212,6 +2378,7 @@ namespace System.Diagnostics.Tests
         }
 
         [Fact]
+        [SkipOnPlatform(TestPlatforms.iOS | TestPlatforms.tvOS, "libproc is not supported on iOS/tvOS")]
         public void Kill_EntireProcessTree_True_CalledOnCallingProcess_ThrowsInvalidOperationException()
         {
             var process = Process.GetCurrentProcess();
@@ -2360,7 +2527,7 @@ namespace System.Diagnostics.Tests
         {
             string folderNameWithSpaces = "folder name with spaces"; // this needs escaping
             string fullPath = Path.Combine(TestDirectory, folderNameWithSpaces);
-            string[] arguments = new string[] { "/c", "mkdir", "-p", fullPath };
+            string[] arguments = new string[] { "/c", "mkdir", fullPath };
 
             if (Directory.Exists(fullPath))
             {

@@ -19,66 +19,19 @@
 #include "corinfo.h"
 #include "volatile.h"
 #include "mdfileformat.h"
+#include <configuration.h>
 
 #ifndef DACCESS_COMPILE
 UINT32 g_nClrInstanceId = 0;
+
+#if defined(TARGET_WINDOWS) && defined(TARGET_ARM64)
+// Flag to check if atomics feature is available on
+// the machine
+bool g_arm64_atomics_present = false;
+#endif
+
 #endif //!DACCESS_COMPILE
 
-//********** Code. ************************************************************
-
-#if defined(FEATURE_COMINTEROP) && !defined(FEATURE_CORESYSTEM)
-extern WinRTStatusEnum gWinRTStatus = WINRT_STATUS_UNINITED;
-#endif // FEATURE_COMINTEROP && !FEATURE_CORESYSTEM
-
-#if defined(FEATURE_COMINTEROP) && !defined(FEATURE_CORESYSTEM)
-//------------------------------------------------------------------------------
-//
-// Attempt to detect the presense of Windows Runtime support on the current OS.
-// Our algorithm to do this is to ensure that:
-//      1. combase.dll exists
-//      2. combase.dll contains a RoInitialize export
-//
-
-void InitWinRTStatus()
-{
-    STATIC_CONTRACT_NOTHROW;
-    STATIC_CONTRACT_GC_NOTRIGGER;
-    STATIC_CONTRACT_CANNOT_TAKE_LOCK;
-
-    WinRTStatusEnum winRTStatus = WINRT_STATUS_UNSUPPORTED;
-
-    const WCHAR wszComBaseDll[] = W("\\combase.dll");
-    const SIZE_T cchComBaseDll = _countof(wszComBaseDll);
-
-    WCHAR wszComBasePath[MAX_LONGPATH + 1];
-    const SIZE_T cchComBasePath = _countof(wszComBasePath);
-
-    ZeroMemory(wszComBasePath, cchComBasePath * sizeof(wszComBasePath[0]));
-
-    UINT cchSystemDirectory = WszGetSystemDirectory(wszComBasePath, MAX_LONGPATH);
-
-    // Make sure that we're only probing in the system directory.  If we can't find the system directory, or
-    // we find it but combase.dll doesn't fit into it, we'll fall back to a safe default of saying that WinRT
-    // is simply not present.
-    if (cchSystemDirectory > 0 && cchComBasePath - cchSystemDirectory >= cchComBaseDll)
-    {
-        if (wcscat_s(wszComBasePath, wszComBaseDll) == 0)
-        {
-            HModuleHolder hComBase(WszLoadLibrary(wszComBasePath));
-            if (hComBase != NULL)
-            {
-                FARPROC activateInstace = GetProcAddress(hComBase, "RoInitialize");
-                if (activateInstace != NULL)
-                {
-                    winRTStatus = WINRT_STATUS_SUPPORTED;
-                }
-            }
-        }
-    }
-
-    gWinRTStatus = winRTStatus;
-}
-#endif // FEATURE_COMINTEROP && !FEATURE_CORESYSTEM
 //*****************************************************************************
 // Convert a string of hex digits into a hex value of the specified # of bytes.
 //*****************************************************************************
@@ -237,7 +190,7 @@ namespace
         StackSString ssDllName;
         if ((wszDllPath == nullptr) || (wszDllPath[0] == W('\0')) || fIsDllPathPrefix)
         {
-#ifndef TARGET_UNIX
+#ifdef HOST_WINDOWS
             IfFailRet(Clr::Util::Com::FindInprocServer32UsingCLSID(rclsid, ssDllName));
 
             EX_TRY
@@ -256,9 +209,9 @@ namespace
             IfFailRet(hr);
 
             wszDllPath = ssDllName.GetUnicode();
-#else // !TARGET_UNIX
+#else // HOST_WINDOWS
             return E_FAIL;
-#endif // !TARGET_UNIX
+#endif // HOST_WINDOWS
         }
         _ASSERTE(wszDllPath != nullptr);
 
@@ -350,168 +303,6 @@ HRESULT FakeCoCreateInstanceEx(REFCLSID       rclsid,
     }
 
     return hr;
-}
-
-#if USE_UPPER_ADDRESS
-static BYTE * s_CodeMinAddr;        // Preferred region to allocate the code in.
-static BYTE * s_CodeMaxAddr;
-static BYTE * s_CodeAllocStart;
-static BYTE * s_CodeAllocHint;      // Next address to try to allocate for code in the preferred region.
-#endif
-
-//
-// Use this function to initialize the s_CodeAllocHint
-// during startup. base is runtime .dll base address,
-// size is runtime .dll virtual size.
-//
-void InitCodeAllocHint(SIZE_T base, SIZE_T size, int randomPageOffset)
-{
-#if USE_UPPER_ADDRESS
-
-#ifdef _DEBUG
-    // If GetForceRelocs is enabled we don't constrain the pMinAddr
-    if (PEDecoder::GetForceRelocs())
-        return;
-#endif
-
-//
-    // If we are using the UPPER_ADDRESS space (on Win64)
-    // then for any code heap that doesn't specify an address
-    // range using [pMinAddr..pMaxAddr] we place it in the
-    // upper address space
-    // This enables us to avoid having to use long JumpStubs
-    // to reach the code for our ngen-ed images.
-    // Which are also placed in the UPPER_ADDRESS space.
-    //
-    SIZE_T reach = 0x7FFF0000u;
-
-    // We will choose the preferred code region based on the address of clr.dll. The JIT helpers
-    // in clr.dll are the most heavily called functions.
-    s_CodeMinAddr = (base + size > reach) ? (BYTE *)(base + size - reach) : (BYTE *)0;
-    s_CodeMaxAddr = (base + reach > base) ? (BYTE *)(base + reach) : (BYTE *)-1;
-
-    BYTE * pStart;
-
-    if (s_CodeMinAddr <= (BYTE *)CODEHEAP_START_ADDRESS &&
-        (BYTE *)CODEHEAP_START_ADDRESS < s_CodeMaxAddr)
-    {
-        // clr.dll got loaded at its preferred base address? (OS without ASLR - pre-Vista)
-        // Use the code head start address that does not cause collisions with NGen images.
-        // This logic is coupled with scripts that we use to assign base addresses.
-        pStart = (BYTE *)CODEHEAP_START_ADDRESS;
-    }
-    else
-    if (base > UINT32_MAX)
-    {
-        // clr.dll got address assigned by ASLR?
-        // Try to occupy the space as far as possible to minimize collisions with other ASLR assigned
-        // addresses. Do not start at s_CodeMinAddr exactly so that we can also reach common native images
-        // that can be placed at higher addresses than clr.dll.
-        pStart = s_CodeMinAddr + (s_CodeMaxAddr - s_CodeMinAddr) / 8;
-    }
-    else
-    {
-        // clr.dll missed the base address?
-        // Try to occupy the space right after it.
-        pStart = (BYTE *)(base + size);
-    }
-
-    // Randomize the address space
-    pStart += GetOsPageSize() * randomPageOffset;
-
-    s_CodeAllocStart = pStart;
-    s_CodeAllocHint = pStart;
-#endif
-}
-
-//
-// Use this function to reset the s_CodeAllocHint
-// after unloading an AppDomain
-//
-void ResetCodeAllocHint()
-{
-    LIMITED_METHOD_CONTRACT;
-#if USE_UPPER_ADDRESS
-    s_CodeAllocHint = s_CodeAllocStart;
-#endif
-}
-
-//
-// Returns TRUE if p is located in near clr.dll that allows us
-// to use rel32 IP-relative addressing modes.
-//
-BOOL IsPreferredExecutableRange(void * p)
-{
-    LIMITED_METHOD_CONTRACT;
-#if USE_UPPER_ADDRESS
-    if (s_CodeMinAddr <= (BYTE *)p && (BYTE *)p < s_CodeMaxAddr)
-        return TRUE;
-#endif
-    return FALSE;
-}
-
-//
-// Allocate free memory that will be used for executable code
-// Handles the special requirements that we have on 64-bit platforms
-// where we want the executable memory to be located near clr.dll
-//
-BYTE * ClrVirtualAllocExecutable(SIZE_T dwSize,
-                                 DWORD flAllocationType,
-                                 DWORD flProtect)
-{
-    CONTRACTL
-    {
-        NOTHROW;
-    }
-    CONTRACTL_END;
-
-#if USE_UPPER_ADDRESS
-    //
-    // If we are using the UPPER_ADDRESS space (on Win64)
-    // then for any heap that will contain executable code
-    // we will place it in the upper address space
-    //
-    // This enables us to avoid having to use JumpStubs
-    // to reach the code for our ngen-ed images on x64,
-    // since they are also placed in the UPPER_ADDRESS space.
-    //
-    BYTE * pHint = s_CodeAllocHint;
-
-    if (dwSize <= (SIZE_T)(s_CodeMaxAddr - s_CodeMinAddr) && pHint != NULL)
-    {
-        // Try to allocate in the preferred region after the hint
-        BYTE * pResult = ClrVirtualAllocWithinRange(pHint, s_CodeMaxAddr, dwSize, flAllocationType, flProtect);
-
-        if (pResult != NULL)
-        {
-            s_CodeAllocHint = pResult + dwSize;
-            return pResult;
-        }
-
-        // Try to allocate in the preferred region before the hint
-        pResult = ClrVirtualAllocWithinRange(s_CodeMinAddr, pHint + dwSize, dwSize, flAllocationType, flProtect);
-
-        if (pResult != NULL)
-        {
-            s_CodeAllocHint = pResult + dwSize;
-            return pResult;
-        }
-
-        s_CodeAllocHint = NULL;
-    }
-
-    // Fall through to
-#endif // USE_UPPER_ADDRESS
-
-#ifdef HOST_UNIX
-    // Tell PAL to use the executable memory allocator to satisfy this request for virtual memory.
-    // This will allow us to place JIT'ed code close to the coreclr library
-    // and thus improve performance by avoiding jump stubs in managed code.
-    flAllocationType |= MEM_RESERVE_EXECUTABLE;
-#endif // HOST_UNIX
-
-    return (BYTE *) ClrVirtualAlloc (NULL, dwSize, flAllocationType, flProtect);
-
 }
 
 //
@@ -621,7 +412,7 @@ BYTE * ClrVirtualAllocWithinRange(const BYTE *pMinAddr,
     }
 
 #ifdef HOST_UNIX
-    pResult = (BYTE *)PAL_VirtualReserveFromExecutableMemoryAllocatorWithinRange(pMinAddr, pMaxAddr, dwSize);
+    pResult = (BYTE *)PAL_VirtualReserveFromExecutableMemoryAllocatorWithinRange(pMinAddr, pMaxAddr, dwSize, TRUE /* fStoreAllocationInfo */);
     if (pResult != nullptr)
     {
         return pResult;
@@ -725,7 +516,7 @@ BYTE * ClrVirtualAllocWithinRange(const BYTE *pMinAddr,
 //******************************************************************************
 // NumaNodeInfo
 //******************************************************************************
-#if !defined(FEATURE_REDHAWK)
+#if !defined(FEATURE_NATIVEAOT)
 
 /*static*/ LPVOID NumaNodeInfo::VirtualAllocExNuma(HANDLE hProc, LPVOID lpAddr, SIZE_T dwSize,
                          DWORD allocType, DWORD prot, DWORD node)
@@ -743,7 +534,7 @@ BYTE * ClrVirtualAllocWithinRange(const BYTE *pMinAddr,
     if (m_enableGCNumaAware)
     {
         DWORD currentProcsOnNode = 0;
-        for (int i = 0; i < m_nNodes; i++)
+        for (uint16_t i = 0; i < m_nNodes; i++)
         {
             GROUP_AFFINITY processorMask;
             if (GetNumaNodeProcessorMaskEx(i, &processorMask))
@@ -779,7 +570,7 @@ BYTE * ClrVirtualAllocWithinRange(const BYTE *pMinAddr,
 /*static*/ uint16_t NumaNodeInfo::m_nNodes = 0;
 /*static*/ BOOL NumaNodeInfo::InitNumaNodeInfoAPI()
 {
-#if !defined(FEATURE_REDHAWK)
+#if !defined(FEATURE_NATIVEAOT)
     //check for numa support if multiple heaps are used
     ULONG highest = 0;
 
@@ -813,7 +604,7 @@ BYTE * ClrVirtualAllocWithinRange(const BYTE *pMinAddr,
 //******************************************************************************
 // CPUGroupInfo
 //******************************************************************************
-#if !defined(FEATURE_REDHAWK)
+#if !defined(FEATURE_NATIVEAOT)
 /*static*/ //CPUGroupInfo::PNTQSIEx CPUGroupInfo::m_pNtQuerySystemInformationEx = NULL;
 
 /*static*/ BOOL CPUGroupInfo::GetLogicalProcessorInformationEx(LOGICAL_PROCESSOR_RELATIONSHIP relationship,
@@ -857,7 +648,7 @@ BYTE * ClrVirtualAllocWithinRange(const BYTE *pMinAddr,
 /*static*/ CPU_Group_Info *CPUGroupInfo::m_CPUGroupInfoArray = NULL;
 /*static*/ LONG CPUGroupInfo::m_initialization = 0;
 
-#if !defined(FEATURE_REDHAWK) && (defined(TARGET_AMD64) || defined(TARGET_ARM64))
+#if !defined(FEATURE_NATIVEAOT) && (defined(TARGET_AMD64) || defined(TARGET_ARM64) || defined(TARGET_LOONGARCH64))
 // Calculate greatest common divisor
 DWORD GCD(DWORD u, DWORD v)
 {
@@ -887,7 +678,7 @@ DWORD LCM(DWORD u, DWORD v)
     }
     CONTRACTL_END;
 
-#if !defined(FEATURE_REDHAWK) && (defined(TARGET_AMD64) || defined(TARGET_ARM64))
+#if !defined(FEATURE_NATIVEAOT) && (defined(TARGET_AMD64) || defined(TARGET_ARM64) || defined(TARGET_LOONGARCH64))
     BYTE *bBuffer = NULL;
     SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX *pSLPIEx = NULL;
     SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX *pRecord = NULL;
@@ -896,8 +687,8 @@ DWORD LCM(DWORD u, DWORD v)
     DWORD dwNumElements = 0;
     DWORD dwWeight = 1;
 
-    if (CPUGroupInfo::GetLogicalProcessorInformationEx(RelationGroup, pSLPIEx, &cbSLPIEx) &&
-                      GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+    if (CPUGroupInfo::GetLogicalProcessorInformationEx(RelationGroup, pSLPIEx, &cbSLPIEx) ||
+        GetLastError() != ERROR_INSUFFICIENT_BUFFER)
         return FALSE;
 
     _ASSERTE(cbSLPIEx);
@@ -937,6 +728,7 @@ DWORD LCM(DWORD u, DWORD v)
     {
         m_CPUGroupInfoArray[i].nr_active   = (WORD)pRecord->Group.GroupInfo[i].ActiveProcessorCount;
         m_CPUGroupInfoArray[i].active_mask = pRecord->Group.GroupInfo[i].ActiveProcessorMask;
+        m_CPUGroupInfoArray[i].begin       = m_nProcessors;
         m_nProcessors += m_CPUGroupInfoArray[i].nr_active;
         dwWeight = LCM(dwWeight, (DWORD)m_CPUGroupInfoArray[i].nr_active);
     }
@@ -958,27 +750,6 @@ DWORD LCM(DWORD u, DWORD v)
 #endif
 }
 
-/*static*/ BOOL CPUGroupInfo::InitCPUGroupInfoRange()
-{
-    LIMITED_METHOD_CONTRACT;
-
-#if !defined(FEATURE_REDHAWK) && (defined(TARGET_AMD64) || defined(TARGET_ARM64))
-    WORD begin   = 0;
-    WORD nr_proc = 0;
-
-    for (WORD i = 0; i < m_nGroups; i++)
-    {
-        nr_proc += m_CPUGroupInfoArray[i].nr_active;
-        m_CPUGroupInfoArray[i].begin = begin;
-        m_CPUGroupInfoArray[i].end   = nr_proc - 1;
-        begin = nr_proc;
-    }
-    return TRUE;
-#else
-    return FALSE;
-#endif
-}
-
 /*static*/ void CPUGroupInfo::InitCPUGroupInfo()
 {
     CONTRACTL
@@ -988,10 +759,8 @@ DWORD LCM(DWORD u, DWORD v)
     }
     CONTRACTL_END;
 
-#if !defined(FEATURE_REDHAWK) && (defined(TARGET_AMD64) || defined(TARGET_ARM64))
-    BOOL enableGCCPUGroups     = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_GCCpuGroup) != 0;
-    BOOL threadUseAllCpuGroups = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_Thread_UseAllCpuGroups) != 0;
-    BOOL threadAssignCpuGroups = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_Thread_AssignCpuGroups) != 0;
+#if !defined(FEATURE_NATIVEAOT) && (defined(TARGET_AMD64) || defined(TARGET_ARM64) || defined(TARGET_LOONGARCH64))
+    BOOL enableGCCPUGroups = Configuration::GetKnobBooleanValue(W("System.GC.CpuGroup"), CLRConfig::EXTERNAL_GCCpuGroup);
 
     if (!enableGCCPUGroups)
         return;
@@ -999,26 +768,25 @@ DWORD LCM(DWORD u, DWORD v)
     if (!InitCPUGroupInfoArray())
         return;
 
-    if (!InitCPUGroupInfoRange())
-        return;
+    // Enable processor groups only if more than one group exists
+    if (m_nGroups > 1)
+    {
+        m_enableGCCPUGroups = TRUE;
+        m_threadUseAllCpuGroups = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_Thread_UseAllCpuGroups) != 0;
+        m_threadAssignCpuGroups = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_Thread_AssignCpuGroups) != 0;
 
-    // initalGroup is whatever the CPU group that the main thread is running on
-    GROUP_AFFINITY groupAffinity;
-    CPUGroupInfo::GetThreadGroupAffinity(GetCurrentThread(), &groupAffinity);
-    m_initialGroup = groupAffinity.Group;
-
-    // only enable CPU groups if more than one group exists
-    BOOL hasMultipleGroups = m_nGroups > 1;
-    m_enableGCCPUGroups = enableGCCPUGroups && hasMultipleGroups;
-    m_threadUseAllCpuGroups = threadUseAllCpuGroups && hasMultipleGroups;
-    m_threadAssignCpuGroups = threadAssignCpuGroups && hasMultipleGroups;
-#endif // TARGET_AMD64 || TARGET_ARM64
+        // Save the processor group affinity of the initial thread
+        GROUP_AFFINITY groupAffinity;
+        CPUGroupInfo::GetThreadGroupAffinity(GetCurrentThread(), &groupAffinity);
+        m_initialGroup = groupAffinity.Group;
+    }
+#endif
 }
 
 /*static*/ BOOL CPUGroupInfo::IsInitialized()
 {
     LIMITED_METHOD_CONTRACT;
-    return (m_initialization == -1);
+    return VolatileLoad(&m_initialization) == -1;
 }
 
 /*static*/ void CPUGroupInfo::EnsureInitialized()
@@ -1039,22 +807,21 @@ DWORD LCM(DWORD u, DWORD v)
     // Vast majority of time, CPUGroupInfo is initialized in case 1. or 2.
     // The chance of contention will be extremely small, so the following code should be fine
     //
-retry:
     if (IsInitialized())
         return;
 
     if (InterlockedCompareExchange(&m_initialization, 1, 0) == 0)
     {
         InitCPUGroupInfo();
-        m_initialization = -1;
+        VolatileStore(&m_initialization, -1L);
     }
-    else //some other thread started initialization, just wait until complete;
+    else
     {
-        while (m_initialization != -1)
+        // Some other thread started initialization, just wait until complete
+        while (VolatileLoad(&m_initialization) != -1)
         {
             SwitchToThread();
         }
-        goto retry;
     }
 }
 
@@ -1069,7 +836,7 @@ retry:
 {
     LIMITED_METHOD_CONTRACT;
 
-#if !defined(FEATURE_REDHAWK) && (defined(TARGET_AMD64) || defined(TARGET_ARM64))
+#if !defined(FEATURE_NATIVEAOT) && (defined(TARGET_AMD64) || defined(TARGET_ARM64) || defined(TARGET_LOONGARCH64))
     WORD bTemp = 0;
     WORD bDiff = processor_number - bTemp;
 
@@ -1100,8 +867,7 @@ retry:
     }
     CONTRACTL_END;
 
-#if !defined(FEATURE_REDHAWK) && (defined(TARGET_AMD64) || defined(TARGET_ARM64))
-    // m_enableGCCPUGroups and m_threadUseAllCpuGroups must be TRUE
+#if !defined(FEATURE_NATIVEAOT) && (defined(TARGET_AMD64) || defined(TARGET_ARM64) || defined(TARGET_LOONGARCH64))
     _ASSERTE(m_enableGCCPUGroups && m_threadUseAllCpuGroups);
 
     PROCESSOR_NUMBER proc_no;
@@ -1139,7 +905,7 @@ retry:
     return false;
 }
 
-#if !defined(FEATURE_REDHAWK)
+#if !defined(FEATURE_NATIVEAOT)
 //Lock ThreadStore before calling this function, so that updates of weights/counts are consistent
 /*static*/ void CPUGroupInfo::ChooseCPUGroupAffinity(GROUP_AFFINITY *gf)
 {
@@ -1150,11 +916,10 @@ retry:
     }
     CONTRACTL_END;
 
-#if (defined(TARGET_AMD64) || defined(TARGET_ARM64))
+#if (defined(TARGET_AMD64) || defined(TARGET_ARM64) || defined(TARGET_LOONGARCH64))
     WORD i, minGroup = 0;
     DWORD minWeight = 0;
 
-    // m_enableGCCPUGroups, m_threadUseAllCpuGroups, and m_threadAssignCpuGroups must be TRUE
     _ASSERTE(m_enableGCCPUGroups && m_threadUseAllCpuGroups && m_threadAssignCpuGroups);
 
     for (i = 0; i < m_nGroups; i++)
@@ -1193,8 +958,7 @@ found:
 /*static*/ void CPUGroupInfo::ClearCPUGroupAffinity(GROUP_AFFINITY *gf)
 {
     LIMITED_METHOD_CONTRACT;
-#if (defined(TARGET_AMD64) || defined(TARGET_ARM64))
-    // m_enableGCCPUGroups, m_threadUseAllCpuGroups, and m_threadAssignCpuGroups must be TRUE
+#if (defined(TARGET_AMD64) || defined(TARGET_ARM64) || defined(TARGET_LOONGARCH64))
     _ASSERTE(m_enableGCCPUGroups && m_threadUseAllCpuGroups && m_threadAssignCpuGroups);
 
     WORD group = gf->Group;
@@ -1226,15 +990,40 @@ BOOL CPUGroupInfo::GetCPUGroupRange(WORD group_number, WORD* group_begin, WORD* 
 /*static*/ BOOL CPUGroupInfo::CanEnableThreadUseAllCpuGroups()
 {
     LIMITED_METHOD_CONTRACT;
+    _ASSERTE(m_enableGCCPUGroups || !m_threadUseAllCpuGroups);
     return m_threadUseAllCpuGroups;
 }
 
 /*static*/ BOOL CPUGroupInfo::CanAssignCpuGroupsToThreads()
 {
     LIMITED_METHOD_CONTRACT;
+    _ASSERTE(m_enableGCCPUGroups || !m_threadAssignCpuGroups);
     return m_threadAssignCpuGroups;
 }
 #endif // HOST_WINDOWS
+
+extern SYSTEM_INFO g_SystemInfo;
+
+int GetTotalProcessorCount()
+{
+    LIMITED_METHOD_CONTRACT;
+
+#ifdef HOST_WINDOWS
+    if (CPUGroupInfo::CanEnableGCCPUGroups())
+    {
+        return CPUGroupInfo::GetNumActiveProcessors();
+    }
+    else
+    {
+        return g_SystemInfo.dwNumberOfProcessors;
+    }
+#else // HOST_WINDOWS
+    return PAL_GetTotalCpuCount();
+#endif // HOST_WINDOWS
+}
+
+// The cached number of CPUs available for the current process
+static DWORD g_currentProcessCpuCount = 0;
 
 //******************************************************************************
 // Returns the number of processors that a process has been configured to run on
@@ -1248,50 +1037,99 @@ int GetCurrentProcessCpuCount()
     }
     CONTRACTL_END;
 
-    static int cCPUs = 0;
+    if (g_currentProcessCpuCount > 0)
+        return g_currentProcessCpuCount;
 
-    if (cCPUs != 0)
-        return cCPUs;
+    DWORD count;
 
-    unsigned int count = 0;
+    // If the configuration value has been set, it takes precedence. Otherwise, take into account
+    // process affinity and CPU quota limit.
 
-#ifdef HOST_WINDOWS
-    DWORD_PTR pmask, smask;
+    DWORD configValue = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_ProcessorCount);
+    const unsigned int MAX_PROCESSOR_COUNT = 0xffff;
 
-    if (!GetProcessAffinityMask(GetCurrentProcess(), &pmask, &smask))
+    if (0 < configValue && configValue <= MAX_PROCESSOR_COUNT)
     {
-        count = 1;
+        count = configValue;
     }
     else
     {
-        pmask &= smask;
+#ifdef HOST_WINDOWS
+        CPUGroupInfo::EnsureInitialized();
 
-        while (pmask)
+        if (CPUGroupInfo::CanEnableThreadUseAllCpuGroups())
         {
-            pmask &= (pmask - 1);
-            count++;
+            count = CPUGroupInfo::GetNumActiveProcessors();
+        }
+        else
+        {
+            DWORD_PTR pmask, smask;
+
+            if (!GetProcessAffinityMask(GetCurrentProcess(), &pmask, &smask))
+            {
+                count = 1;
+            }
+            else
+            {
+                pmask &= smask;
+                count = 0;
+
+                while (pmask)
+                {
+                    pmask &= (pmask - 1);
+                    count++;
+                }
+
+                // GetProcessAffinityMask can return pmask=0 and smask=0 on systems with more
+                // than 64 processors, which would leave us with a count of 0.  Since the GC
+                // expects there to be at least one processor to run on (and thus at least one
+                // heap), we'll return 64 here if count is 0, since there are likely a ton of
+                // processors available in that case.
+                if (count == 0)
+                    count = 64;
+            }
         }
 
-        // GetProcessAffinityMask can return pmask=0 and smask=0 on systems with more
-        // than 64 processors, which would leave us with a count of 0.  Since the GC
-        // expects there to be at least one processor to run on (and thus at least one
-        // heap), we'll return 64 here if count is 0, since there are likely a ton of
-        // processors available in that case.  The GC also cannot (currently) handle
-        // the case where there are more than 64 processors, so we will return a
-        // maximum of 64 here.
-        if (count == 0 || count > 64)
-            count = 64;
-    }
+        JOBOBJECT_CPU_RATE_CONTROL_INFORMATION cpuRateControl;
+
+        if (QueryInformationJobObject(NULL, JobObjectCpuRateControlInformation, &cpuRateControl,
+            sizeof(cpuRateControl), NULL))
+        {
+            const DWORD HardCapEnabled = JOB_OBJECT_CPU_RATE_CONTROL_ENABLE | JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP;
+            const DWORD MinMaxRateEnabled = JOB_OBJECT_CPU_RATE_CONTROL_ENABLE | JOB_OBJECT_CPU_RATE_CONTROL_MIN_MAX_RATE;
+            DWORD maxRate = 0;
+
+            if ((cpuRateControl.ControlFlags & HardCapEnabled) == HardCapEnabled)
+            {
+                maxRate = cpuRateControl.CpuRate;
+            }
+            else if ((cpuRateControl.ControlFlags & MinMaxRateEnabled) == MinMaxRateEnabled)
+            {
+                maxRate = cpuRateControl.MaxRate;
+            }
+
+            // The rate is the percentage times 100
+            const DWORD MAXIMUM_CPU_RATE = 10000;
+
+            if (0 < maxRate && maxRate < MAXIMUM_CPU_RATE)
+            {
+                DWORD cpuLimit = (maxRate * GetTotalProcessorCount() + MAXIMUM_CPU_RATE - 1) / MAXIMUM_CPU_RATE;
+                if (cpuLimit < count)
+                    count = cpuLimit;
+            }
+        }
 
 #else // HOST_WINDOWS
-    count = PAL_GetLogicalCpuCountFromOS();
+        count = PAL_GetLogicalCpuCountFromOS();
 
-    uint32_t cpuLimit;
-    if (PAL_GetCpuLimit(&cpuLimit) && cpuLimit < count)
-        count = cpuLimit;
+        uint32_t cpuLimit;
+        if (PAL_GetCpuLimit(&cpuLimit) && cpuLimit < count)
+            count = cpuLimit;
 #endif // HOST_WINDOWS
+    }
 
-    cCPUs = count;
+    _ASSERTE(count > 0);
+    g_currentProcessCpuCount = count;
 
     return count;
 }
@@ -1406,22 +1244,6 @@ bool ConfigMethodSet::contains(LPCUTF8 methodName, LPCUTF8 className, CORINFO_SI
 }
 
 /**************************************************************************/
-void ConfigDWORD::init_DontUse_(__in_z LPCWSTR keyName, DWORD defaultVal)
-{
-    CONTRACTL
-    {
-        NOTHROW;
-    }
-    CONTRACTL_END;
-
-    // make sure that the memory was zero initialized
-    _ASSERTE(m_inited == 0 || m_inited == 1);
-
-    m_value = REGUTIL::GetConfigDWORD_DontUse_(keyName, defaultVal);
-    m_inited = 1;
-}
-
-/**************************************************************************/
 void ConfigString::init(const CLRConfig::ConfigStringInfo & info)
 {
     CONTRACTL
@@ -1446,7 +1268,7 @@ void ConfigString::init(const CLRConfig::ConfigStringInfo & info)
 // MyAssembly;mscorlib;System
 // MyAssembly;mscorlib System
 
-AssemblyNamesList::AssemblyNamesList(__in LPWSTR list)
+AssemblyNamesList::AssemblyNamesList(_In_ LPWSTR list)
 {
     CONTRACTL {
         THROWS;
@@ -1538,7 +1360,7 @@ bool AssemblyNamesList::IsInList(LPCUTF8 assemblyName)
 // "MyClass:foo2 MyClass:*" will match under _DEBUG
 //
 
-void MethodNamesListBase::Insert(__in_z LPWSTR str)
+void MethodNamesListBase::Insert(_In_z_ LPWSTR str)
 {
     CONTRACTL {
         THROWS;
@@ -1850,12 +1672,12 @@ HRESULT validateOneArg(
 
     BYTE        elementType;          // Current element type being processed.
     mdToken     token;                  // Embedded token.
-    ULONG       ulArgCnt;               // Argument count for function pointer.
-    ULONG       ulIndex;                // Index for type parameters
-    ULONG       ulRank;                 // Rank of the array.
-    ULONG       ulSizes;                // Count of sized dimensions of the array.
-    ULONG       ulLbnds;                // Count of lower bounds of the array.
-    ULONG       ulCallConv;
+    uint32_t    ulArgCnt;               // Argument count for function pointer.
+    uint32_t    ulIndex;                // Index for type parameters
+    uint32_t    ulRank;                 // Rank of the array.
+    uint32_t    ulSizes;                // Count of sized dimensions of the array.
+    uint32_t    ulLbnds;                // Count of lower bounds of the array.
+    uint32_t    ulCallConv;
 
     HRESULT     hr = S_OK;              // Value returned.
     BOOL        bRepeat = TRUE;         // MODOPT and MODREQ belong to the arg after them
@@ -1913,9 +1735,7 @@ HRESULT validateOneArg(
                 // Validate the referenced type.
                 if(FAILED(hr = validateOneArg(tk, pSig, pulNSentinels, pImport, FALSE))) IfFailGo(hr);
                 break;
-            case ELEMENT_TYPE_BYREF:  //fallthru
-                if(TypeFromToken(tk)==mdtFieldDef) IfFailGo(VLDTR_E_SIG_BYREFINFIELD);
-                FALLTHROUGH;
+            case ELEMENT_TYPE_BYREF:
             case ELEMENT_TYPE_PINNED:
             case ELEMENT_TYPE_SZARRAY:
                 // Validate the referenced type.
@@ -2077,9 +1897,9 @@ HRESULT validateTokenSig(
     }
     CONTRACTL_END;
 
-    ULONG       ulCallConv;             // Calling convention.
-    ULONG       ulArgCount = 1;         // Count of arguments (1 because of the return type)
-    ULONG       ulTyArgCount = 0;         // Count of type arguments
+    uint32_t    ulCallConv;             // Calling convention.
+    uint32_t    ulArgCount = 1;         // Count of arguments (1 because of the return type)
+    uint32_t    ulTyArgCount = 0;       // Count of type arguments
     ULONG       ulArgIx = 0;            // Starting index of argument (standalone sig: 1)
     ULONG       i;                      // Looping index.
     HRESULT     hr = S_OK;              // Value returned.
@@ -2780,161 +2600,6 @@ void PutArm64Rel12(UINT32 * pCode, INT32 imm12)
     _ASSERTE(GetArm64Rel12(pCode) == imm12);
 }
 
-//---------------------------------------------------------------------
-// Splits a command line into argc/argv lists, using the VC7 parsing rules.
-//
-// This functions interface mimics the CommandLineToArgvW api.
-//
-// If function fails, returns NULL.
-//
-// If function suceeds, call delete [] on return pointer when done.
-//
-//---------------------------------------------------------------------
-// NOTE: Implementation-wise, once every few years it would be a good idea to
-// compare this code with the C runtime library's parse_cmdline method,
-// which is in vctools\crt\crtw32\startup\stdargv.c.  (Note we don't
-// support wild cards, and we use Unicode characters exclusively.)
-// We are up to date as of ~6/2005.
-//---------------------------------------------------------------------
-LPWSTR *SegmentCommandLine(LPCWSTR lpCmdLine, DWORD *pNumArgs)
-{
-    STATIC_CONTRACT_NOTHROW;
-    STATIC_CONTRACT_GC_NOTRIGGER;
-    STATIC_CONTRACT_FAULT;
-
-
-    *pNumArgs = 0;
-
-    int nch = (int)wcslen(lpCmdLine);
-
-    // Calculate the worstcase storage requirement. (One pointer for
-    // each argument, plus storage for the arguments themselves.)
-    int cbAlloc = (nch+1)*sizeof(LPWSTR) + sizeof(WCHAR)*(nch + 1);
-    LPWSTR pAlloc = new (nothrow) WCHAR[cbAlloc / sizeof(WCHAR)];
-    if (!pAlloc)
-        return NULL;
-
-    LPWSTR *argv = (LPWSTR*) pAlloc;  // We store the argv pointers in the first halt
-    LPWSTR  pdst = (LPWSTR)( ((BYTE*)pAlloc) + sizeof(LPWSTR)*(nch+1) ); // A running pointer to second half to store arguments
-    LPCWSTR psrc = lpCmdLine;
-    WCHAR   c;
-    BOOL    inquote;
-    BOOL    copychar;
-    int     numslash;
-
-    // First, parse the program name (argv[0]). Argv[0] is parsed under
-    // special rules. Anything up to the first whitespace outside a quoted
-    // subtring is accepted. Backslashes are treated as normal characters.
-    argv[ (*pNumArgs)++ ] = pdst;
-    inquote = FALSE;
-    do {
-        if (*psrc == W('"') )
-        {
-            inquote = !inquote;
-            c = *psrc++;
-            continue;
-        }
-        *pdst++ = *psrc;
-
-        c = *psrc++;
-
-    } while ( (c != W('\0') && (inquote || (c != W(' ') && c != W('\t')))) );
-
-    if ( c == W('\0') ) {
-        psrc--;
-    } else {
-        *(pdst-1) = W('\0');
-    }
-
-    inquote = FALSE;
-
-
-
-    /* loop on each argument */
-    for(;;)
-    {
-        if ( *psrc )
-        {
-            while (*psrc == W(' ') || *psrc == W('\t'))
-            {
-                ++psrc;
-            }
-        }
-
-        if (*psrc == W('\0'))
-            break;              /* end of args */
-
-        /* scan an argument */
-        argv[ (*pNumArgs)++ ] = pdst;
-
-        /* loop through scanning one argument */
-        for (;;)
-        {
-            copychar = 1;
-            /* Rules: 2N backslashes + " ==> N backslashes and begin/end quote
-               2N+1 backslashes + " ==> N backslashes + literal "
-               N backslashes ==> N backslashes */
-            numslash = 0;
-            while (*psrc == W('\\'))
-            {
-                /* count number of backslashes for use below */
-                ++psrc;
-                ++numslash;
-            }
-            if (*psrc == W('"'))
-            {
-                /* if 2N backslashes before, start/end quote, otherwise
-                   copy literally */
-                if (numslash % 2 == 0)
-                {
-                    if (inquote && psrc[1] == W('"'))
-                    {
-                        psrc++;    /* Double quote inside quoted string */
-                    }
-                    else
-                    {
-                        /* skip first quote char and copy second */
-                        copychar = 0;       /* don't copy quote */
-                        inquote = !inquote;
-                    }
-                }
-                numslash /= 2;          /* divide numslash by two */
-            }
-
-            /* copy slashes */
-            while (numslash--)
-            {
-                *pdst++ = W('\\');
-            }
-
-            /* if at end of arg, break loop */
-            if (*psrc == W('\0') || (!inquote && (*psrc == W(' ') || *psrc == W('\t'))))
-                break;
-
-            /* copy character into argument */
-            if (copychar)
-            {
-                *pdst++ = *psrc;
-            }
-            ++psrc;
-        }
-
-        /* null-terminate the argument */
-
-        *pdst++ = W('\0');          /* terminate string */
-    }
-
-    /* We put one last argument in -- a null ptr */
-    argv[ (*pNumArgs) ] = NULL;
-
-    // If we hit this assert, we overwrote our destination buffer.
-    // Since we're supposed to allocate for the worst
-    // case, either the parsing rules have changed or our worse case
-    // formula is wrong.
-    _ASSERTE((BYTE*)pdst <= (BYTE*)pAlloc + cbAlloc);
-    return argv;
-}
-
 //======================================================================
 // This function returns true, if it can determine that the instruction pointer
 // refers to a code address that belongs in the range of the given image.
@@ -3191,7 +2856,7 @@ namespace Reg
         }
     }
 
-    HRESULT ReadStringValue(HKEY hKey, LPCWSTR wszSubKey, LPCWSTR wszName, __deref_out __deref_out_z LPWSTR* pwszValue)
+    HRESULT ReadStringValue(HKEY hKey, LPCWSTR wszSubKey, LPCWSTR wszName, _Outptr_ _Outptr_result_z_ LPWSTR* pwszValue)
     {
         CONTRACTL {
             NOTHROW;
@@ -3224,7 +2889,7 @@ namespace Com
             STANDARD_VM_CONTRACT;
 
             WCHAR wszClsid[39];
-            if (GuidToLPWSTR(rclsid, wszClsid, NumItems(wszClsid)) == 0)
+            if (GuidToLPWSTR(rclsid, wszClsid, ARRAY_SIZE(wszClsid)) == 0)
                 return E_UNEXPECTED;
 
             StackSString ssKeyName;

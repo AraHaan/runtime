@@ -17,6 +17,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -24,7 +25,7 @@ using System.Text;
 using System.Runtime.CompilerServices;
 namespace Microsoft.Diagnostics.Tracing
 #else
-using Internal.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 namespace System.Diagnostics.Tracing
 #endif
 {
@@ -36,6 +37,8 @@ namespace System.Diagnostics.Tracing
         private byte[] ProviderMetadata => m_providerMetadata ?? Array.Empty<byte>();
 #else
         private protected virtual ReadOnlySpan<byte> ProviderMetadata => m_providerMetadata;
+        private const string EventSourceRequiresUnreferenceMessage = "EventSource will serialize the whole object graph. Trimmer will not safely handle this case because properties may be trimmed. This can be suppressed if the object is a primitive type";
+        private const string EventSourceSuppressMessage = "Parameters to this method are primitive and are trimmer safe";
 #endif
 #endif
 
@@ -87,14 +90,10 @@ namespace System.Diagnostics.Tracing
             EventSourceSettings config,
             params string[]? traits)
             : this(
-                eventSourceName == null ? default : GenerateGuidFromName(eventSourceName.ToUpperInvariant()),
-                eventSourceName!,
+                GenerateGuidFromName((eventSourceName ?? throw new ArgumentNullException(nameof(eventSourceName))).ToUpperInvariant()),
+                eventSourceName,
                 config, traits)
         {
-            if (eventSourceName == null)
-            {
-                throw new ArgumentNullException(nameof(eventSourceName));
-            }
         }
 
         /// <summary>
@@ -102,6 +101,10 @@ namespace System.Diagnostics.Tracing
         /// (Native API: EventWriteTransfer)
         /// </summary>
         /// <param name="eventName">The name of the event.</param>
+#if !ES_BUILD_STANDALONE
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:UnrecognizedReflectionPattern",
+                   Justification = EventSourceSuppressMessage)]
+#endif
         public unsafe void Write(string? eventName)
         {
             if (!this.IsEnabled())
@@ -122,6 +125,10 @@ namespace System.Diagnostics.Tracing
         /// Options for the event, such as the level, keywords, and opcode. Unset
         /// options will be set to default values.
         /// </param>
+#if !ES_BUILD_STANDALONE
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:UnrecognizedReflectionPattern",
+                   Justification = EventSourceSuppressMessage)]
+#endif
         public unsafe void Write(string? eventName, EventSourceOptions options)
         {
             if (!this.IsEnabled())
@@ -151,7 +158,15 @@ namespace System.Diagnostics.Tracing
         /// public instance properties of data will be written recursively to
         /// create the fields of the event.
         /// </param>
+#if !ES_BUILD_STANDALONE
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                    Justification = "EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                    "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
+        [RequiresUnreferencedCode(EventSourceRequiresUnreferenceMessage)]
+        public unsafe void Write<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(
+#else
         public unsafe void Write<T>(
+#endif
             string? eventName,
             T data)
         {
@@ -187,7 +202,15 @@ namespace System.Diagnostics.Tracing
         /// public instance properties of data will be written recursively to
         /// create the fields of the event.
         /// </param>
+#if !ES_BUILD_STANDALONE
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                    Justification = "EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                    "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
+        [RequiresUnreferencedCode(EventSourceRequiresUnreferenceMessage)]
+        public unsafe void Write<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(
+#else
         public unsafe void Write<T>(
+#endif
             string? eventName,
             EventSourceOptions options,
             T data)
@@ -225,7 +248,15 @@ namespace System.Diagnostics.Tracing
         /// public instance properties of data will be written recursively to
         /// create the fields of the event.
         /// </param>
+#if !ES_BUILD_STANDALONE
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                    Justification = "EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                    "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
+        [RequiresUnreferencedCode(EventSourceRequiresUnreferenceMessage)]
+        public unsafe void Write<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(
+#else
         public unsafe void Write<T>(
+#endif
             string? eventName,
             ref EventSourceOptions options,
             ref T data)
@@ -270,7 +301,15 @@ namespace System.Diagnostics.Tracing
         /// public instance properties of data will be written recursively to
         /// create the fields of the event.
         /// </param>
+#if !ES_BUILD_STANDALONE
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                    Justification = "EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                    "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
+        [RequiresUnreferencedCode(EventSourceRequiresUnreferenceMessage)]
+        public unsafe void Write<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(
+#else
         public unsafe void Write<T>(
+#endif
             string? eventName,
             ref EventSourceOptions options,
             ref Guid activityId,
@@ -714,19 +753,15 @@ namespace System.Diagnostics.Tracing
 
         private unsafe void WriteToAllListeners(string? eventName, ref EventDescriptor eventDescriptor, EventTags tags, Guid* pActivityId, Guid* pChildActivityId, EventPayload? payload)
         {
-            EventWrittenEventArgs eventCallbackArgs = new EventWrittenEventArgs(this);
-            eventCallbackArgs.EventName = eventName;
-            eventCallbackArgs.m_level = (EventLevel)eventDescriptor.Level;
-            eventCallbackArgs.m_keywords = (EventKeywords)eventDescriptor.Keywords;
-            eventCallbackArgs.m_opcode = (EventOpcode)eventDescriptor.Opcode;
-            eventCallbackArgs.m_tags = tags;
-
             // Self described events do not have an id attached. We mark it internally with -1.
-            eventCallbackArgs.EventId = -1;
-            if (pActivityId != null)
-                eventCallbackArgs.ActivityId = *pActivityId;
-            if (pChildActivityId != null)
-                eventCallbackArgs.RelatedActivityId = *pChildActivityId;
+            var eventCallbackArgs = new EventWrittenEventArgs(this, -1, pActivityId, pChildActivityId)
+            {
+                EventName = eventName,
+                Level = (EventLevel)eventDescriptor.Level,
+                Keywords = (EventKeywords)eventDescriptor.Keywords,
+                Opcode = (EventOpcode)eventDescriptor.Opcode,
+                Tags = tags
+            };
 
             if (payload != null)
             {
@@ -734,7 +769,7 @@ namespace System.Diagnostics.Tracing
                 eventCallbackArgs.PayloadNames = new ReadOnlyCollection<string>((IList<string>)payload.Keys);
             }
 
-            DispatchToAllListeners(-1, eventCallbackArgs);
+            DispatchToAllListeners(eventCallbackArgs);
         }
 
 #if ES_BUILD_STANDALONE

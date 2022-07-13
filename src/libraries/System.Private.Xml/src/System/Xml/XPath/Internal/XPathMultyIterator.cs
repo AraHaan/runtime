@@ -1,20 +1,20 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+using System.Xml;
+using System.Xml.XPath;
+using System.Diagnostics;
+using System.Globalization;
+using System.Collections;
+
 namespace MS.Internal.Xml.XPath
 {
-    using System;
-    using System.Xml;
-    using System.Xml.XPath;
-    using System.Diagnostics;
-    using System.Globalization;
-    using System.Collections;
-
-    internal class XPathMultyIterator : ResetableIterator
+    internal sealed class XPathMultyIterator : ResetableIterator
     {
-        protected ResetableIterator[] arr;
-        protected int firstNotEmpty;
-        protected int position;
+        private ResetableIterator[] arr;
+        private int firstNotEmpty;
+        private int position;
 
         public XPathMultyIterator(ArrayList inputArray)
         {

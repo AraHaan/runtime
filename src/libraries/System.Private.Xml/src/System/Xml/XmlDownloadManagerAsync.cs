@@ -9,9 +9,9 @@ using System.Threading.Tasks;
 
 namespace System.Xml
 {
-    internal partial class XmlDownloadManager
+    internal sealed partial class XmlDownloadManager
     {
-        internal Task<Stream> GetStreamAsync(Uri uri, ICredentials? credentials, IWebProxy? proxy)
+        internal static Task<Stream> GetStreamAsync(Uri uri, ICredentials? credentials, IWebProxy? proxy)
         {
             if (uri.Scheme == "file")
             {
@@ -24,7 +24,7 @@ namespace System.Xml
             }
         }
 
-        private async Task<Stream> GetNonFileStreamAsync(Uri uri, ICredentials? credentials, IWebProxy? proxy)
+        private static async Task<Stream> GetNonFileStreamAsync(Uri uri, ICredentials? credentials, IWebProxy? proxy)
         {
             var handler = new HttpClientHandler();
             using (var client = new HttpClient(handler))

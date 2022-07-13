@@ -1,27 +1,31 @@
 # Testing Libraries on Android
 
+## Prerequisites
+
 The following dependencies should be installed in order to be able to run tests:
 
+- OpenJDK
 - Android NDK
 - Android SDK
-- OpenJDK
-- OpenSSL
+
+To manage the dependencies, you can install them via terminal or using Android Studio.
+
+### Using a terminal
 
 OpenJDK can be installed on Linux (Ubuntu) using `apt-get`:
 ```bash
-sudo apt-get install openjdk-8 unzip
+sudo apt-get install openjdk-8-jdk zip unzip
 ```
 
-Android SDK, NDK and OpenSSL can be automatically installed via the following script:
+Android SDK and NDK can be automatically installed via the following script:
 ```bash
 #!/usr/bin/env bash
 set -e
 
-NDK_VER=r21b
+NDK_VER=r23c
 SDK_VER=6200805_latest
 SDK_API_LEVEL=29
 SDK_BUILD_TOOLS=29.0.3
-OPENSSL_VER=1.1.1g-alpha-1
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     HOST_OS=darwin
@@ -35,7 +39,7 @@ fi
 
 # download Android NDK
 export ANDROID_NDK_ROOT=~/android-ndk-${NDK_VER}
-curl https://dl.google.com/android/repository/android-ndk-${NDK_VER}-${HOST_OS}-x86_64.zip -L --output ~/andk.zip
+curl https://dl.google.com/android/repository/android-ndk-${NDK_VER}-${HOST_OS}.zip -L --output ~/andk.zip
 unzip ~/andk.zip -d $(dirname ${ANDROID_NDK_ROOT}) && rm -rf ~/andk.zip
 
 # download Android SDK, accept licenses and download additional packages such as
@@ -45,17 +49,22 @@ curl https://dl.google.com/android/repository/commandlinetools-${HOST_OS_SHORT}-
 mkdir ${ANDROID_SDK_ROOT} && unzip ~/asdk.zip -d ${ANDROID_SDK_ROOT}/cmdline-tools && rm -rf ~/asdk.zip
 yes | ${ANDROID_SDK_ROOT}/cmdline-tools/tools/bin/sdkmanager --sdk_root=${ANDROID_SDK_ROOT} --licenses
 ${ANDROID_SDK_ROOT}/cmdline-tools/tools/bin/sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "platform-tools" "platforms;android-${SDK_API_LEVEL}" "build-tools;${SDK_BUILD_TOOLS}"
-
-# We also need to download precompiled binaries and headers for OpenSSL from maven, this step is a temporary hack
-# and will be removed once we figure out how to integrate OpenSSL properly as a dependency
-export ANDROID_OPENSSL_AAR=~/openssl-android
-curl https://maven.google.com/com/android/ndk/thirdparty/openssl/${OPENSSL_VER}/openssl-${OPENSSL_VER}.aar -L --output ~/openssl.zip
-unzip ~/openssl.zip -d ${ANDROID_OPENSSL_AAR} && rm -rf ~/openssl.zip
-printf "\n\nexport ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT}\nexport ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}\nexport ANDROID_OPENSSL_AAR=${ANDROID_OPENSSL_AAR}\n" >> ${BASHRC}
 ```
-Save it to a file (e.g. `deps.sh`) and execute using `source` (e.g. `chmod +x deps.sh && source ./deps.sh`) in order to propogate the `ANDROID_NDK_ROOT`, `ANDROID_SDK_ROOT` and `ANDROID_OPENSSL_AAR` environment variables to the current process.
+
+### Using Android Studio
+
+Android Studio offers a convenient UI:
+- to install all the dependencies;
+- to manage android virtual devices;
+- to make easy use of adb logs.
 
 ## Building Libs and Tests for Android
+
+Before running a build you might want to set the Android SDK and NDK environment variables:
+```
+export ANDROID_SDK_ROOT=<PATH-TO-ANDROID-SDK>
+export ANDROID_NDK_ROOT=<PATH-TO-ANDROID-NDK>  
+```
 
 Now we're ready to build everything for Android:
 ```
@@ -74,8 +83,35 @@ The following shows how to run tests for a specific library
 ./dotnet.sh build /t:Test src/libraries/System.Numerics.Vectors/tests /p:TargetOS=Android /p:TargetArchitecture=x64
 ```
 
+### Running the functional tests
+
+There are [functional tests](https://github.com/dotnet/runtime/tree/main/src/tests/FunctionalTests/) which aim to test some specific features/configurations/modes on a target mobile platform.
+
+A functional test can be run the same way as any library test suite, e.g.:
+```
+./dotnet.sh build /t:Test -c Release /p:TargetOS=Android /p:TargetArchitecture=x64 src/tests/FunctionalTests/Android/Device_Emulator/PInvoke/Android.Device_Emulator.PInvoke.Test.csproj
+```
+
+Currently functional tests are expected to return `42` as a success code so please be careful when adding a new one.
+
+### Testing various configurations
+
+It's possible to test various configurations by setting a combination of additional MSBuild properties such as `RunAOTCompilation`,`MonoForceInterpreter`, and some more.
+
+1. AOT
+
+To build for AOT only mode, add `/p:RunAOTCompilation=true /p:MonoForceInterpreter=false` to a build command.
+
+2. AOT-LLVM
+
+To build for AOT-LLVM mode, add `/p:RunAOTCompilation=true /p:MonoForceInterpreter=false /p:MonoEnableLLVM=true` to a build command.
+
+3. Interpreter
+
+To build for Interpreter mode, add `/p:RunAOTCompilation=false /p:MonoForceInterpreter=true` to a build command.
+
 ### Test App Design
-Android app is basically a [Java Instrumentation](https://github.com/dotnet/runtime/blob/master/src/mono/msbuild/AndroidAppBuilder/Templates/MonoRunner.java) and a simple Activity that inits the Mono Runtime via JNI. This Mono Runtime starts a simple xunit test
+Android app is basically a [Java Instrumentation](https://github.com/dotnet/runtime/blob/main/src/tasks/AndroidAppBuilder/Templates/MonoRunner.java) and a simple Activity that inits the Mono Runtime via JNI. This Mono Runtime starts a simple xunit test
 runner called XHarness.TestRunner (see https://github.com/dotnet/xharness) which runs tests for all `*.Tests.dll` libs in the bundle. There is also XHarness.CLI tool with ADB embedded to deploy `*.apk` to a target (device or emulator) and obtain logs once tests are completed.
 
 ### Obtaining the logs
@@ -83,7 +119,7 @@ XHarness for Android doesn't talk much and only saves test results to a file. Ho
 ```
 adb logcat -s "DOTNET"
 ```
-Or simply open `logcat` window in Android Studio or Visual Stuido.
+Or simply open `logcat` window in Android Studio or Visual Studio.
 
 ### AVD Manager
 If Android Studio is installed, [AVD Manager](https://developer.android.com/studio/run/managing-avds) can be used from the IDE to create and start Android virtual devices. Otherwise, the Android SDK provides the [`avdmanager` command line tool](https://developer.android.com/studio/command-line/avdmanager).
@@ -114,3 +150,7 @@ The emulator can be launched with a variety of options. Run `emulator -help` to 
 - `-os Android` is not supported for Windows yet (`WSL` can be used instead)
 - XHarness.CLI is not able to boot emulators yet (so you need to boot via `AVD Manager` or IDE)
 - AOT and Interpreter modes are not supported yet
+
+### Debugging the native runtime code using Android Studio
+
+See [Debugging Android](../../debugging/mono/android-debugging.md)

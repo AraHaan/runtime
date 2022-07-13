@@ -13,11 +13,11 @@ Before proceeding further, please click on the link above that matches your mach
 To build a complete runtime environment, you need to build both the Mono runtime and libraries.  At the repo root, simply execute:
 
 ```bash
-./build.sh --subset mono+libs
+./build.sh mono+libs
 ```
 or on Windows,
 ```cmd
-build.cmd -subset mono+libs
+build.cmd mono+libs
 ```
 Note that the debug configuration is the default option. It generates a 'debug' output and that includes asserts, fewer code optimizations, and is easier for debugging. If you want to make performance measurements, or just want tests to execute more quickly, you can also build the 'release' version which does not have these checks by adding the flag `-configuration release` (or `-c release`).
 
@@ -25,13 +25,32 @@ Note that the debug configuration is the default option. It generates a 'debug' 
 Once you've built the complete runtime and assuming you want to work with just mono, you want to use the following command:
 
 ```bash
-./build.sh --subset mono
+./build.sh mono
 ```
 or on Windows,
 ```cmd
-build.cmd -subset mono
+build.cmd mono
 ```
 When the build completes, product binaries will be dropped in the `artifacts\bin\mono\<OS>.<arch>.<flavor>` folder.
+
+If you need to run library tests or run HelloWorld sample with your change to mono, you want to build mono with this command instead:
+
+```bash
+./build.sh mono+libs.pretest
+```
+or on Windows,
+```cmd
+build.cmd mono+libs.pretest
+```
+
+If you want to skip restoring nuget packages, when only making change to mono, you want to use this command:
+```bash
+./build.sh mono --build
+```
+or on Windows,
+```cmd
+build.cmd mono --build
+```
 
 ### Useful Build Arguments
 Here are a list of build arguments that may be of use:
@@ -66,11 +85,11 @@ See the instructions for [Testing iOS](../../testing/libraries/testing-apple.md)
 To generate nuget packages:
 
 ```bash
-./build.sh --subset mono -pack (with optional release configuration)
+./build.sh packs -runtimeFlavor mono (with optional release configuration)
 ```
 or on Windows,
 ```cmd
-build.cmd -subset mono -pack (with optional release configuration)
+build.cmd packs -runtimeFlavor mono (with optional release configuration)
 ```
 
 The following packages will be created under `artifacts\packages\<configuration>\Shipping`:
@@ -85,7 +104,7 @@ The following packages will be created under `artifacts\packages\<configuration>
 Try the sample at `src/mono/sample/HelloWorld`.
 To run this sample, from the above folder
 ```cd ../..
-make run-sample
+make run
 ```
 
 ## Important Notes

@@ -5,6 +5,8 @@ using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using System.Collections;
 using Xunit;
+using Xunit.Sdk;
+using System.Reflection;
 
 namespace System.DirectoryServices.Tests
 {
@@ -12,6 +14,13 @@ namespace System.DirectoryServices.Tests
     {
         internal static bool IsLdapConfigurationExist => LdapConfiguration.Configuration != null;
         internal static bool IsActiveDirectoryServer => IsLdapConfigurationExist && LdapConfiguration.Configuration.IsActiveDirectoryServer;
+
+        [Fact]
+        public void TestGetAllTypes()
+        {
+            Type[] allTypes = typeof(DirectoryEntry).Assembly.GetTypes();
+            Assert.Contains(typeof(DirectoryEntry), allTypes);
+        }
 
         [ConditionalFact(nameof(IsLdapConfigurationExist))]
         public void TestOU() // adding and removing organization unit
@@ -534,12 +543,12 @@ namespace System.DirectoryServices.Tests
         private void CheckSpecificException(Action blockToExecute)
         {
             Exception exception = Record.Exception(blockToExecute);
-            Assert.NotNull(exception);
+            Assert.True(exception != null, "No exception was thrown");
 
-            if (IsActiveDirectoryServer)
-                Assert.IsType<DirectoryServicesCOMException>(exception);
-            else
-                Assert.IsType<COMException>(exception);
+            Type expected = IsActiveDirectoryServer ? typeof(DirectoryServicesCOMException) : typeof(COMException);
+
+            if (exception.GetType() != expected)
+                throw new XunitException(String.Format("Expected exception type '{0}' got '{1}' with message '{2}'", expected, exception.GetType(), exception.Message));
         }
 
         private DirectoryEntry CreateOU(DirectoryEntry de, string ou, string description)

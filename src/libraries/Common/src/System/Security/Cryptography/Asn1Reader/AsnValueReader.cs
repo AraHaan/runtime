@@ -34,6 +34,18 @@ namespace System.Formats.Asn1
             return Asn1Tag.Decode(_span, out _);
         }
 
+        internal ReadOnlySpan<byte> PeekContentBytes()
+        {
+            AsnDecoder.ReadEncodedValue(
+                _span,
+                _ruleSet,
+                out int contentOffset,
+                out int contentLength,
+                out _);
+
+            return _span.Slice(contentOffset, contentLength);
+        }
+
         internal ReadOnlySpan<byte> PeekEncodedValue()
         {
             AsnDecoder.ReadEncodedValue(_span, _ruleSet, out _, out _, out int consumed);
@@ -196,6 +208,13 @@ namespace System.Formats.Asn1
             _span = _span.Slice(consumed);
             return ret;
         }
+
+        internal TEnum ReadEnumeratedValue<TEnum>(Asn1Tag? expectedTag = null) where TEnum : Enum
+        {
+            TEnum ret = AsnDecoder.ReadEnumeratedValue<TEnum>(_span, _ruleSet, out int consumed, expectedTag);
+            _span = _span.Slice(consumed);
+            return ret;
+        }
     }
 
     internal static class AsnWriterExtensions
@@ -226,6 +245,13 @@ namespace System.Formats.Asn1
             {
                 throw new CryptographicException(SR.Cryptography_Der_Invalid_Encoding, e);
             }
+        }
+
+        internal static ArraySegment<byte> RentAndEncode(this AsnWriter writer)
+        {
+            byte[] rented = CryptoPool.Rent(writer.GetEncodedLength());
+            int written = writer.Encode(rented);
+            return new ArraySegment<byte>(rented, 0, written);
         }
     }
 }

@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -10,7 +11,7 @@ namespace System.Diagnostics
 {
     // Need our own stackframe class since the shared version has its own fields
     [StructLayout(LayoutKind.Sequential)]
-    internal class MonoStackFrame
+    internal sealed class MonoStackFrame
     {
         #region Keep in sync with object-internals.h
         internal int ilOffset;
@@ -35,6 +36,8 @@ namespace System.Diagnostics
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal static extern MonoStackFrame[] get_trace(Exception e, int skipFrames, bool needFileInfo);
 
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode",
+            Justification = "StackFrame.GetMethod is getting compared to null but nothing else on it is touched.")]
         [MethodImplAttribute(MethodImplOptions.NoInlining)]
         private void InitializeForCurrentThread(int skipFrames, bool needFileInfo)
         {

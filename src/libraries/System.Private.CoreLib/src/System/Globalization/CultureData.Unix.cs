@@ -5,15 +5,12 @@ using System.Diagnostics;
 
 namespace System.Globalization
 {
-    internal partial class CultureData
+    internal sealed partial class CultureData
     {
         private bool InitCultureDataCore() => InitIcuCultureDataCore();
 
-        private void InitUserOverride(bool useUserOverride)
-        {
-            // Unix doesn't support user overrides
-            _bUseOverrides = false;
-        }
+        // Unix doesn't support user overrides
+        partial void InitUserOverride(bool useUserOverride);
 
         private static string? LCIDToLocaleName(int culture)
         {

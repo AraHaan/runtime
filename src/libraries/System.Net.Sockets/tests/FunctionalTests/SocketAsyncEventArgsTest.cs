@@ -561,7 +561,7 @@ namespace System.Net.Sockets.Tests
                 const int acceptBufferSize = acceptBufferOverheadSize + acceptBufferDataSize;
 
                 byte[] sendBuffer = new byte[acceptBufferDataSize];
-                new Random().NextBytes(sendBuffer);
+                Random.Shared.NextBytes(sendBuffer);
 
                 SocketAsyncEventArgs acceptArgs = new SocketAsyncEventArgs();
                 acceptArgs.Completed += OnAcceptCompleted;
@@ -577,22 +577,16 @@ namespace System.Net.Sockets.Tests
                     client.Shutdown(SocketShutdown.Both);
                 }
 
-                Assert.True(
-                    accepted.WaitOne(TestSettings.PassingTestTimeout), "Test completed in allotted time");
+                Assert.True(accepted.WaitOne(TestSettings.PassingTestTimeout), "Test completed in allotted time");
 
-                Assert.Equal(
-                    SocketError.Success, acceptArgs.SocketError);
+                Assert.Equal(SocketError.Success, acceptArgs.SocketError);
 
-                Assert.Equal(
-                    acceptBufferDataSize, acceptArgs.BytesTransferred);
+                Assert.Equal(acceptBufferDataSize, acceptArgs.BytesTransferred);
 
-                Assert.Equal(
-                    new ArraySegment<byte>(sendBuffer),
-                    new ArraySegment<byte>(acceptArgs.Buffer, 0, acceptArgs.BytesTransferred));
+                AssertExtensions.SequenceEqual(sendBuffer, acceptArgs.Buffer.AsSpan().Slice(0, acceptArgs.BytesTransferred));
             }
         }
 
-        [OuterLoop]
         [Fact]
         [PlatformSpecific(TestPlatforms.Windows)]  // Unix platforms don't yet support receiving data with AcceptAsync.
         public void AcceptAsync_WithTooSmallReceiveBuffer_Failure()
@@ -609,7 +603,7 @@ namespace System.Net.Sockets.Tests
                 byte[] buffer = new byte[1];
                 acceptArgs.SetBuffer(buffer, 0, buffer.Length);
 
-                AssertExtensions.Throws<ArgumentException>(null, () => server.AcceptAsync(acceptArgs));
+                AssertExtensions.Throws<ArgumentException>("Count", () => server.AcceptAsync(acceptArgs));
             }
         }
 

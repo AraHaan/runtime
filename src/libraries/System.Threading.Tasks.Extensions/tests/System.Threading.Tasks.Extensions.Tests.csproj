@@ -1,13 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>$(NetCoreAppCurrent)</TargetFrameworks>
+    <TargetFramework>$(NetCoreAppCurrent)</TargetFramework>
     <IncludeRemoteExecutor>true</IncludeRemoteExecutor>
     <TestRuntime>true</TestRuntime>
+    <!--Remove once this is fixed, https://github.com/dotnet/runtime/issues/71506 -->
+    <IlcTrimMetadata>false</IlcTrimMetadata>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="AsyncMethodBuilderAttributeTests.cs" />
     <Compile Include="AsyncValueTaskMethodBuilderTests.cs" />
     <Compile Include="ManualResetValueTaskSourceTests.cs" />
+    <Compile Include="PoolingAsyncValueTaskMethodBuilderTests.cs" />
     <Compile Include="ValueTaskTests.cs" />
     <Compile Include="$(CommonTestPath)System\Threading\Tasks\Sources\ManualResetValueTaskSource.cs"
              Link="Common\System\Threading\Tasks\Sources\ManualResetValueTaskSource.cs" />

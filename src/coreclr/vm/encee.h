@@ -202,18 +202,18 @@ class EditAndContinueModule : public Module
     // Return the minimum permissable address for new IL to be stored at
     // This can't be less than the current load address because then we'd
     // have negative RVAs.
-    BYTE *GetEnCBase() { return (BYTE *) GetFile()->GetManagedFileContents(); }
+    BYTE *GetEnCBase() { return (BYTE *) GetPEAssembly()->GetManagedFileContents(); }
 #endif // DACCESS_COMPILE
 
 private:
     // Constructor is invoked only by Module::Create
-    friend Module *Module::Create(Assembly *pAssembly, mdToken moduleRef, PEFile *file, AllocMemTracker *pamTracker);
-    EditAndContinueModule(Assembly *pAssembly, mdToken moduleRef, PEFile *file);
+    friend Module *Module::Create(Assembly *pAssembly, mdToken moduleRef, PEAssembly *pPEAssembly, AllocMemTracker *pamTracker);
+    EditAndContinueModule(Assembly *pAssembly, mdToken moduleRef, PEAssembly *pPEAssembly);
 
 protected:
 #ifndef DACCESS_COMPILE
     // Initialize the module
-    virtual void Initialize(AllocMemTracker *pamTracker);
+    virtual void Initialize(AllocMemTracker *pamTracker, LPCWSTR szName = NULL);
 #endif
 
 public:
@@ -223,6 +223,8 @@ public:
     // wouldn't be called.
     virtual void Destruct();
 #endif
+
+    virtual BOOL IsEditAndContinueCapable() const { return TRUE; }
 
     // Apply an EnC edit
     HRESULT ApplyEditAndContinue(DWORD cbMetadata,
@@ -405,12 +407,15 @@ public:
     // Get the next fieldDesc (either EnC or non-EnC)
     PTR_FieldDesc Next();
 
+    int Count();
 #else
     // Non-EnC version - simple wrapper
     EncApproxFieldDescIterator(MethodTable *pMT, int iteratorType, BOOL fixupEnC) :
       m_nonEnCIter( pMT, iteratorType ) {}
 
     PTR_FieldDesc Next() { WRAPPER_NO_CONTRACT; return m_nonEnCIter.Next(); }
+
+    int Count() { WRAPPER_NO_CONTRACT; return m_nonEnCIter.Count(); }
 #endif // EnC_SUPPORTED
 
     int GetIteratorType()

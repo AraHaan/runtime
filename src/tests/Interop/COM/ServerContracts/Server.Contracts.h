@@ -375,6 +375,10 @@ IErrorMarshalTesting : IUnknown
         /*[in]*/ int hresultToReturn ) = 0;
       virtual int STDMETHODCALLTYPE Return_As_HResult_Struct (
         /*[in]*/ int hresultToReturn ) = 0;
+      virtual HRESULT STDMETHODCALLTYPE Throw_HResult_HelpLink (
+        /*[in]*/ int hresultToReturn,
+        /*[in]*/ LPCWSTR helpLink,
+        /*[in]*/ DWORD helpContext ) = 0;
 };
 
 enum IDispatchTesting_Exception
@@ -496,6 +500,12 @@ struct __declspec(uuid("e9e1ccf9-8e93-4850-ac1c-a71692cb68c5"))
 IInspectableTesting2 : IInspectable
 {
     virtual HRESULT STDMETHODCALLTYPE Add(_In_ int i, _In_ int j, _Out_ _Ret_ int* retVal) = 0;
+};
+
+struct __declspec(uuid("57f396a1-58a0-425f-8807-9f938a534984"))
+ITrackMyLifetimeTesting : IUnknown
+{
+    virtual HRESULT STDMETHODCALLTYPE GetAllocationCountCallback(_Outptr_ void** fptr) = 0;
 };
 
 #pragma pack(pop)

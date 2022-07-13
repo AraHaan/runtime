@@ -11,7 +11,7 @@ using System.Text.RegularExpressions;
 
 namespace System.DirectoryServices.AccountManagement
 {
-    internal class SAMQuerySet : ResultSet
+    internal sealed class SAMQuerySet : ResultSet
     {
         // We will iterate over all principals under ctxBase, returning only those which are in the list of types and which
         // satisfy ALL the matching properties.
@@ -164,8 +164,7 @@ namespace System.DirectoryServices.AccountManagement
                 _endReached = false;
                 _current = null;
 
-                if (_enumerator != null)
-                    _enumerator.Reset();
+                _enumerator?.Reset();
 
                 _resultsReturned = 0;
             }
@@ -202,7 +201,7 @@ namespace System.DirectoryServices.AccountManagement
     // The matcher routines for query-by-example support
     //
 
-    internal class QbeMatcher : SAMMatcher
+    internal sealed class QbeMatcher : SAMMatcher
     {
         private readonly QbeFilterDescription _propertiesToMatch;
 
@@ -314,7 +313,7 @@ namespace System.DirectoryServices.AccountManagement
 
         private static readonly Hashtable s_filterPropertiesTable = CreateFilterPropertiesTable();
 
-        private class FilterPropertyTableEntry
+        private sealed class FilterPropertyTableEntry
         {
             internal string winNTPropertyName;
             internal MatcherDelegate matcher;
@@ -339,9 +338,7 @@ namespace System.DirectoryServices.AccountManagement
                 filter.Extra = regex;
             }
 
-            Match match = regex.Match(property);
-
-            return match.Success;
+            return regex.IsMatch(property);
         }
         // returns true if specified WinNT property's value matches filter.Value
         private delegate bool MatcherDelegate(FilterBase filter, string winNTPropertyName, DirectoryEntry de);
@@ -666,7 +663,7 @@ namespace System.DirectoryServices.AccountManagement
     // The matcher routines for FindBy* support
     //
 
-    internal class FindByDateMatcher : SAMMatcher
+    internal sealed class FindByDateMatcher : SAMMatcher
     {
         internal enum DateProperty
         {
@@ -804,7 +801,7 @@ namespace System.DirectoryServices.AccountManagement
         }
     }
 
-    internal class GroupMemberMatcher : SAMMatcher
+    internal sealed class GroupMemberMatcher : SAMMatcher
     {
         private readonly byte[] _memberSidToMatch;
 
@@ -864,5 +861,3 @@ namespace System.DirectoryServices.AccountManagement
         }
     }
 }
-
-//#endif  // PAPI_REGSAM

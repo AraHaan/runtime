@@ -352,9 +352,7 @@ public:
                            StackTraceState* pSTState);
 
     static void
-        ResumeExecution(T_CONTEXT*            pContextRecord,
-                        EXCEPTION_RECORD*   pExceptionRecord
-                        );
+        ResumeExecution(T_CONTEXT* pContextRecord);
 
     void ResetLimitFrame();
 
@@ -362,7 +360,7 @@ public:
     void EnumMemoryRegions(CLRDataEnumMemoryFlags flags);
 #endif // DACCESS_COMPILE
 
-    static void DebugLogTrackerRanges(__in_z const char *pszTag);
+    static void DebugLogTrackerRanges(_In_z_ const char *pszTag);
 
     bool IsStackOverflowException();
 
@@ -382,11 +380,8 @@ private:
                     StackFrame              sf,
                     EE_ILEXCEPTION_CLAUSE*  pEHClause,
                     MethodDesc*             pMD,
-                    EHFuncletType funcletType
-                    X86_ARG(PT_CONTEXT pContextRecord)
-                    ARM_ARG(PT_CONTEXT pContextRecord)
-                    ARM64_ARG(PT_CONTEXT pContextRecord)
-                    );
+                    EHFuncletType           funcletType,
+                    PT_CONTEXT              pContextRecord);
 
     inline static BOOL
         ClauseCoversPC(EE_ILEXCEPTION_CLAUSE* pEHClause,

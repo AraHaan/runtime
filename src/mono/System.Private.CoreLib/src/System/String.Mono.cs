@@ -7,36 +7,16 @@ namespace System
 {
     public partial class String
     {
-#pragma warning disable CS8618 // compiler sees this non-nullable static string as uninitialized
-        [Intrinsic]
-        public static readonly string Empty;
-#pragma warning restore CS8618
-
-        public int Length
-        {
-            [Intrinsic]
-            get => _stringLength;
-        }
-
-        [IndexerName("Chars")]
-        public char this[int index]
-        {
-            [Intrinsic]
-            get => this[index];
-        }
-
         public static string Intern(string str)
         {
-            if (str == null)
-                throw new ArgumentNullException(nameof(str));
+            ArgumentNullException.ThrowIfNull(str);
 
             return InternalIntern(str);
         }
 
         public static string IsInterned(string str)
         {
-            if (str == null)
-                throw new ArgumentNullException(nameof(str));
+            ArgumentNullException.ThrowIfNull(str);
 
             return InternalIsInterned(str);
         }
@@ -67,8 +47,8 @@ namespace System
             }
             if (val != 0)
             {
-                val = val | (val << 8);
-                val = val | (val << 16);
+                val |= (val << 8);
+                val |= (val << 16);
             }
             // align to 4
             int rest = (int)dest & 3;

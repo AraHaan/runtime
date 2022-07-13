@@ -1,22 +1,22 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Xml;
+using DataContractDictionary = System.Collections.Generic.Dictionary<System.Xml.XmlQualifiedName, System.Runtime.Serialization.DataContract>;
+
 namespace System.Runtime.Serialization
 {
-    using System;
-    using System.Collections;
-    using System.Diagnostics;
-    using System.Globalization;
-    using System.IO;
-    using System.Reflection;
-    using System.Text;
-    using System.Xml;
-    using System.Collections.Generic;
-    using System.Collections.ObjectModel;
-    using System.Runtime.CompilerServices;
-    using DataContractDictionary = System.Collections.Generic.Dictionary<System.Xml.XmlQualifiedName, DataContract>;
-    using System.Diagnostics.CodeAnalysis;
-
     public sealed class DataContractSerializer : XmlObjectSerializer
     {
         private Type _rootType;
@@ -38,7 +38,7 @@ namespace System.Runtime.Serialization
         private static bool _optionAlreadySet;
         internal static SerializationOption Option
         {
-            get { return _option; }
+            get { return RuntimeFeature.IsDynamicCodeSupported ? _option : SerializationOption.ReflectionOnly; }
             set
             {
                 if (_optionAlreadySet)
@@ -95,10 +95,7 @@ namespace System.Runtime.Serialization
 
         public DataContractSerializer(Type type, DataContractSerializerSettings? settings)
         {
-            if (settings == null)
-            {
-                settings = new DataContractSerializerSettings();
-            }
+            settings ??= new DataContractSerializerSettings();
             Initialize(type, settings.RootName, settings.RootNamespace, settings.KnownTypes, settings.MaxItemsInObjectGraph, false,
                 settings.PreserveObjectReferences, settings.DataContractResolver, settings.SerializeReadOnlyTypes);
         }
@@ -112,7 +109,8 @@ namespace System.Runtime.Serialization
             DataContractResolver? dataContractResolver,
             bool serializeReadOnlyTypes)
         {
-            CheckNull(type, nameof(type));
+            ArgumentNullException.ThrowIfNull(type);
+
             _rootType = type;
 
             if (knownTypes != null)
@@ -171,6 +169,7 @@ namespace System.Runtime.Serialization
 
         internal override DataContractDictionary? KnownDataContracts
         {
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             get
             {
                 if (this.knownDataContracts == null && this.knownTypeList != null)
@@ -218,6 +217,7 @@ namespace System.Runtime.Serialization
 
         private DataContract RootContract
         {
+            [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
             get
             {
                 if (_rootContract == null)
@@ -229,11 +229,13 @@ namespace System.Runtime.Serialization
             }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override void InternalWriteObject(XmlWriterDelegator writer, object? graph)
         {
             InternalWriteObject(writer, graph, null);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override void InternalWriteObject(XmlWriterDelegator writer, object? graph, DataContractResolver? dataContractResolver)
         {
             InternalWriteStartObject(writer, graph);
@@ -241,86 +243,103 @@ namespace System.Runtime.Serialization
             InternalWriteEndObject(writer);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override void WriteObject(XmlWriter writer, object? graph)
         {
             WriteObjectHandleExceptions(new XmlWriterDelegator(writer), graph);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override void WriteStartObject(XmlWriter writer, object? graph)
         {
             WriteStartObjectHandleExceptions(new XmlWriterDelegator(writer), graph);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override void WriteObjectContent(XmlWriter writer, object? graph)
         {
             WriteObjectContentHandleExceptions(new XmlWriterDelegator(writer), graph);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override void WriteEndObject(XmlWriter writer)
         {
             WriteEndObjectHandleExceptions(new XmlWriterDelegator(writer));
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override void WriteStartObject(XmlDictionaryWriter writer, object? graph)
         {
             WriteStartObjectHandleExceptions(new XmlWriterDelegator(writer), graph);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override void WriteObjectContent(XmlDictionaryWriter writer, object? graph)
         {
             WriteObjectContentHandleExceptions(new XmlWriterDelegator(writer), graph);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override void WriteEndObject(XmlDictionaryWriter writer)
         {
             WriteEndObjectHandleExceptions(new XmlWriterDelegator(writer));
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public void WriteObject(XmlDictionaryWriter writer, object? graph, DataContractResolver? dataContractResolver)
         {
             WriteObjectHandleExceptions(new XmlWriterDelegator(writer), graph, dataContractResolver);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override object? ReadObject(XmlReader reader)
         {
             return ReadObjectHandleExceptions(new XmlReaderDelegator(reader), true /*verifyObjectName*/);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override object? ReadObject(XmlReader reader, bool verifyObjectName)
         {
             return ReadObjectHandleExceptions(new XmlReaderDelegator(reader), verifyObjectName);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override bool IsStartObject(XmlReader reader)
         {
             return IsStartObjectHandleExceptions(new XmlReaderDelegator(reader));
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override object? ReadObject(XmlDictionaryReader reader, bool verifyObjectName)
         {
             return ReadObjectHandleExceptions(new XmlReaderDelegator(reader), verifyObjectName);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public override bool IsStartObject(XmlDictionaryReader reader)
         {
             return IsStartObjectHandleExceptions(new XmlReaderDelegator(reader));
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         public object? ReadObject(XmlDictionaryReader reader, bool verifyObjectName, DataContractResolver? dataContractResolver)
         {
             return ReadObjectHandleExceptions(new XmlReaderDelegator(reader), verifyObjectName, dataContractResolver);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override void InternalWriteStartObject(XmlWriterDelegator writer, object? graph)
         {
             WriteRootElement(writer, RootContract, _rootName, _rootNamespace, _needsContractNsAtRoot);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override void InternalWriteObjectContent(XmlWriterDelegator writer, object? graph)
         {
             InternalWriteObjectContent(writer, graph, null);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal void InternalWriteObjectContent(XmlWriterDelegator writer, object? graph, DataContractResolver? dataContractResolver)
         {
             if (MaxItemsInObjectGraph == 0)
@@ -335,8 +354,7 @@ namespace System.Runtime.Serialization
                 graph = SurrogateToDataContractType(_serializationSurrogateProvider, graph, declaredType, ref graphType);
             }
 
-            if (dataContractResolver == null)
-                dataContractResolver = this.DataContractResolver;
+            dataContractResolver ??= this.DataContractResolver;
 
             if (graph == null)
             {
@@ -361,7 +379,7 @@ namespace System.Runtime.Serialization
                 }
                 else
                 {
-                    XmlObjectSerializerWriteContext? context = null;
+                    XmlObjectSerializerWriteContext? context;
                     if (IsRootXmlAny(_rootName, contract))
                         throw DiagnosticUtility.ExceptionUtility.ThrowHelperError(XmlObjectSerializer.CreateSerializationException(SR.Format(SR.IsAnyCannotBeSerializedAsDerivedType, graphType, contract.UnderlyingType)));
 
@@ -377,6 +395,7 @@ namespace System.Runtime.Serialization
             }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal static DataContract GetDataContract(DataContract declaredTypeContract, Type declaredType, Type objectType)
         {
             if (declaredType.IsInterface && CollectionDataContract.IsCollectionInterface(declaredType))
@@ -393,6 +412,7 @@ namespace System.Runtime.Serialization
             }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override void InternalWriteEndObject(XmlWriterDelegator writer)
         {
             if (!IsRootXmlAny(_rootName, RootContract))
@@ -401,18 +421,19 @@ namespace System.Runtime.Serialization
             }
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override object? InternalReadObject(XmlReaderDelegator xmlReader, bool verifyObjectName)
         {
             return InternalReadObject(xmlReader, verifyObjectName, null);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override object? InternalReadObject(XmlReaderDelegator xmlReader, bool verifyObjectName, DataContractResolver? dataContractResolver)
         {
             if (MaxItemsInObjectGraph == 0)
                 throw DiagnosticUtility.ExceptionUtility.ThrowHelperError(XmlObjectSerializer.CreateSerializationException(SR.Format(SR.ExceededMaxItemsQuota, MaxItemsInObjectGraph)));
 
-            if (dataContractResolver == null)
-                dataContractResolver = this.DataContractResolver;
+            dataContractResolver ??= this.DataContractResolver;
 
             if (verifyObjectName)
             {
@@ -454,6 +475,7 @@ namespace System.Runtime.Serialization
             return context.InternalDeserialize(xmlReader, _rootType, contract, null, null);
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal override bool InternalIsStartObject(XmlReaderDelegator reader)
         {
             return IsRootElement(reader, RootContract, _rootName, _rootNamespace);
@@ -470,6 +492,7 @@ namespace System.Runtime.Serialization
         }
 
         [return: NotNullIfNotNull("oldObj")]
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal static object? SurrogateToDataContractType(ISerializationSurrogateProvider serializationSurrogateProvider, object? oldObj, Type surrogatedDeclaredType, ref Type objType)
         {
             object? obj = DataContractSurrogateCaller.GetObjectToSerialize(serializationSurrogateProvider, oldObj, objType, surrogatedDeclaredType);
@@ -480,6 +503,7 @@ namespace System.Runtime.Serialization
             return obj;
         }
 
+        [RequiresUnreferencedCode(DataContract.SerializerTrimmerWarning)]
         internal static Type GetSurrogatedType(ISerializationSurrogateProvider serializationSurrogateProvider, Type type)
         {
             return DataContractSurrogateCaller.GetDataContractType(serializationSurrogateProvider, DataContract.UnwrapNullableType(type));

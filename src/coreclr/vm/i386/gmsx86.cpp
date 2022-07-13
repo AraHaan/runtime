@@ -827,6 +827,8 @@ void LazyMachState::unwindLazyState(LazyMachState* baseState,
             case 0x89:                          // MOV r/m, reg
                 if (ip[1] == 0xEC)              // MOV ESP, EBP
                     goto mov_esp_ebp;
+                if (ip[1] == 0xDC)              // MOV ESP, EBX
+                    goto mov_esp_ebx;
                 // FALL THROUGH
 
             case 0x18:                          // SBB r/m8, r8
@@ -895,6 +897,7 @@ void LazyMachState::unwindLazyState(LazyMachState* baseState,
             case 0x03:
             case 0x11:                           // ADC mod/rm
             case 0x13:
+            case 0x21:                           // AND mod/rm
             case 0x29:                           // SUB mod/rm
             case 0x2B:
                 datasize = 0;
@@ -928,6 +931,13 @@ void LazyMachState::unwindLazyState(LazyMachState* baseState,
                 if (ip[1] == 0xE5) {            // MOV ESP, EBP
                 mov_esp_ebp:
                     ESP = PTR_TADDR(lazyState->_ebp);
+                    ip += 2;
+                    break;
+                }
+
+                if (ip[1] == 0xE3) {           // MOV ESP, EBX
+                mov_esp_ebx:
+                    ESP = PTR_TADDR(lazyState->_ebx);
                     ip += 2;
                     break;
                 }
@@ -1264,7 +1274,7 @@ done:
     _ASSERTE(epilogCallRet == 0);
 
     // At this point the fields in 'frame' coorespond exactly to the register
-    // state when the the helper returns to its caller.
+    // state when the helper returns to its caller.
     lazyState->_esp = dac_cast<TADDR>(ESP);
 }
 #ifdef _PREFAST_

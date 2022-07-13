@@ -444,7 +444,7 @@ class Object
         // we must zero out the lowest 2 bits on 32-bit and 3 bits on 64-bit.
 #ifdef TARGET_64BIT
         return dac_cast<PTR_MethodTable>((dac_cast<TADDR>(m_pMethTab)) & ~((UINT_PTR)7));
-#else 
+#else
         return dac_cast<PTR_MethodTable>((dac_cast<TADDR>(m_pMethTab)) & ~((UINT_PTR)3));
 #endif //TARGET_64BIT
     }
@@ -545,7 +545,7 @@ private:
     // INT32      lowerBounds[rank];  Valid indexes are lowerBounds[i] <= index[i] < lowerBounds[i] + bounds[i]
 
 public:
-    // Get the element type for the array, this works whether the the element
+    // Get the element type for the array, this works whether the element
     // type is stored in the array or not
     inline TypeHandle GetArrayElementTypeHandle() const;
 
@@ -739,6 +739,39 @@ public:
 
 #define OFFSETOF__PtrArray__m_Array_              ARRAYBASE_SIZE
 
+/* Corresponds to the managed Span<T> and ReadOnlySpan<T> types.
+   This should only ever be passed from the managed to the unmanaged world byref,
+   as any copies of this struct made within the unmanaged world will not observe
+   potential GC relocations of the source data. */
+template < class KIND >
+class Span
+{
+private:
+    /* Keep fields below in sync with managed Span / ReadOnlySpan layout. */
+    KIND* _reference;
+    unsigned int _length;
+
+public:
+    // !! CAUTION !!
+    // Caller must take care not to reassign returned reference if this span corresponds
+    // to a managed ReadOnlySpan<T>. If KIND is a reference type, caller must use a
+    // helper like SetObjectReference instead of assigning values directly to the
+    // reference location.
+    KIND& GetAt(SIZE_T index)
+    {
+        LIMITED_METHOD_CONTRACT;
+        SUPPORTS_DAC;
+        _ASSERTE(index < GetLength());
+        return _reference[index];
+    }
+
+    // Gets the length (in elements) of this span.
+    __inline SIZE_T GetLength() const
+    {
+        return _length;
+    }
+};
+
 /* a TypedByRef is a structure that is used to implement VB's BYREF variants.
    it is basically a tuple of an address of some data along with a TypeHandle
    that indicates the type of the address */
@@ -752,18 +785,18 @@ public:
 
 typedef DPTR(TypedByRef) PTR_TypedByRef;
 
-typedef Array<I1>   I1Array;
-typedef Array<I2>   I2Array;
-typedef Array<I4>   I4Array;
-typedef Array<I8>   I8Array;
-typedef Array<R4>   R4Array;
-typedef Array<R8>   R8Array;
-typedef Array<U1>   U1Array;
-typedef Array<U1>   BOOLArray;
-typedef Array<U2>   U2Array;
-typedef Array<WCHAR>   CHARArray;
-typedef Array<U4>   U4Array;
-typedef Array<U8>   U8Array;
+typedef Array<CLR_I1>   I1Array;
+typedef Array<CLR_I2>   I2Array;
+typedef Array<CLR_I4>   I4Array;
+typedef Array<CLR_I8>   I8Array;
+typedef Array<CLR_R4>   R4Array;
+typedef Array<CLR_R8>   R8Array;
+typedef Array<CLR_U1>   U1Array;
+typedef Array<CLR_U1>   BOOLArray;
+typedef Array<CLR_U2>   U2Array;
+typedef Array<CLR_CHAR> CHARArray;
+typedef Array<CLR_U4>   U4Array;
+typedef Array<CLR_U8>   U8Array;
 typedef Array<UPTR> UPTRArray;
 typedef PtrArray    PTRArray;
 
@@ -902,7 +935,7 @@ class StringObject : public Object
     BOOL HasTrailByte();
     BOOL GetTrailByte(BYTE *bTrailByte);
     BOOL SetTrailByte(BYTE bTrailByte);
-    static BOOL CaseInsensitiveCompHelper(__in_ecount(aLength) WCHAR * strA, __in_z INT8 * strB, int aLength, int bLength, int *result);
+    static BOOL CaseInsensitiveCompHelper(_In_reads_(aLength) WCHAR * strA, _In_z_ INT8 * strB, int aLength, int bLength, int *result);
 
     /*=================RefInterpretGetStringValuesDangerousForGC======================
     **N.B.: This perfoms no range checking and relies on the caller to have done this.
@@ -915,7 +948,7 @@ class StringObject : public Object
     // !!!! If you use this function, you have to be careful because chars is a pointer
     // !!!! to the data buffer of ref.  If GC happens after this call, you need to make
     // !!!! sure that you have a pin handle on ref, or use GCPROTECT_BEGINPINNING on ref.
-    void RefInterpretGetStringValuesDangerousForGC(__deref_out_ecount(*length + 1) WCHAR **chars, int *length) {
+    void RefInterpretGetStringValuesDangerousForGC(_Outptr_result_buffer_(*length + 1) WCHAR **chars, int *length) {
         WRAPPER_NO_CONTRACT;
 
         _ASSERTE(GetGCSafeMethodTable() == g_pStringClass);
@@ -1059,12 +1092,12 @@ public:
 };
 
 // This is the Method version of the Reflection object.
-//  A Method has adddition information.
+//  A Method has additional information:
 //   m_pMD - A pointer to the actual MethodDesc of the method.
 //   m_object - a field that has a reference type in it. Used only for RuntimeMethodInfoStub to keep the real type alive.
 // This structure matches the structure up to the m_pMD for several different managed types.
 // (RuntimeConstructorInfo, RuntimeMethodInfo, and RuntimeMethodInfoStub). These types are unrelated in the type
-// system except that they all implement a particular interface. It is important that that interface is not attached to any
+// system except that they all implement a particular interface. It is important that such interface is not attached to any
 // type that does not sufficiently match this data structure.
 class ReflectMethodObject : public BaseObjectWithCachedData
 {
@@ -1079,6 +1112,7 @@ protected:
     OBJECTREF           m_empty5;
     OBJECTREF           m_empty6;
     OBJECTREF           m_empty7;
+    OBJECTREF           m_empty8;
     MethodDesc *        m_pMD;
 
 public:
@@ -1102,12 +1136,12 @@ public:
 };
 
 // This is the Field version of the Reflection object.
-//  A Method has adddition information.
+//  A Method has additional information:
 //   m_pFD - A pointer to the actual MethodDesc of the method.
 //   m_object - a field that has a reference type in it. Used only for RuntimeFieldInfoStub to keep the real type alive.
 // This structure matches the structure up to the m_pFD for several different managed types.
 // (RtFieldInfo and RuntimeFieldInfoStub). These types are unrelated in the type
-// system except that they all implement a particular interface. It is important that that interface is not attached to any
+// system except that they all implement a particular interface. It is important that such interface is not attached to any
 // type that does not sufficiently match this data structure.
 class ReflectFieldObject : public BaseObjectWithCachedData
 {
@@ -1119,6 +1153,7 @@ protected:
     INT32               m_empty2;
     OBJECTREF           m_empty3;
     OBJECTREF           m_empty4;
+    OBJECTREF           m_empty5;
     FieldDesc *         m_pFD;
 
 public:
@@ -1451,7 +1486,7 @@ class AssemblyLoadContextBaseObject : public Object
     //  classlib class definition of this object.
 #ifdef TARGET_64BIT
     OBJECTREF     _unloadLock;
-    OBJECTREF     _resovlingUnmanagedDll;
+    OBJECTREF     _resolvingUnmanagedDll;
     OBJECTREF     _resolving;
     OBJECTREF     _unloading;
     OBJECTREF     _name;
@@ -1462,7 +1497,7 @@ class AssemblyLoadContextBaseObject : public Object
 #else // TARGET_64BIT
     int64_t       _id; // On 32-bit platforms this 64-bit value type is larger than a pointer so JIT places it first
     OBJECTREF     _unloadLock;
-    OBJECTREF     _resovlingUnmanagedDll;
+    OBJECTREF     _resolvingUnmanagedDll;
     OBJECTREF     _resolving;
     OBJECTREF     _unloading;
     OBJECTREF     _name;
@@ -1476,78 +1511,28 @@ class AssemblyLoadContextBaseObject : public Object
    ~AssemblyLoadContextBaseObject() { LIMITED_METHOD_CONTRACT; }
 
   public:
-    INT_PTR GetNativeAssemblyLoadContext() { LIMITED_METHOD_CONTRACT; return _nativeAssemblyLoadContext; }
+    INT_PTR GetNativeAssemblyBinder() { LIMITED_METHOD_CONTRACT; return _nativeAssemblyLoadContext; }
 };
 #if defined(TARGET_X86) && !defined(TARGET_UNIX)
 #include "poppack.h"
 #endif // defined(TARGET_X86) && !defined(TARGET_UNIX)
+
+struct NativeAssemblyNameParts
+{
+    PCWSTR      _pName;
+    UINT16      _major, _minor, _build, _revision;
+    PCWSTR      _pCultureName;
+    BYTE*       _pPublicKeyOrToken;
+    int         _cbPublicKeyOrToken;
+    DWORD       _flags;
+};
 
 // AssemblyNameBaseObject
 // This class is the base class for assembly names
 //
 class AssemblyNameBaseObject : public Object
 {
-    friend class AssemblyNative;
-    friend class AppDomainNative;
-    friend class CoreLibBinder;
-
-  protected:
-    // READ ME:
-    // Modifying the order or fields of this object may require other changes to the
-    //  classlib class definition of this object.
-
-    OBJECTREF     _name;
-    U1ARRAYREF    _publicKey;
-    U1ARRAYREF    _publicKeyToken;
-    OBJECTREF     _cultureInfo;
-    OBJECTREF     _codeBase;
-    OBJECTREF     _version;
-    OBJECTREF     _strongNameKeyPair;
-    DWORD         _hashAlgorithm;
-    DWORD         _versionCompatibility;
-    DWORD         _flags;
-
-  protected:
-    AssemblyNameBaseObject() { LIMITED_METHOD_CONTRACT; }
-   ~AssemblyNameBaseObject() { LIMITED_METHOD_CONTRACT; }
-
-  public:
-    OBJECTREF GetSimpleName() { LIMITED_METHOD_CONTRACT; return _name; }
-    U1ARRAYREF GetPublicKey() { LIMITED_METHOD_CONTRACT; return _publicKey; }
-    U1ARRAYREF GetPublicKeyToken() { LIMITED_METHOD_CONTRACT; return _publicKeyToken; }
-    OBJECTREF GetStrongNameKeyPair() { LIMITED_METHOD_CONTRACT; return _strongNameKeyPair; }
-    OBJECTREF GetCultureInfo() { LIMITED_METHOD_CONTRACT; return _cultureInfo; }
-    OBJECTREF GetAssemblyCodeBase() { LIMITED_METHOD_CONTRACT; return _codeBase; }
-    OBJECTREF GetVersion() { LIMITED_METHOD_CONTRACT; return _version; }
-    DWORD GetAssemblyHashAlgorithm() { LIMITED_METHOD_CONTRACT; return _hashAlgorithm; }
-    DWORD GetFlags() { LIMITED_METHOD_CONTRACT; return _flags; }
-};
-
-// VersionBaseObject
-// This class is the base class for versions
-//
-class VersionBaseObject : public Object
-{
-    friend class CoreLibBinder;
-
-  protected:
-    // READ ME:
-    // Modifying the order or fields of this object may require other changes to the
-    //  classlib class definition of this object.
-
-    int m_Major;
-    int m_Minor;
-    int m_Build;
-    int m_Revision;
-
-    VersionBaseObject() {LIMITED_METHOD_CONTRACT;}
-   ~VersionBaseObject() {LIMITED_METHOD_CONTRACT;}
-
-  public:
-    int GetMajor() { LIMITED_METHOD_CONTRACT; return m_Major; }
-    int GetMinor() { LIMITED_METHOD_CONTRACT; return m_Minor; }
-    int GetBuild() { LIMITED_METHOD_CONTRACT; return m_Build; }
-    int GetRevision() { LIMITED_METHOD_CONTRACT; return m_Revision; }
+    // Dummy definition
 };
 
 class WeakReferenceObject : public Object
@@ -1568,16 +1553,11 @@ typedef REF<ReflectFieldObject> REFLECTFIELDREF;
 
 typedef REF<ThreadBaseObject> THREADBASEREF;
 
-typedef REF<MarshalByRefObjectBaseObject> MARSHALBYREFOBJECTBASEREF;
-
 typedef REF<AssemblyBaseObject> ASSEMBLYREF;
 
 typedef REF<AssemblyLoadContextBaseObject> ASSEMBLYLOADCONTEXTREF;
 
 typedef REF<AssemblyNameBaseObject> ASSEMBLYNAMEREF;
-
-typedef REF<VersionBaseObject> VERSIONREF;
-
 
 typedef REF<WeakReferenceObject> WEAKREFERENCEREF;
 
@@ -1625,8 +1605,6 @@ typedef PTR_AssemblyLoadContextBaseObject ASSEMBLYLOADCONTEXTREF;
 typedef PTR_AssemblyNameBaseObject ASSEMBLYNAMEREF;
 
 #ifndef DACCESS_COMPILE
-typedef MarshalByRefObjectBaseObject* MARSHALBYREFOBJECTBASEREF;
-typedef VersionBaseObject* VERSIONREF;
 typedef WeakReferenceObject* WEAKREFERENCEREF;
 #endif // #ifndef DACCESS_COMPILE
 
@@ -2206,7 +2184,7 @@ private:
         return dac_cast<PTR_StackTraceElement>(GetRaw() + sizeof(ArrayHeader));
     }
 
-    I1 const * GetRaw() const
+    CLR_I1 const * GetRaw() const
     {
         WRAPPER_NO_CONTRACT;
         assert(!!m_array);
@@ -2214,13 +2192,13 @@ private:
         return const_cast<I1ARRAYREF &>(m_array)->GetDirectPointerToNonObjectElements();
     }
 
-    PTR_I1 GetRaw()
+    PTR_INT8 GetRaw()
     {
         WRAPPER_NO_CONTRACT;
         SUPPORTS_DAC;
         assert(!!m_array);
 
-        return dac_cast<PTR_I1>(m_array->GetDirectPointerToNonObjectElements());
+        return dac_cast<PTR_INT8>(m_array->GetDirectPointerToNonObjectElements());
     }
 
     ArrayHeader const * GetHeader() const
@@ -2387,7 +2365,7 @@ public:
     OBJECTREF GetInnerException()
     {
         LIMITED_METHOD_DAC_CONTRACT;
-        return _innerException;
+        return VolatileLoadWithoutBarrierOBJECTREF(&_innerException);
     }
 
     // Returns the innermost exception object - equivalent of the
@@ -2400,7 +2378,7 @@ public:
         OBJECTREF oInnerMostException = NULL;
         OBJECTREF oCurrent = NULL;
 
-        oCurrent = _innerException;
+        oCurrent = GetInnerException();
         while(oCurrent != NULL)
         {
             oInnerMostException = oCurrent;
@@ -2438,7 +2416,7 @@ public:
     STRINGREF GetRemoteStackTraceString()
     {
         LIMITED_METHOD_DAC_CONTRACT;
-        return _remoteStackTraceString;
+        return (STRINGREF)VolatileLoadWithoutBarrierOBJECTREF(&_remoteStackTraceString);
     }
 
     void SetHelpURL(STRINGREF helpURL)
@@ -2481,7 +2459,7 @@ public:
     U1ARRAYREF GetWatsonBucketReference()
     {
         LIMITED_METHOD_CONTRACT;
-        return _watsonBuckets;
+        return (U1ARRAYREF)VolatileLoadWithoutBarrierOBJECTREF(&_watsonBuckets);
     }
 
     // This method will return a BOOL to indicate if the
@@ -2489,7 +2467,7 @@ public:
     BOOL AreWatsonBucketsPresent()
     {
         LIMITED_METHOD_CONTRACT;
-        return (_watsonBuckets != NULL)?TRUE:FALSE;
+        return (GetWatsonBucketReference() != NULL)?TRUE:FALSE;
     }
 
     // This method will save the IP to be used for watson bucketing.
@@ -2514,7 +2492,7 @@ public:
     {
         LIMITED_METHOD_CONTRACT;
 
-        return _ipForWatsonBuckets;
+        return VolatileLoadWithoutBarrier(&_ipForWatsonBuckets);
     }
 
     // README:
@@ -2636,7 +2614,6 @@ public:
     static OBJECTREF Box(void* src, MethodTable* nullable);
     static BOOL UnBox(void* dest, OBJECTREF boxedVal, MethodTable* destMT);
     static BOOL UnBoxNoGC(void* dest, OBJECTREF boxedVal, MethodTable* destMT);
-    static BOOL UnBoxIntoArgNoGC(ArgDestination *argDest, OBJECTREF boxedVal, MethodTable* destMT);
     static void UnBoxNoCheck(void* dest, OBJECTREF boxedVal, MethodTable* destMT);
     static OBJECTREF BoxedNullableNull(TypeHandle nullableType) { return 0; }
 
@@ -2668,134 +2645,5 @@ typedef REF<ExceptionObject> EXCEPTIONREF;
 #else // USE_CHECKED_OBJECTREFS
 typedef PTR_ExceptionObject EXCEPTIONREF;
 #endif // USE_CHECKED_OBJECTREFS
-
-class GCHeapHashObject : public Object
-{
-#ifdef DACCESS_COMPILE
-    friend class ClrDataAccess;
-#endif
-    friend class GCHeap;
-    friend class JIT_TrialAlloc;
-    friend class CheckAsmOffsets;
-    friend class COMString;
-    friend class CoreLibBinder;
-
-    private:
-    BASEARRAYREF _data;
-    INT32 _count;
-    INT32 _deletedCount;
-
-    public:
-    INT32 GetCount() { LIMITED_METHOD_CONTRACT; return _count; }
-    void IncrementCount(bool replacingDeletedItem)
-    {
-        LIMITED_METHOD_CONTRACT;
-        ++_count;
-        if (replacingDeletedItem)
-            --_deletedCount;
-    }
-
-    void DecrementCount(bool deletingItem)
-    {
-        LIMITED_METHOD_CONTRACT;
-        --_count;
-        if (deletingItem)
-            ++_deletedCount;
-    }
-    INT32 GetDeletedCount() { LIMITED_METHOD_CONTRACT; return _deletedCount; }
-    void SetDeletedCountToZero() { LIMITED_METHOD_CONTRACT; _deletedCount = 0; }
-    INT32 GetCapacity() { LIMITED_METHOD_CONTRACT; if (_data == NULL) return 0; else return (_data->GetNumComponents()); }
-    BASEARRAYREF GetData() { LIMITED_METHOD_CONTRACT; return _data; }
-
-    void SetTable(BASEARRAYREF data)
-    {
-        STATIC_CONTRACT_NOTHROW;
-        STATIC_CONTRACT_GC_NOTRIGGER;
-        STATIC_CONTRACT_MODE_COOPERATIVE;
-
-        SetObjectReference((OBJECTREF*)&_data, (OBJECTREF)data);
-    }
-
-    protected:
-    GCHeapHashObject() {LIMITED_METHOD_CONTRACT; }
-   ~GCHeapHashObject() {LIMITED_METHOD_CONTRACT; }
-};
-
-typedef DPTR(GCHeapHashObject)  PTR_GCHeapHashObject;
-
-#ifdef USE_CHECKED_OBJECTREFS
-typedef REF<GCHeapHashObject> GCHEAPHASHOBJECTREF;
-#else   // USE_CHECKED_OBJECTREFS
-typedef PTR_GCHeapHashObject GCHEAPHASHOBJECTREF;
-#endif // USE_CHECKED_OBJECTREFS
-
-class LAHashDependentHashTrackerObject : public Object
-{
-#ifdef DACCESS_COMPILE
-    friend class ClrDataAccess;
-#endif
-    friend class CheckAsmOffsets;
-    friend class CoreLibBinder;
-
-    private:
-    OBJECTHANDLE _dependentHandle;
-    LoaderAllocator* _loaderAllocator;
-
-    public:
-    bool IsLoaderAllocatorLive();
-    bool IsTrackerFor(LoaderAllocator *pLoaderAllocator)
-    {
-        if (pLoaderAllocator != _loaderAllocator)
-            return false;
-
-        return IsLoaderAllocatorLive();
-    }
-
-    void GetDependentAndLoaderAllocator(OBJECTREF *pLoaderAllocatorRef, GCHEAPHASHOBJECTREF *pGCHeapHash);
-
-    // Be careful with this. This isn't safe to use unless something is keeping the LoaderAllocator live, or there is no intention to dereference this pointer
-    LoaderAllocator* GetLoaderAllocatorUnsafe()
-    {
-        return _loaderAllocator;
-    }
-
-    void Init(OBJECTHANDLE dependentHandle, LoaderAllocator* loaderAllocator)
-    {
-        LIMITED_METHOD_CONTRACT;
-        _dependentHandle = dependentHandle;
-        _loaderAllocator = loaderAllocator;
-    }
-};
-
-class LAHashKeyToTrackersObject : public Object
-{
-#ifdef DACCESS_COMPILE
-    friend class ClrDataAccess;
-#endif
-    friend class CheckAsmOffsets;
-    friend class CoreLibBinder;
-
-    public:
-    // _trackerOrTrackerSet is either a reference to a LAHashDependentHashTracker, or to a GCHeapHash of LAHashDependentHashTracker objects.
-    OBJECTREF _trackerOrTrackerSet;
-    // _laLocalKeyValueStore holds an object that represents a Key value (which must always be valid for the lifetime of the
-    // CrossLoaderAllocatorHeapHash, and the values which must also be valid for that entire lifetime. When a value might
-    // have a shorter lifetime it is accessed through the _trackerOrTrackerSet variable, which allows access to hashtables which
-    // are associated with that remote loaderallocator through a dependent handle, so that lifetime can be managed.
-    OBJECTREF _laLocalKeyValueStore;
-};
-
-typedef DPTR(LAHashDependentHashTrackerObject)  PTR_LAHashDependentHashTrackerObject;
-typedef DPTR(LAHashKeyToTrackersObject) PTR_LAHashKeyToTrackersObject;
-
-
-#ifdef USE_CHECKED_OBJECTREFS
-typedef REF<LAHashDependentHashTrackerObject> LAHASHDEPENDENTHASHTRACKERREF;
-typedef REF<LAHashKeyToTrackersObject> LAHASHKEYTOTRACKERSREF;
-#else   // USE_CHECKED_OBJECTREFS
-typedef PTR_LAHashDependentHashTrackerObject LAHASHDEPENDENTHASHTRACKERREF;
-typedef PTR_LAHashKeyToTrackersObject LAHASHKEYTOTRACKERSREF;
-#endif // USE_CHECKED_OBJECTREFS
-
 
 #endif // _OBJECT_H_

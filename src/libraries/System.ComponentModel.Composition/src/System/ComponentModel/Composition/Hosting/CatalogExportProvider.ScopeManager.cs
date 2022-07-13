@@ -8,21 +8,15 @@ namespace System.ComponentModel.Composition.Hosting
 {
     public partial class CatalogExportProvider
     {
-        internal class ScopeManager : ExportProvider
+        internal sealed class ScopeManager : ExportProvider
         {
             private readonly CompositionScopeDefinition _scopeDefinition;
             private readonly CatalogExportProvider _catalogExportProvider;
 
             public ScopeManager(CatalogExportProvider catalogExportProvider, CompositionScopeDefinition scopeDefinition)
             {
-                if (catalogExportProvider == null)
-                {
-                    throw new ArgumentNullException(nameof(catalogExportProvider));
-                }
-                if (scopeDefinition == null)
-                {
-                    throw new ArgumentNullException(nameof(scopeDefinition));
-                }
+                ArgumentNullException.ThrowIfNull(catalogExportProvider);
+                ArgumentNullException.ThrowIfNull(scopeDefinition);
 
                 _scopeDefinition = scopeDefinition;
                 _catalogExportProvider = catalogExportProvider;

@@ -3,11 +3,14 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace System.Text.Json
 {
-    [DebuggerDisplay("ClassType.{JsonClassInfo.ClassType}, {JsonClassInfo.Type.Name}")]
+    [StructLayout(LayoutKind.Auto)]
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     internal struct ReadStackFrame
     {
         // Current property values.
@@ -24,17 +27,33 @@ namespace System.Text.Json
         // Stores the non-string dictionary keys for continuation.
         public object? DictionaryKey;
 
+#if DEBUG
         // Validation state.
         public int OriginalDepth;
         public JsonTokenType OriginalTokenType;
+#endif
 
         // Current object (POCO or IEnumerable).
         public object? ReturnValue; // The current return value used for re-entry.
-        public JsonClassInfo JsonClassInfo;
+        public JsonTypeInfo JsonTypeInfo;
         public StackFrameObjectState ObjectState; // State tracking the current object.
 
-        // Validate EndObject token on array with preserve semantics.
-        public bool ValidateEndTokenOnArray;
+        // Current object can contain metadata
+        public bool CanContainMetadata;
+        public MetadataPropertyName LatestMetadataPropertyName;
+        public MetadataPropertyName MetadataPropertyNames;
+
+        // Serialization state for value serialized by the current frame.
+        public PolymorphicSerializationState PolymorphicSerializationState;
+
+        // Holds any entered polymorphic JsonTypeInfo metadata.
+        public JsonTypeInfo? PolymorphicJsonTypeInfo;
+
+        // Gets the initial JsonTypeInfo metadata used when deserializing the current value.
+        public JsonTypeInfo BaseJsonTypeInfo
+            => PolymorphicSerializationState == PolymorphicSerializationState.PolymorphicReEntryStarted
+                ? PolymorphicJsonTypeInfo!
+                : JsonTypeInfo;
 
         // For performance, we order the properties by the first deserialize and PropertyIndex helps find the right slot quicker.
         public int PropertyIndex;
@@ -60,7 +79,6 @@ namespace System.Text.Json
             JsonPropertyName = null;
             JsonPropertyNameAsString = null;
             PropertyState = StackFramePropertyState.None;
-            ValidateEndTokenOnArray = false;
 
             // No need to clear these since they are overwritten each time:
             //  NumberHandling
@@ -78,7 +96,7 @@ namespace System.Text.Json
         /// </summary>
         public bool IsProcessingDictionary()
         {
-            return (JsonClassInfo.ClassType & ClassType.Dictionary) != 0;
+            return (JsonTypeInfo.PropertyInfoForTypeInfo.ConverterStrategy & ConverterStrategy.Dictionary) != 0;
         }
 
         /// <summary>
@@ -86,22 +104,10 @@ namespace System.Text.Json
         /// </summary>
         public bool IsProcessingEnumerable()
         {
-            return (JsonClassInfo.ClassType & ClassType.Enumerable) != 0;
+            return (JsonTypeInfo.PropertyInfoForTypeInfo.ConverterStrategy & ConverterStrategy.Enumerable) != 0;
         }
 
-        public void Reset()
-        {
-            CtorArgumentStateIndex = 0;
-            CtorArgumentState = null;
-            JsonClassInfo = null!;
-            ObjectState = StackFrameObjectState.None;
-            OriginalDepth = 0;
-            OriginalTokenType = JsonTokenType.None;
-            PropertyIndex = 0;
-            PropertyRefCache = null;
-            ReturnValue = null;
-
-            EndProperty();
-        }
+        [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+        private string DebuggerDisplay => $"ConverterStrategy.{JsonTypeInfo?.PropertyInfoForTypeInfo.ConverterStrategy}, {JsonTypeInfo?.Type.Name}";
     }
 }

@@ -6,7 +6,7 @@ using System.Globalization;
 
 namespace System.Net.Http.Headers
 {
-    internal class Int64NumberHeaderParser : BaseHeaderParser
+    internal sealed class Int64NumberHeaderParser : BaseHeaderParser
     {
         // Note that we don't need a custom comparer even though we have a value type that gets boxed (comparing two
         // equal boxed value types returns 'false' since the object instances used for boxing the two values are
@@ -40,7 +40,7 @@ namespace System.Net.Http.Headers
                 return 0;
             }
 
-            long result = 0;
+            long result;
             if (!HeaderUtilities.TryParseInt64(value, startIndex, numberLength, out result))
             {
                 return 0;
