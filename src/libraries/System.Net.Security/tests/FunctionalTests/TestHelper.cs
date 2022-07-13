@@ -43,8 +43,13 @@ namespace System.Net.Security.Tests
         private static readonly X509BasicConstraintsExtension s_eeConstraints =
             new X509BasicConstraintsExtension(false, false, 0, false);
 
-        public static readonly byte[] s_ping = Encoding.UTF8.GetBytes("PING");
-        public static readonly byte[] s_pong = Encoding.UTF8.GetBytes("PONG");
+        public static readonly byte[] s_ping = "PING"u8.ToArray();
+        public static readonly byte[] s_pong = "PONG"u8.ToArray();
+
+        public static bool AllowAnyServerCertificate(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors)
+        {
+            return true;
+        }
 
         public static (SslStream ClientStream, SslStream ServerStream) GetConnectedSslStreams()
         {
@@ -79,7 +84,25 @@ namespace System.Net.Security.Tests
 
                 return (new NetworkStream(clientSocket, ownsSocket: true), new NetworkStream(serverSocket, ownsSocket: true));
             }
+        }
 
+        internal static async Task<(NetworkStream ClientStream, NetworkStream ServerStream)> GetConnectedTcpStreamsAsync()
+        {
+            using (Socket listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp))
+            {
+                listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+                listener.Listen(1);
+
+                var clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                Task<Socket> acceptTask = listener.AcceptAsync(CancellationToken.None).AsTask();
+                await clientSocket.ConnectAsync(listener.LocalEndPoint).WaitAsync(TestConfiguration.PassingTestTimeout);
+                Socket serverSocket = await acceptTask.WaitAsync(TestConfiguration.PassingTestTimeout);
+
+                serverSocket.NoDelay = true;
+                clientSocket.NoDelay = true;
+
+                return (new NetworkStream(clientSocket, ownsSocket: true), new NetworkStream(serverSocket, ownsSocket: true));
+            }
         }
 
         internal static void CleanupCertificates([CallerMemberName] string? testName = null)
@@ -118,15 +141,13 @@ namespace System.Net.Security.Tests
             catch { };
         }
 
-        internal static (X509Certificate2 certificate, X509Certificate2Collection) GenerateCertificates(string targetName, [CallerMemberName] string? testName = null, bool longChain = false, bool serverCertificate = true)
+        internal static X509ExtensionCollection BuildTlsServerCertExtensions(string serverName)
         {
-            const int keySize = 2048;
-            if (PlatformDetection.IsWindows && testName != null)
-            {
-                CleanupCertificates(testName);
-            }
+            return BuildTlsCertExtensions(serverName, true);
+        }
 
-            X509Certificate2Collection chain = new X509Certificate2Collection();
+        private static X509ExtensionCollection BuildTlsCertExtensions(string targetName, bool serverCertificate)
+        {
             X509ExtensionCollection extensions = new X509ExtensionCollection();
 
             SubjectAlternativeNameBuilder builder = new SubjectAlternativeNameBuilder();
@@ -136,61 +157,55 @@ namespace System.Net.Security.Tests
             extensions.Add(s_eeKeyUsage);
             extensions.Add(serverCertificate ? s_tlsServerEku : s_tlsClientEku);
 
+            return extensions;
+        }
+
+        internal static (X509Certificate2 certificate, X509Certificate2Collection) GenerateCertificates(string targetName, [CallerMemberName] string? testName = null, bool longChain = false, bool serverCertificate = true)
+        {
+            const int keySize = 2048;
+            if (PlatformDetection.IsWindows && testName != null)
+            {
+                CleanupCertificates(testName);
+            }
+
+            X509Certificate2Collection chain = new X509Certificate2Collection();
+            X509ExtensionCollection extensions = BuildTlsCertExtensions(targetName, serverCertificate);
+
             CertificateAuthority.BuildPrivatePki(
                 PkiOptions.IssuerRevocationViaCrl,
                 out RevocationResponder responder,
                 out CertificateAuthority root,
-                out CertificateAuthority intermediate,
+                out CertificateAuthority[] intermediates,
                 out X509Certificate2 endEntity,
+                intermediateAuthorityCount: longChain ? 3 : 1,
                 subjectName: targetName,
                 testName: testName,
                 keySize: keySize,
                 extensions: extensions);
 
-            if (longChain)
+            // Walk the intermediates backwards so we build the chain collection as
+            // Issuer3
+            // Issuer2
+            // Issuer1
+            // Root
+            for (int i = intermediates.Length - 1; i >= 0; i--)
             {
-                using (RSA intermedKey2 = RSA.Create(keySize))
-                using (RSA intermedKey3 = RSA.Create(keySize))
-                {
-                    X509Certificate2 intermedPub2 = intermediate.CreateSubordinateCA(
-                        $"CN=\"A SSL Test CA 2\", O=\"testName\"",
-                        intermedKey2);
+                CertificateAuthority authority = intermediates[i];
 
-                    X509Certificate2 intermedCert2 = intermedPub2.CopyWithPrivateKey(intermedKey2);
-                    intermedPub2.Dispose();
-                    CertificateAuthority intermediateAuthority2 = new CertificateAuthority(intermedCert2, null, null, null);
-
-                    X509Certificate2 intermedPub3 = intermediateAuthority2.CreateSubordinateCA(
-                        $"CN=\"A SSL Test CA 3\", O=\"testName\"",
-                        intermedKey3);
-
-                    X509Certificate2 intermedCert3 = intermedPub3.CopyWithPrivateKey(intermedKey3);
-                    intermedPub3.Dispose();
-                    CertificateAuthority intermediateAuthority3 = new CertificateAuthority(intermedCert3, null, null, null);
-
-                    RSA eeKey = endEntity.GetRSAPrivateKey();
-                    endEntity = intermediateAuthority3.CreateEndEntity(
-                        $"CN=\"A SSL Test\", O=\"testName\"",
-                        eeKey,
-                        extensions);
-
-                    endEntity = endEntity.CopyWithPrivateKey(eeKey);
-
-                    chain.Add(intermedCert3);
-                    chain.Add(intermedCert2);
-                }
+                chain.Add(authority.CloneIssuerCert());
+                authority.Dispose();
             }
 
-            chain.Add(intermediate.CloneIssuerCert());
             chain.Add(root.CloneIssuerCert());
 
             responder.Dispose();
             root.Dispose();
-            intermediate.Dispose();
 
             if (PlatformDetection.IsWindows)
             {
+                X509Certificate2 ephemeral = endEntity;
                 endEntity = new X509Certificate2(endEntity.Export(X509ContentType.Pfx));
+                ephemeral.Dispose();
             }
 
             return (endEntity, chain);

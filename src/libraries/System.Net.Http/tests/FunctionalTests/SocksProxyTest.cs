@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net.Test.Common;
 using System.Threading.Tasks;
@@ -28,6 +27,7 @@ namespace System.Net.Http.Functional.Tests
 
         [Theory]
         [MemberData(nameof(TestLoopbackAsync_MemberData))]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/69870", TestPlatforms.Android)]
         public async Task TestLoopbackAsync(string scheme, bool useSsl, bool useAuth, string host)
         {
             if (useSsl && UseVersion == HttpVersion.Version20 && !PlatformDetection.SupportsAlpn)
@@ -38,7 +38,7 @@ namespace System.Net.Http.Functional.Tests
             await LoopbackServerFactory.CreateClientAndServerAsync(
                 async uri =>
                 {
-                    using LoopbackSocksServer proxy = useAuth ? LoopbackSocksServer.Create("DOTNET", "424242") : LoopbackSocksServer.Create();
+                    await using var proxy = useAuth ? new LoopbackSocksServer("DOTNET", "424242") : new LoopbackSocksServer();
                     using HttpClientHandler handler = CreateHttpClientHandler();
                     using HttpClient client = CreateHttpClient(handler);
 
@@ -93,7 +93,7 @@ namespace System.Net.Http.Functional.Tests
         [MemberData(nameof(TestExceptionalAsync_MemberData))]
         public async Task TestExceptionalAsync(string scheme, string host, bool useAuth, ICredentials? credentials, string exceptionMessage)
         {
-            using LoopbackSocksServer proxy = useAuth ? LoopbackSocksServer.Create("DOTNET", "424242") : LoopbackSocksServer.Create();
+            var proxy = useAuth ? new LoopbackSocksServer("DOTNET", "424242") : new LoopbackSocksServer();
             using HttpClientHandler handler = CreateHttpClientHandler();
             using HttpClient client = CreateHttpClient(handler);
 
@@ -105,10 +105,19 @@ namespace System.Net.Http.Functional.Tests
             HttpRequestMessage request = CreateRequest(HttpMethod.Get, new Uri($"http://{host}/"), UseVersion, exactVersion: true);
 
             // SocksException is not public
-            var ex = await Assert.ThrowsAnyAsync<HttpRequestException>(() => client.SendAsync(TestAsync, request));
-            var innerException = ex.InnerException;
+            var exception = await Assert.ThrowsAnyAsync<HttpRequestException>(() => client.SendAsync(TestAsync, request));
+            var innerException = exception.InnerException;
             Assert.Equal(exceptionMessage, innerException.Message);
             Assert.Equal("SocksException", innerException.GetType().Name);
+
+            try
+            {
+                await proxy.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                _output.WriteLine($"Ignored exception:{Environment.NewLine}{ex}");
+            }
         }
     }
 
@@ -121,6 +130,7 @@ namespace System.Net.Http.Functional.Tests
     }
 
     [SkipOnPlatform(TestPlatforms.Browser, "UseProxy not supported on Browser")]
+    [SkipOnPlatform(TestPlatforms.Android, "The sync Send method is not supported on mobile platforms")]
     public sealed class SocksProxyTest_Http1_Sync : SocksProxyTest
     {
         public SocksProxyTest_Http1_Sync(ITestOutputHelper helper) : base(helper) { }

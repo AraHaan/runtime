@@ -113,6 +113,7 @@ config_register_provider (
 			EventPipeSessionProvider *session_provider = ep_rt_session_provider_list_find_by_name (ep_session_provider_list_get_providers_cref (providers), ep_provider_get_provider_name (provider));
 			if (session_provider) {
 				EventPipeProviderCallbackData provider_callback_data;
+				memset (&provider_callback_data, 0, sizeof (provider_callback_data));
 				provider_set_config (
 					provider,
 					keyword_for_all_sessions,
@@ -124,6 +125,7 @@ config_register_provider (
 					&provider_callback_data);
 				if (provider_callback_data_queue)
 					ep_provider_callback_data_queue_enqueue (provider_callback_data_queue, &provider_callback_data);
+				ep_provider_callback_data_fini (&provider_callback_data);
 			}
 		}
 	}
@@ -179,6 +181,7 @@ ep_config_init (EventPipeConfiguration *config)
 	while (ep_provider_callback_data_queue_try_dequeue (provider_callback_data_queue, &provider_callback_data)) {
 		ep_rt_prepare_provider_invoke_callback (&provider_callback_data);
 		provider_invoke_callback (&provider_callback_data);
+		ep_provider_callback_data_fini (&provider_callback_data);
 	}
 
 	// Create the metadata event.
@@ -364,11 +367,9 @@ ep_config_build_event_metadata_event (
 	uint8_t *current;
 	current = instance_payload;
 
-	memcpy(current, &metadata_id, sizeof(metadata_id));
-	current += sizeof(metadata_id);
+	ep_write_buffer_uint32_t (&current, metadata_id);
 
-	memcpy(current, provider_name_utf16, provider_name_len);
-	current += provider_name_len;
+	ep_write_buffer_string_utf16_t (&current, provider_name_utf16, provider_name_len);
 
 	// Write the incoming payload data.
 	memcpy(current, payload_data, payload_data_len);
@@ -552,6 +553,7 @@ config_enable_disable (
 					int64_t keyword_for_all_sessions;
 					EventPipeEventLevel level_for_all_sessions;
 					EventPipeProviderCallbackData provider_callback_data;
+					memset (&provider_callback_data, 0, sizeof (provider_callback_data));
 					config_compute_keyword_and_level (config, provider, &keyword_for_all_sessions, &level_for_all_sessions);
 					if (enable) {
 						provider_set_config (
@@ -576,6 +578,7 @@ config_enable_disable (
 					}
 					if (provider_callback_data_queue)
 						ep_provider_callback_data_queue_enqueue (provider_callback_data_queue, &provider_callback_data);
+					ep_provider_callback_data_fini (&provider_callback_data);
 				}
 			}
 		}
@@ -637,7 +640,7 @@ ep_event_metdata_event_free (EventPipeEventMetadataEvent *metadata_event)
 #endif /* !defined(EP_INCLUDE_SOURCE_FILES) || defined(EP_FORCE_INCLUDE_SOURCE_FILES) */
 #endif /* ENABLE_PERFTRACING */
 
-#ifndef EP_INCLUDE_SOURCE_FILES
+#if !defined(ENABLE_PERFTRACING) || (defined(EP_INCLUDE_SOURCE_FILES) && !defined(EP_FORCE_INCLUDE_SOURCE_FILES))
 extern const char quiet_linker_empty_file_warning_eventpipe_configuration;
 const char quiet_linker_empty_file_warning_eventpipe_configuration = 0;
 #endif

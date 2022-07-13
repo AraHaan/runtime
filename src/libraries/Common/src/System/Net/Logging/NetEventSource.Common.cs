@@ -68,6 +68,7 @@ namespace System.Net
         private const int AssociateEventId = 3;
         private const int InfoEventId = 4;
         private const int ErrorEventId = 5;
+        private const int VerboseEventId = 6;
         private const int DumpArrayEventId = 7;
 
         // These events are implemented in NetEventSource.Security.cs.
@@ -156,7 +157,7 @@ namespace System.Net
         {
             DebugValidateArg(thisOrContextObject);
             DebugValidateArg(formattableString);
-            if (Log.IsEnabled()) Log.ErrorMessage(IdOf(thisOrContextObject), memberName, Format(formattableString));
+            if (Log.IsEnabled()) Log.VerboseMessage(IdOf(thisOrContextObject), memberName, Format(formattableString));
         }
 
         /// <summary>Logs an info at verbose mode.</summary>
@@ -171,9 +172,9 @@ namespace System.Net
             if (Log.IsEnabled()) Log.VerboseMessage(IdOf(thisOrContextObject), memberName, Format(message).ToString());
         }
 
-        [Event(ErrorEventId, Level = EventLevel.Verbose, Keywords = Keywords.Default)]
+        [Event(VerboseEventId, Level = EventLevel.Verbose, Keywords = Keywords.Default)]
         private void VerboseMessage(string thisOrContextObject, string? memberName, string? message) =>
-            WriteEvent(ErrorEventId, thisOrContextObject, memberName ?? MissingMember, message);
+            WriteEvent(VerboseEventId, thisOrContextObject, memberName ?? MissingMember, message);
         #endregion
 
         #region DumpBuffer
@@ -381,10 +382,10 @@ namespace System.Net
         {
             if (Log.IsEnabled())
             {
-                if (arg1 == null) arg1 = "";
-                if (arg2 == null) arg2 = "";
-                if (arg3 == null) arg3 = "";
-                if (arg4 == null) arg4 = "";
+                arg1 ??= "";
+                arg2 ??= "";
+                arg3 ??= "";
+                arg4 ??= "";
 
                 fixed (char* string1Bytes = arg1)
                 fixed (char* string2Bytes = arg2)
@@ -429,9 +430,9 @@ namespace System.Net
         {
             if (Log.IsEnabled())
             {
-                if (arg1 == null) arg1 = "";
-                if (arg2 == null) arg2 = "";
-                if (arg3 == null) arg3 = Array.Empty<byte>();
+                arg1 ??= "";
+                arg2 ??= "";
+                arg3 ??= Array.Empty<byte>();
 
                 fixed (char* arg1Ptr = arg1)
                 fixed (char* arg2Ptr = arg2)
@@ -476,7 +477,7 @@ namespace System.Net
         {
             if (Log.IsEnabled())
             {
-                if (arg1 == null) arg1 = "";
+                arg1 ??= "";
 
                 fixed (char* arg1Ptr = arg1)
                 {
@@ -518,8 +519,8 @@ namespace System.Net
         {
             if (Log.IsEnabled())
             {
-                if (arg1 == null) arg1 = "";
-                if (arg3 == null) arg3 = "";
+                arg1 ??= "";
+                arg3 ??= "";
 
                 fixed (char* arg1Ptr = arg1)
                 fixed (char* arg3Ptr = arg3)
@@ -557,8 +558,8 @@ namespace System.Net
         {
             if (Log.IsEnabled())
             {
-                if (arg1 == null) arg1 = "";
-                if (arg2 == null) arg2 = "";
+                arg1 ??= "";
+                arg2 ??= "";
 
                 fixed (char* arg1Ptr = arg1)
                 fixed (char* arg2Ptr = arg2)
@@ -596,9 +597,9 @@ namespace System.Net
         {
             if (Log.IsEnabled())
             {
-                if (arg1 == null) arg1 = "";
-                if (arg2 == null) arg2 = "";
-                if (arg3 == null) arg3 = "";
+                arg1 ??= "";
+                arg2 ??= "";
+                arg3 ??= "";
 
                 fixed (char* arg1Ptr = arg1)
                 fixed (char* arg2Ptr = arg2)
@@ -642,7 +643,7 @@ namespace System.Net
         {
             if (Log.IsEnabled())
             {
-                if (arg1 == null) arg1 = "";
+                arg1 ??= "";
 
                 fixed (char* arg1Ptr = arg1)
                 {
@@ -704,8 +705,8 @@ namespace System.Net
         {
             if (Log.IsEnabled())
             {
-                if (arg1 == null) arg1 = "";
-                if (arg2 == null) arg2 = "";
+                arg1 ??= "";
+                arg2 ??= "";
 
                 fixed (char* arg1Ptr = arg1)
                 fixed (char* arg2Ptr = arg2)

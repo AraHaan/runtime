@@ -26,23 +26,15 @@ namespace System.Net.NameResolution.Tests
             // [ActiveIssue("https://github.com/dotnet/runtime/issues/27622")]
             PlatformDetection.IsNotArmNorArm64Process &&
             // [ActiveIssue("https://github.com/dotnet/runtime/issues/1488", TestPlatforms.OSX)]
-            PlatformDetection.IsNotOSX &&
+            !PlatformDetection.IsOSX &&
             // [ActiveIssue("https://github.com/dotnet/runtime/issues/51377", TestPlatforms.iOS | TestPlatforms.tvOS | TestPlatforms.MacCatalyst)]
-            !PlatformDetection.IsiOS && !PlatformDetection.IstvOS && !PlatformDetection.IsMacCatalyst &&
-            // [ActiveIssue("https://github.com/dotnet/runtime/issues/55271")]
-            !PlatformDetection.IsSLES;
+            !PlatformDetection.IsiOS && !PlatformDetection.IstvOS && !PlatformDetection.IsMacCatalyst;
 
         [ConditionalTheory(nameof(GetHostEntryWorks))]
         [InlineData("")]
         [InlineData(TestSettings.LocalHost)]
         public async Task Dns_GetHostEntry_HostString_Ok(string hostName)
         {
-            if (PlatformDetection.IsSLES)
-            {
-                // See https://github.com/dotnet/runtime/issues/55271
-                throw new SkipTestException("SLES Tests environment is not configured for this test to work.");
-            }
-
             try
             {
                 await TestGetHostEntryAsync(() => Task.FromResult(Dns.GetHostEntry(hostName)));
@@ -89,14 +81,8 @@ namespace System.Net.NameResolution.Tests
         [ConditionalTheory(nameof(GetHostEntryWorks))]
         [InlineData("")]
         [InlineData(TestSettings.LocalHost)]
-        public async Task Dns_GetHostEntryAsync_HostString_Ok(string hostName)    
+        public async Task Dns_GetHostEntryAsync_HostString_Ok(string hostName)
         {
-            if (PlatformDetection.IsSLES)
-            {
-                // See https://github.com/dotnet/runtime/issues/55271
-                throw new SkipTestException("SLES Tests environment is not configured for this test to work.");
-            }
-
             await TestGetHostEntryAsync(() => Dns.GetHostEntryAsync(hostName));
         }
 
@@ -136,7 +122,7 @@ namespace System.Net.NameResolution.Tests
                 {
                     Assert.NotEqual(AddressFamily.InterNetworkV6, address.AddressFamily);
                 }
-            }   
+            }
         }
 
         [ConditionalTheory(nameof(GetHostEntry_DisableIPv6_Condition))]
@@ -323,13 +309,22 @@ namespace System.Net.NameResolution.Tests
             OperationCanceledException oce = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Dns.GetHostEntryAsync(TestSettings.LocalHost, cts.Token));
             Assert.Equal(cts.Token, oce.CancellationToken);
         }
+    }
 
-        [OuterLoop]
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/43816")] // Race condition outlined below.
-        [ActiveIssue("https://github.com/dotnet/runtime/issues/33378", TestPlatforms.AnyUnix)] // Cancellation of an outstanding getaddrinfo is not supported on *nix.
+    // Cancellation tests are sequential to reduce the chance of timing issues.
+    [Collection(nameof(DisableParallelization))]
+    public class GetHostEntryTest_Cancellation
+    {
         [Fact]
+        [OuterLoop]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/33378", TestPlatforms.AnyUnix)] // Cancellation of an outstanding getaddrinfo is not supported on *nix.
+        [SkipOnCoreClr("JitStress interferes with cancellation timing", RuntimeTestModes.JitStress | RuntimeTestModes.JitStressRegs)]
         public async Task DnsGetHostEntry_PostCancelledToken_Throws()
         {
+            // Windows 7 name resolution is synchronous and does not respect cancellation.
+            if (PlatformDetection.IsWindows7)
+                return;
+
             using var cts = new CancellationTokenSource();
 
             Task task = Dns.GetHostEntryAsync(TestSettings.UncachedHost, cts.Token);

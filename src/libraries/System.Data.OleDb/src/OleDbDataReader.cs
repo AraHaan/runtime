@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.Data.Common;
 using System.Data.ProviderBase;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -329,7 +330,7 @@ namespace System.Data.OleDb
             DataColumn precision = new DataColumn("NumericPrecision", typeof(short));
             DataColumn scale = new DataColumn("NumericScale", typeof(short));
 
-            DataColumn dataType = new DataColumn("DataType", typeof(System.Type));
+            DataColumn dataType = new DataColumn(SchemaTableColumn.DataType, typeof(Type));
             DataColumn providerType = new DataColumn("ProviderType", typeof(int));
 
             DataColumn isLong = new DataColumn("IsLong", typeof(bool));
@@ -720,10 +721,7 @@ namespace System.Data.OleDb
             // release unmanaged objects
             RowHandleBuffer? rowHandleNativeBuffer = _rowHandleNativeBuffer;
             _rowHandleNativeBuffer = null;
-            if (null != rowHandleNativeBuffer)
-            {
-                rowHandleNativeBuffer.Dispose();
-            }
+            rowHandleNativeBuffer?.Dispose();
         }
 
         internal void CloseReaderFromConnection(bool canceling)
@@ -977,12 +975,9 @@ namespace System.Data.OleDb
                 reader.BuildMetaInfo();
                 reader.HasRowsRead();
 
-                if (_connection != null)
-                {
-                    // connection tracks all readers to prevent cmd from executing
-                    // until all readers (including nested) are closed
-                    _connection.AddWeakReference(reader, OleDbReferenceCollection.DataReaderTag);
-                }
+                // connection tracks all readers to prevent cmd from executing
+                // until all readers (including nested) are closed
+                _connection?.AddWeakReference(reader, OleDbReferenceCollection.DataReaderTag);
             }
 
             return reader!;
@@ -1260,7 +1255,6 @@ namespace System.Data.OleDb
             List<OleDbException>? exceptions = null;
             if (null != imultipleResults)
             {
-                object result;
                 IntPtr affected;
                 OleDbHResult hr;
 
@@ -1272,7 +1266,7 @@ namespace System.Data.OleDb
                     {
                         break;
                     }
-                    hr = imultipleResults.GetResult(ADP.PtrZero, ODB.DBRESULTFLAG_DEFAULT, ref ODB.IID_NULL, out affected, out result);
+                    hr = imultipleResults.GetResult(ADP.PtrZero, ODB.DBRESULTFLAG_DEFAULT, ref ODB.IID_NULL, out affected, out _);
 
                     // If a provider doesn't support IID_NULL and returns E_NOINTERFACE we want to break out
                     // of the loop without throwing an exception.  Our behavior will match ADODB in that scenario
@@ -1354,7 +1348,7 @@ namespace System.Data.OleDb
                     Debug.Assert(null == _irow, "NextResult: row loop check");
                     Debug.Assert(null == _irowset, "NextResult: rowset loop check");
 
-                    object? result = null;
+                    object? result;
                     OleDbHResult hr;
                     IntPtr affected;
 
@@ -1927,7 +1921,7 @@ namespace System.Data.OleDb
             _nextAccessorForRetrieval++;
         }
 
-        private int IndexOf(Hashtable hash, string name)
+        private static int IndexOf(Hashtable hash, string name)
         {
             // via case sensitive search, first match with lowest ordinal matches
             object? index = hash[name];
@@ -1972,8 +1966,8 @@ namespace System.Data.OleDb
                 MetaData info = _metadata[i];
                 if ((null != info.baseTableName) && (0 < info.baseTableName.Length))
                 {
-                    catalogName = ((null != info.baseCatalogName) ? info.baseCatalogName : "");
-                    schemaName = ((null != info.baseSchemaName) ? info.baseSchemaName : "");
+                    catalogName = info.baseCatalogName ?? "";
+                    schemaName = info.baseSchemaName ?? "";
                     if (null == baseTableName)
                     {
                         baseSchemaName = schemaName;

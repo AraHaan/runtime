@@ -175,6 +175,12 @@ namespace System.Diagnostics.Metrics
             WriteEvent(14, sessionId, errorMessage);
         }
 
+        [Event(15, Keywords = Keywords.TimeSeriesValues | Keywords.Messages | Keywords.InstrumentPublishing)]
+        public void MultipleSessionsNotSupportedError(string runningSessionId)
+        {
+            WriteEvent(15, runningSessionId);
+        }
+
         /// <summary>
         /// Called when the EventSource gets a command from a EventListener or ETW.
         /// </summary>
@@ -218,6 +224,19 @@ namespace System.Diagnostics.Metrics
                     {
                         if (_aggregationManager != null)
                         {
+                            if (command.Command == EventCommand.Enable || command.Command == EventCommand.Update)
+                            {
+                                // trying to add more sessions is not supported
+                                // EventSource doesn't provide an API that allows us to enumerate the listeners'
+                                // filter arguments independently or to easily track them ourselves. For example
+                                // removing a listener still shows up as EventCommand.Enable as long as at least
+                                // one other listener is active. In the future we might be able to figure out how
+                                // to infer the changes from the info we do have or add a better API but for now
+                                // I am taking the simple route  and not supporting it.
+                                Log.MultipleSessionsNotSupportedError(_sessionId);
+                                return;
+                            }
+
                             _aggregationManager.Dispose();
                             _aggregationManager = null;
                             Log.Message($"Previous session with id {_sessionId} is stopped");
@@ -241,7 +260,7 @@ namespace System.Diagnostics.Metrics
 
                         double defaultIntervalSecs = 1;
                         Debug.Assert(AggregationManager.MinCollectionTimeSecs <= defaultIntervalSecs);
-                        double refreshIntervalSecs = defaultIntervalSecs;
+                        double refreshIntervalSecs;
                         if (command.Arguments!.TryGetValue("RefreshInterval", out string? refreshInterval))
                         {
                             Log.Message($"RefreshInterval argument received: {refreshInterval}");
@@ -341,7 +360,7 @@ namespace System.Diagnostics.Metrics
                 return false;
             }
 
-            private static readonly char[] s_instrumentSeperators = new char[] { '\r', '\n', ',', ';' };
+            private static readonly char[] s_instrumentSeparators = new char[] { '\r', '\n', ',', ';' };
 
             [UnsupportedOSPlatform("browser")]
             private void ParseSpecs(string? metricsSpecs)
@@ -350,16 +369,16 @@ namespace System.Diagnostics.Metrics
                 {
                     return;
                 }
-                string[] specStrings = metricsSpecs.Split(s_instrumentSeperators, StringSplitOptions.RemoveEmptyEntries);
+                string[] specStrings = metricsSpecs.Split(s_instrumentSeparators, StringSplitOptions.RemoveEmptyEntries);
                 foreach (string specString in specStrings)
                 {
                     if (!MetricSpec.TryParse(specString, out MetricSpec spec))
                     {
-                        Log.Message("Failed to parse metric spec: {specString}");
+                        Log.Message($"Failed to parse metric spec: {specString}");
                     }
                     else
                     {
-                        Log.Message("Parsed metric: {spec}");
+                        Log.Message($"Parsed metric: {spec}");
                         if (spec.InstrumentName != null)
                         {
                             _aggregationManager!.Include(spec.MeterName, spec.InstrumentName);
@@ -372,7 +391,7 @@ namespace System.Diagnostics.Metrics
                 }
             }
 
-            private void TransmitMetricValue(Instrument instrument, LabeledAggregationStatistics stats, string sessionId)
+            private static void TransmitMetricValue(Instrument instrument, LabeledAggregationStatistics stats, string sessionId)
             {
                 if (stats.AggregationStatistics is RateStatistics rateStats)
                 {
@@ -390,7 +409,7 @@ namespace System.Diagnostics.Metrics
                 }
             }
 
-            private string FormatTags(KeyValuePair<string, string>[] labels)
+            private static string FormatTags(KeyValuePair<string, string>[] labels)
             {
                 StringBuilder sb = new StringBuilder();
                 for (int i = 0; i < labels.Length; i++)
@@ -404,7 +423,7 @@ namespace System.Diagnostics.Metrics
                 return sb.ToString();
             }
 
-            private string FormatQuantiles(QuantileValue[] quantiles)
+            private static string FormatQuantiles(QuantileValue[] quantiles)
             {
                 StringBuilder sb = new StringBuilder();
                 for (int i = 0; i < quantiles.Length; i++)
@@ -419,7 +438,7 @@ namespace System.Diagnostics.Metrics
             }
         }
 
-        private class MetricSpec
+        private sealed class MetricSpec
         {
             private const char MeterInstrumentSeparator = '\\';
             public string MeterName { get; private set; }

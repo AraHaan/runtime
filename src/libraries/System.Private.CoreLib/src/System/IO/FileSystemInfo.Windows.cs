@@ -4,16 +4,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-
-#if MS_IO_REDIST
-using Microsoft.IO.Enumeration;
-
-namespace Microsoft.IO
-#else
 using System.IO.Enumeration;
 
 namespace System.IO
-#endif
 {
     public partial class FileSystemInfo
     {
@@ -136,6 +129,14 @@ namespace System.IO
                 return ((long)_data.nFileSizeHigh) << 32 | _data.nFileSizeLow & 0xFFFFFFFFL;
             }
         }
+
+#pragma warning disable CA1822
+        internal UnixFileMode UnixFileModeCore
+        {
+            get => (UnixFileMode)(-1);
+            set => throw new PlatformNotSupportedException(SR.PlatformNotSupported_UnixFileMode);
+        }
+#pragma warning restore CA1822
 
         private void EnsureDataInitialized()
         {

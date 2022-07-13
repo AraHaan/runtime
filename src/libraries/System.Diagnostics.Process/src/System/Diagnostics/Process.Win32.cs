@@ -109,7 +109,7 @@ namespace System.Diagnostics
             return false;
         }
 
-        private int GetShellError(IntPtr error)
+        private static int GetShellError(IntPtr error)
         {
             switch ((long)error)
             {
@@ -136,7 +136,7 @@ namespace System.Diagnostics
             }
         }
 
-        internal unsafe class ShellExecuteHelper
+        internal sealed unsafe class ShellExecuteHelper
         {
             private readonly Interop.Shell32.SHELLEXECUTEINFO* _executeInfo;
             private bool _succeeded;
@@ -203,7 +203,7 @@ namespace System.Diagnostics
 #if DEBUG
                 // We never used to throw here, want to surface possible mistakes on our part
                 int error = Marshal.GetLastWin32Error();
-                Debug.Assert(error == 0, $"Failed GetWindowTextLengthW(): { new Win32Exception(error).Message }");
+                Debug.Assert(error == 0, $"Failed GetWindowTextLengthW(): { Marshal.GetPInvokeErrorMessage(error) }");
 #endif
                 return string.Empty;
             }
@@ -222,7 +222,7 @@ namespace System.Diagnostics
             {
                 // We never used to throw here, want to surface possible mistakes on our part
                 int error = Marshal.GetLastWin32Error();
-                Debug.Assert(error == 0, $"Failed GetWindowTextW(): { new Win32Exception(error).Message }");
+                Debug.Assert(error == 0, $"Failed GetWindowTextW(): { Marshal.GetPInvokeErrorMessage(error) }");
             }
 #endif
             return title.Slice(0, length).ToString();
@@ -265,18 +265,7 @@ namespace System.Diagnostics
             return true;
         }
 
-        public string MainWindowTitle
-        {
-            get
-            {
-                if (_mainWindowTitle == null)
-                {
-                    _mainWindowTitle = GetMainWindowTitle();
-                }
-
-                return _mainWindowTitle;
-            }
-        }
+        public string MainWindowTitle => _mainWindowTitle ??= GetMainWindowTitle();
 
         private bool IsRespondingCore()
         {
@@ -290,7 +279,10 @@ namespace System.Diagnostics
             }
 
             IntPtr result;
-            return Interop.User32.SendMessageTimeout(mainWindow, WM_NULL, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 5000, out result) != (IntPtr)0;
+            unsafe
+            {
+                return Interop.User32.SendMessageTimeout(mainWindow, WM_NULL, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 5000, &result) != (IntPtr)0;
+            }
         }
 
         public bool Responding

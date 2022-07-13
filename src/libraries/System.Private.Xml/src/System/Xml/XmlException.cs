@@ -208,7 +208,7 @@ namespace System.Xml
             }
             catch (MissingManifestResourceException)
             {
-                return "UNKNOWN(" + res + ")";
+                return $"UNKNOWN({res})";
             }
         }
 
@@ -272,7 +272,7 @@ namespace System.Xml
         {
             get
             {
-                return (_message == null) ? base.Message : _message;
+                return _message ?? base.Message;
             }
         }
 

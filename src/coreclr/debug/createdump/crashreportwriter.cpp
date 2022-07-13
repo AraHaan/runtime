@@ -4,7 +4,7 @@
 #include "createdump.h"
 
 // Include the .NET Core version string instead of link because it is "static".
-#include "version.c"
+#include "_version.c"
 
 CrashReportWriter::CrashReportWriter(CrashInfo& crashInfo) :
     m_crashInfo(crashInfo)
@@ -33,7 +33,7 @@ CrashReportWriter::WriteCrashReport(const std::string& dumpFileName)
 {
     std::string crashReportFile(dumpFileName);
     crashReportFile.append(".crashreport.json");
-    printf("Writing crash report to file %s\n", crashReportFile.c_str());
+    printf_status("Writing crash report to file %s\n", crashReportFile.c_str());
     try
     {
         if (!OpenWriter(crashReportFile.c_str())) {
@@ -41,10 +41,11 @@ CrashReportWriter::WriteCrashReport(const std::string& dumpFileName)
         }
         WriteCrashReport();
         CloseWriter();
+        printf_status("Crash report successfully written\n");
     }
     catch (const std::exception& e)
     {
-        fprintf(stderr, "Writing the crash report file FAILED\n");
+        printf_error("Writing the crash report file FAILED\n");
 
         // Delete the partial json file on error
         remove(crashReportFile.c_str());
@@ -72,30 +73,32 @@ CrashReportWriter::WriteCrashReport()
     WriteValue("version", version.c_str());
     CloseObject();                  // configuration
 
-    // The main module was saved away in the crash info 
-    if (m_crashInfo.MainModule()->BaseAddress() != 0)
+    // The main module (if one) was saved away in the crash info
+    const ModuleInfo* mainModule = m_crashInfo.MainModule();
+    if (mainModule != nullptr && mainModule->BaseAddress() != 0)
     {
-        WriteValue("process_name", GetFileName(m_crashInfo.MainModule()->ModuleName()).c_str());
+        WriteValue("process_name", GetFileName(mainModule->ModuleName()).c_str());
     }
-
     const char* exceptionType = nullptr;
     OpenArray("threads");
     for (const ThreadInfo* thread : m_crashInfo.Threads())
     {
         OpenObject();
         bool crashed = false;
-        if (thread->ManagedExceptionObject() != 0)
+        if (thread->Tid() == m_crashInfo.CrashThread())
         {
             crashed = true;
-            exceptionType = "0x05000000";   // ManagedException
-        }
-        else
-        {
-            if (thread->Tid() == m_crashInfo.CrashThread())
+            if (thread->ManagedExceptionObject() != 0)
             {
-                crashed = true;
+                exceptionType = "0x05000000";   // ManagedException
+            }
+            else
+            {
                 switch (m_crashInfo.Signal())
                 {
+                case 0:
+                    break;
+
                 case SIGILL:
                     exceptionType = "0x50000000";
                     break;
@@ -121,8 +124,11 @@ CrashReportWriter::WriteCrashReport()
                     break;
 
                 case SIGABRT:
-                default:
                     exceptionType = "0x30000000";
+                    break;
+
+                default:
+                    exceptionType = "0x00000000";
                     break;
                 }
             }
@@ -148,12 +154,23 @@ CrashReportWriter::WriteCrashReport()
         WriteValue64("BP", thread->GetFramePointer());
         CloseObject();          // ctx
 
-        OpenArray("unmanaged_frames");
-        for (const StackFrame& frame : thread->StackFrames())
+        OpenArray("stack_frames");
+        for (auto iterator = thread->StackFrames().cbegin(); iterator != thread->StackFrames().cend(); ++iterator)
         {
-            WriteStackFrame(frame);
+            if (thread->IsBeginRepeat(iterator))
+            {
+                OpenObject();
+                WriteValue32("repeated", thread->NumRepeatedFrames());
+                OpenArray("repeated_frames");
+            }
+            if (thread->IsEndRepeat(iterator))
+            {
+                CloseArray();   // repeated_frames
+                CloseObject();
+            }
+            WriteStackFrame(*iterator);
         }
-        CloseArray();           // unmanaged_frames
+        CloseArray();           // stack_frames
         CloseObject();
     }
     CloseArray();               // threads
@@ -199,7 +216,7 @@ CrashReportWriter::WriteSysctl(const char* sysctlname, const char* valueName)
 
 void
 CrashReportWriter::WriteStackFrame(const StackFrame& frame)
-{ 
+{
     OpenObject();
     WriteValueBool("is_managed", frame.IsManaged());
     WriteValue64("module_address", frame.ModuleAddress());
@@ -252,10 +269,10 @@ CrashReportWriter::WriteStackFrame(const StackFrame& frame)
 bool
 CrashReportWriter::OpenWriter(const char* fileName)
 {
-    m_fd = open(fileName, O_WRONLY|O_CREAT|O_TRUNC, 0664);
+    m_fd = open(fileName, O_WRONLY|O_CREAT|O_TRUNC, S_IWUSR | S_IRUSR);
     if (m_fd == -1)
     {
-        fprintf(stderr, "Could not create json file %s: %d %s\n", fileName, errno, strerror(errno));
+        printf_error("Could not create json file '%s': %s (%d)\n", fileName, strerror(errno), errno);
         return false;
     }
     Write("{\n");
@@ -293,7 +310,7 @@ CrashReportWriter::Indent(std::string& text)
 }
 
 void
-CrashReportWriter::WriteSeperator(std::string& text)
+CrashReportWriter::WriteSeparator(std::string& text)
 {
     if (m_comma)
     {
@@ -307,7 +324,7 @@ void
 CrashReportWriter::OpenValue(const char* key, char marker)
 {
     std::string text;
-    WriteSeperator(text);
+    WriteSeparator(text);
     if (key != nullptr)
     {
         text.append("\"");
@@ -338,7 +355,7 @@ void
 CrashReportWriter::WriteValue(const char* key, const char* value)
 {
     std::string text;
-    WriteSeperator(text);
+    WriteSeparator(text);
     text.append("\"");
     text.append(key);
     text.append("\" : \"");

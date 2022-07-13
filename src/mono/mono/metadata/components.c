@@ -43,12 +43,12 @@ typedef struct _MonoComponentEntry {
 #define DEBUGGER_LIBRARY_NAME "debugger"
 #define DEBUGGER_COMPONENT_NAME DEBUGGER_LIBRARY_NAME
 
-MonoComponentHotReload *hot_reload = NULL;
+MonoComponentHotReload *mono_component_hot_reload_private_ptr = NULL;
 
-MonoComponentDebugger *debugger = NULL;
+MonoComponentDebugger *mono_component_debugger_private_ptr = NULL;
 
-MonoComponentEventPipe *event_pipe = NULL;
-MonoComponentDiagnosticsServer *diagnostics_server = NULL;
+MonoComponentEventPipe *mono_component_event_pipe_private_ptr = NULL;
+MonoComponentDiagnosticsServer *mono_component_diagnostics_server_private_ptr = NULL;
 
 // DiagnosticsServer/EventPipe components currently hosted by diagnostics_tracing library.
 #define DIAGNOSTICS_TRACING_LIBRARY_NAME "diagnostics_tracing"
@@ -57,10 +57,10 @@ MonoComponentDiagnosticsServer *diagnostics_server = NULL;
 
 /* One per component */
 MonoComponentEntry components[] = {
-	{ DEBUGGER_LIBRARY_NAME, DEBUGGER_COMPONENT_NAME, COMPONENT_INIT_FUNC (debugger), (MonoComponent**)&debugger, NULL },
-	{ HOT_RELOAD_LIBRARY_NAME, HOT_RELOAD_COMPONENT_NAME, COMPONENT_INIT_FUNC (hot_reload), (MonoComponent**)&hot_reload, NULL },
-	{ DIAGNOSTICS_TRACING_LIBRARY_NAME, EVENT_PIPE_COMPONENT_NAME, COMPONENT_INIT_FUNC (event_pipe), (MonoComponent**)&event_pipe, NULL },
-	{ DIAGNOSTICS_TRACING_LIBRARY_NAME, DIAGNOSTICS_SERVER_COMPONENT_NAME, COMPONENT_INIT_FUNC (diagnostics_server), (MonoComponent**)&diagnostics_server, NULL },
+	{ DEBUGGER_LIBRARY_NAME, DEBUGGER_COMPONENT_NAME, COMPONENT_INIT_FUNC (debugger), (MonoComponent**)&mono_component_debugger_private_ptr, NULL },
+	{ HOT_RELOAD_LIBRARY_NAME, HOT_RELOAD_COMPONENT_NAME, COMPONENT_INIT_FUNC (hot_reload), (MonoComponent**)&mono_component_hot_reload_private_ptr, NULL },
+	{ DIAGNOSTICS_TRACING_LIBRARY_NAME, EVENT_PIPE_COMPONENT_NAME, COMPONENT_INIT_FUNC (event_pipe), (MonoComponent**)&mono_component_event_pipe_private_ptr, NULL },
+	{ DIAGNOSTICS_TRACING_LIBRARY_NAME, DIAGNOSTICS_SERVER_COMPONENT_NAME, COMPONENT_INIT_FUNC (diagnostics_server), (MonoComponent**)&mono_component_diagnostics_server_private_ptr, NULL },
 };
 
 #ifndef STATIC_COMPONENTS
@@ -75,7 +75,7 @@ mono_components_init (void)
 {
 #ifdef STATIC_COMPONENTS
 	/* directly call each components init function */
-	/* TODO: support disabled components. 
+	/* TODO: support disabled components.
 	 *
 	 * The issue here is that we need to do static linking, so if we don't
 	 * directly reference mono_component_<component_name>_init anywhere (ie
@@ -94,7 +94,7 @@ mono_components_init (void)
 
 	/* call get_component for each component and init it or its stubs and add it to loaded_components */
 	MonoComponentLibrary *component_lib = NULL;
-	
+
 	for (int i = 0; i < G_N_ELEMENTS (components); ++i) {
 		*components [i].component = get_component (&components [i], &component_lib);
 		components [i].lib = component_lib;
@@ -120,13 +120,12 @@ load_component_entrypoint (MonoComponentLibrary *component_lib, const MonoCompon
 {
 	char *component_init = component_init_name (component);
 	gpointer sym = NULL;
-	char *error_msg = mono_dl_symbol (component_lib->lib, component_init, &sym);
-	if (error_msg) {
-		mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_DLLIMPORT, "Component %s library does not have symbol %s: %s", component->name, component_init, error_msg);
-		g_free (error_msg);
-		g_free (component_init);
-		return NULL;
-	}
+
+	ERROR_DECL (symbol_error);
+	sym = mono_dl_symbol (component_lib->lib, component_init, symbol_error);
+	if (!sym)
+		mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_DLLIMPORT, "Component %s library does not have symbol %s: %s", component->name, component_init, mono_error_get_message_without_fields (symbol_error));
+	mono_error_cleanup (symbol_error);
 	g_free (component_init);
 	return sym;
 }
@@ -161,15 +160,14 @@ try_load (const char* dir, const MonoComponentEntry *component, const char* comp
 	void *iter = NULL;
 
 	while (lib == NULL && (path = mono_dl_build_platform_path (dir, component_base_lib, &iter))) {
-		char *error_msg = NULL;
-		lib = mono_dl_open (path, MONO_DL_EAGER | MONO_DL_LOCAL, &error_msg);
-		if (!lib) {
-			mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_DLLIMPORT, "Component library %s not found at %s: %s", component_base_lib, path, error_msg);
-			g_free (error_msg);
-		} else {
+		ERROR_DECL (load_error);
+		lib = mono_dl_open (path, MONO_DL_EAGER | MONO_DL_LOCAL, load_error);
+		if (!lib)
+			mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_DLLIMPORT, "Component library %s not found at %s: %s", component_base_lib, path, mono_error_get_message_without_fields (load_error));
+		else
 			mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_DLLIMPORT, "Component library %s found at %s", component_base_lib, path);
-		}
 		g_free (path);
+		mono_error_cleanup (load_error);
 	}
 
 	return lib;

@@ -7,7 +7,7 @@ using Microsoft.CodeAnalysis;
 
 namespace System.Text.Json.Reflection
 {
-    internal class ParameterInfoWrapper : ParameterInfo
+    internal sealed class ParameterInfoWrapper : ParameterInfo
     {
         private readonly IParameterSymbol _parameter;
 
@@ -22,6 +22,12 @@ namespace System.Text.Json.Reflection
         public override Type ParameterType => _parameter.Type.AsType(_metadataLoadContext);
 
         public override string Name => _parameter.Name;
+
+        public override bool HasDefaultValue => _parameter.HasExplicitDefaultValue;
+
+        public override object DefaultValue => HasDefaultValue ? _parameter.ExplicitDefaultValue : null;
+
+        public override int Position => _parameter.Ordinal;
 
         public override IList<CustomAttributeData> GetCustomAttributesData()
         {

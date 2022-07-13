@@ -41,6 +41,20 @@ namespace System
             get => GetCachedSwitchValue("Switch.System.Diagnostics.EventSource.PreserveEventListnerObjectIdentity", ref s_preserveEventListnerObjectIdentity);
         }
 
+        private static int s_forceEmitInvoke;
+        public static bool ForceEmitInvoke
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => GetCachedSwitchValue("Switch.System.Reflection.ForceEmitInvoke", ref s_forceEmitInvoke);
+        }
+
+        private static int s_forceInterpretedInvoke;
+        public static bool ForceInterpretedInvoke
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => GetCachedSwitchValue("Switch.System.Reflection.ForceInterpretedInvoke", ref s_forceInterpretedInvoke);
+        }
+
         private static int s_serializationGuard;
         public static bool SerializationGuard
         {
@@ -54,7 +68,8 @@ namespace System
             if (s_showILOffset < 0) return false;
             if (s_showILOffset > 0) return true;
 
-            bool isSwitchEnabled = AppContextConfigHelper.GetBooleanConfig("Switch.System.Diagnostics.StackTrace.ShowILOffsets", true);
+            // Disabled by default.
+            bool isSwitchEnabled = AppContextConfigHelper.GetBooleanConfig("Switch.System.Diagnostics.StackTrace.ShowILOffsets", false);
             s_showILOffset = isSwitchEnabled ? 1 : -1;
 
             return isSwitchEnabled;

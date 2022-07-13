@@ -23,17 +23,14 @@ namespace Microsoft.Extensions.Configuration
         /// <param name="providers">The <see cref="IConfigurationProvider"/>s for this configuration.</param>
         public ConfigurationRoot(IList<IConfigurationProvider> providers)
         {
-            if (providers == null)
-            {
-                throw new ArgumentNullException(nameof(providers));
-            }
+            ThrowHelper.ThrowIfNull(providers);
 
             _providers = providers;
             _changeTokenRegistrations = new List<IDisposable>(providers.Count);
             foreach (IConfigurationProvider p in providers)
             {
                 p.Load();
-                _changeTokenRegistrations.Add(ChangeToken.OnChange(() => p.GetReloadToken(), () => RaiseChanged()));
+                _changeTokenRegistrations.Add(ChangeToken.OnChange(p.GetReloadToken, RaiseChanged));
             }
         }
 
@@ -47,7 +44,7 @@ namespace Microsoft.Extensions.Configuration
         /// </summary>
         /// <param name="key">The configuration key.</param>
         /// <returns>The configuration value.</returns>
-        public string this[string key]
+        public string? this[string key]
         {
             get => GetConfiguration(_providers, key);
             set => SetConfiguration(_providers, key, value);
@@ -111,13 +108,13 @@ namespace Microsoft.Extensions.Configuration
             }
         }
 
-        internal static string GetConfiguration(IList<IConfigurationProvider> providers, string key)
+        internal static string? GetConfiguration(IList<IConfigurationProvider> providers, string key)
         {
             for (int i = providers.Count - 1; i >= 0; i--)
             {
                 IConfigurationProvider provider = providers[i];
 
-                if (provider.TryGet(key, out string value))
+                if (provider.TryGet(key, out string? value))
                 {
                     return value;
                 }
@@ -126,7 +123,7 @@ namespace Microsoft.Extensions.Configuration
             return null;
         }
 
-        internal static void SetConfiguration(IList<IConfigurationProvider> providers, string key, string value)
+        internal static void SetConfiguration(IList<IConfigurationProvider> providers, string key, string? value)
         {
             if (providers.Count == 0)
             {

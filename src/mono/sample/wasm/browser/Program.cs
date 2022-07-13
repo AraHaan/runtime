@@ -3,53 +3,45 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Diagnostics;
+using System.Runtime.InteropServices.JavaScript;
 
 namespace Sample
 {
-    public class Test
+    public partial class Test
     {
-        [DebuggerDisplay ("Some {Val1} Value {Val2} End")]
-        class WithDisplayString
-        {
-            internal string Val1 = "one";
-
-            public int Val2 { get { return 2; } }
-        }
-
-        class WithToString
-        {
-            public override string ToString ()
-            {
-                return "SomeString";
-            }
-        }
-
-        [DebuggerDisplay ("{GetDebuggerDisplay(), nq}")]
-        class DebuggerDisplayMethodTest
-        {
-            int someInt = 32;
-            int someInt2 = 43;
-
-            string GetDebuggerDisplay ()
-            {
-                return "First Int:" + someInt + " Second Int:" + someInt2;
-            }
-        }
-
-        public static void Main(string[] args)
+        public static int Main(string[] args)
         {
             Console.WriteLine ("Hello, World!");
+            return 0;
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        public static int TestMeaning()
+        [JSImport("Sample.Test.add")]
+        internal static partial int Add(int a, int b);
+
+        [JSImport("Sample.Test.sub")]
+        internal static partial int Sub(int a, int b);
+
+        [JSExport]
+        internal static int TestMeaning()
         {
-            var a = new WithDisplayString();
-            var c = new DebuggerDisplayMethodTest();
-            Console.WriteLine(a);
-            Console.WriteLine(c);
-            return 42;
+            // call back to JS via imports
+            return Add(Sub(80, 40), 2);
         }
+
+        [JSExport]
+        internal static bool IsPrime(int number)
+        {
+            if (number <= 1) return false;
+            if (number == 2) return true;
+            if (number % 2 == 0) return false;
+
+            var boundary = (int)Math.Floor(Math.Sqrt(number));
+                
+            for (int i = 3; i <= boundary; i += 2)
+                if (number % i == 0)
+                    return false;
+            
+            return true;        
+        }        
     }
 }

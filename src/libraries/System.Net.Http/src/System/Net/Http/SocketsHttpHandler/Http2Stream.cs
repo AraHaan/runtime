@@ -11,6 +11,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Sources;
 
@@ -18,7 +19,7 @@ namespace System.Net.Http
 {
     internal sealed partial class Http2Connection
     {
-        private sealed class Http2Stream : IValueTaskSource, IHttpHeadersHandler, IHttpTrace
+        private sealed class Http2Stream : IValueTaskSource, IHttpStreamHeadersHandler, IHttpTrace
         {
             private const int InitialStreamBufferSize =
 #if DEBUG
@@ -27,7 +28,7 @@ namespace System.Net.Http
                 1024;
 #endif
 
-            private static ReadOnlySpan<byte> StatusHeaderName => new byte[] { (byte)':', (byte)'s', (byte)'t', (byte)'a', (byte)'t', (byte)'u', (byte)'s' };
+            private static ReadOnlySpan<byte> StatusHeaderName => ":status"u8;
 
             private readonly Http2Connection _connection;
             private readonly HttpRequestMessage _request;
@@ -44,6 +45,7 @@ namespace System.Net.Http
             private StreamCompletionState _requestCompletionState;
             private StreamCompletionState _responseCompletionState;
             private ResponseProtocolState _responseProtocolState;
+            private bool _webSocketEstablished;
 
             // If this is not null, then we have received a reset from the server
             // (i.e. RST_STREAM or general IO error processing the connection)
@@ -85,6 +87,8 @@ namespace System.Net.Http
 
             private int _headerBudgetRemaining;
 
+            private bool _sendRstOnResponseClose;
+
             public Http2Stream(HttpRequestMessage request, Http2Connection connection)
             {
                 _request = request;
@@ -104,6 +108,10 @@ namespace System.Net.Http
                 if (_request.Content == null)
                 {
                     _requestCompletionState = StreamCompletionState.Completed;
+                    if (_request.IsWebSocketH2Request())
+                    {
+                        _requestBodyCancellationSource = new CancellationTokenSource();
+                    }
                 }
                 else
                 {
@@ -138,7 +146,7 @@ namespace System.Net.Http
             {
                 StreamId = streamId;
                 _availableCredit = initialWindowSize;
-                if (NetEventSource.Log.IsEnabled()) Trace($"{_request}, {nameof(initialWindowSize)}={initialWindowSize}");
+                if (NetEventSource.Log.IsEnabled()) Trace($"{nameof(initialWindowSize)}={initialWindowSize}");
             }
 
             public int StreamId { get; private set; }
@@ -182,9 +190,9 @@ namespace System.Net.Http
                 // either we know we need to do a Expect: 100-continue send or until we know that the copying of our
                 // content completed asynchronously.
                 CancellationTokenRegistration linkedRegistration = default;
+                bool sendRequestContent = true;
                 try
                 {
-                    bool sendRequestContent = true;
                     if (_expect100ContinueWaiter != null)
                     {
                         linkedRegistration = RegisterRequestBodyCancellation(cancellationToken);
@@ -193,7 +201,7 @@ namespace System.Net.Http
 
                     if (sendRequestContent)
                     {
-                        using var writeStream = new Http2WriteStream(this);
+                        using var writeStream = new Http2WriteStream(this, _request.Content.Headers.ContentLength.GetValueOrDefault(-1));
 
                         if (HttpTelemetry.Log.IsEnabled()) HttpTelemetry.Log.RequestContentStart();
 
@@ -210,6 +218,12 @@ namespace System.Net.Http
                             }
 
                             await vt.ConfigureAwait(false);
+                        }
+
+                        if (writeStream.BytesWritten < writeStream.ContentLength)
+                        {
+                            // The number of bytes we actually sent doesn't match the advertised Content-Length
+                            throw new HttpRequestException(SR.Format(SR.net_http_request_content_length_mismatch, writeStream.BytesWritten, writeStream.ContentLength));
                         }
 
                         if (HttpTelemetry.Log.IsEnabled()) HttpTelemetry.Log.RequestContentStop(writeStream.BytesWritten);
@@ -244,9 +258,8 @@ namespace System.Net.Http
                         Debug.Assert(!sendReset);
 
                         _requestCompletionState = StreamCompletionState.Failed;
-                        Complete();
-
                         SendReset();
+                        Complete();
                     }
 
                     if (signalWaiter)
@@ -270,22 +283,35 @@ namespace System.Net.Http
                         Debug.Assert(_requestCompletionState == StreamCompletionState.InProgress, $"Request already completed with state={_requestCompletionState}");
                         _requestCompletionState = StreamCompletionState.Completed;
 
+                        bool complete = false;
                         if (_responseCompletionState != StreamCompletionState.InProgress)
                         {
                             // Note, we can reach this point if the response stream failed but cancellation didn't propagate before we finished.
                             sendReset = _responseCompletionState == StreamCompletionState.Failed;
-                            Complete();
+                            complete = true;
                         }
 
                         if (sendReset)
                         {
                             SendReset();
                         }
+                        else if (!sendRequestContent)
+                        {
+                            // Request body hasn't been sent, so we need to notify the server that it won't
+                            // get the body. However, we cannot do it right here because the server can
+                            // reset the whole stream before we will have a chance to read the response body.
+                            _sendRstOnResponseClose = true;
+                        }
                         else
                         {
                             // Send EndStream asynchronously and without cancellation.
                             // If this fails, it means that the connection is aborting and we will be reset.
                             _connection.LogExceptions(_connection.SendEndStreamAsync(StreamId));
+                        }
+
+                        if (complete)
+                        {
+                            Complete();
                         }
                     }
                 }
@@ -392,6 +418,7 @@ namespace System.Net.Http
                     if (sendReset)
                     {
                         SendReset();
+                        Complete();
                     }
                 }
 
@@ -406,7 +433,7 @@ namespace System.Net.Http
             {
                 Debug.Assert(Monitor.IsEntered(SyncObject));
 
-                bool sendReset = false;
+                bool sendReset = _sendRstOnResponseClose;
 
                 if (_responseCompletionState == StreamCompletionState.InProgress)
                 {
@@ -414,7 +441,6 @@ namespace System.Net.Http
                     if (_requestCompletionState != StreamCompletionState.InProgress)
                     {
                         sendReset = true;
-                        Complete();
                     }
                 }
 
@@ -457,7 +483,7 @@ namespace System.Net.Http
             private static readonly (HeaderDescriptor descriptor, byte[] value)[] s_hpackStaticHeaderTable = new (HeaderDescriptor, byte[])[LastHPackNormalHeaderId - FirstHPackNormalHeaderId + 1]
             {
                 (KnownHeaders.AcceptCharset.Descriptor, Array.Empty<byte>()),
-                (KnownHeaders.AcceptEncoding.Descriptor, Encoding.ASCII.GetBytes("gzip, deflate")),
+                (KnownHeaders.AcceptEncoding.Descriptor, "gzip, deflate"u8.ToArray()),
                 (KnownHeaders.AcceptLanguage.Descriptor, Array.Empty<byte>()),
                 (KnownHeaders.AcceptRanges.Descriptor, Array.Empty<byte>()),
                 (KnownHeaders.Accept.Descriptor, Array.Empty<byte>()),
@@ -505,7 +531,7 @@ namespace System.Net.Http
                 (KnownHeaders.WWWAuthenticate.Descriptor, Array.Empty<byte>()),
             };
 
-            void IHttpHeadersHandler.OnStaticIndexedHeader(int index)
+            void IHttpStreamHeadersHandler.OnStaticIndexedHeader(int index)
             {
                 Debug.Assert(index >= FirstHPackRequestPseudoHeaderId && index <= LastHPackNormalHeaderId);
 
@@ -528,7 +554,7 @@ namespace System.Net.Http
                 }
             }
 
-            void IHttpHeadersHandler.OnStaticIndexedHeader(int index, ReadOnlySpan<byte> value)
+            void IHttpStreamHeadersHandler.OnStaticIndexedHeader(int index, ReadOnlySpan<byte> value)
             {
                 Debug.Assert(index >= FirstHPackRequestPseudoHeaderId && index <= LastHPackNormalHeaderId);
 
@@ -549,6 +575,11 @@ namespace System.Net.Http
 
                     OnHeader(descriptor, value);
                 }
+            }
+
+            void IHttpStreamHeadersHandler.OnDynamicIndexedHeader(int? index, ReadOnlySpan<byte> name, ReadOnlySpan<byte> value)
+            {
+                OnHeader(name, value);
             }
 
             private void AdjustHeaderBudget(int amount)
@@ -604,6 +635,11 @@ namespace System.Net.Http
                     }
                     else
                     {
+                        if (statusCode == 200 && _response.RequestMessage!.IsWebSocketH2Request())
+                        {
+                            _webSocketEstablished = true;
+                        }
+
                         _responseProtocolState = ResponseProtocolState.ExpectingHeaders;
 
                         // If we are waiting for a 100-continue response, signal the waiter now.
@@ -1011,10 +1047,15 @@ namespace System.Net.Http
                     MoveTrailersToResponseMessage(_response);
                     responseContent.SetStream(EmptyReadStream.Instance);
                 }
+                else if (_webSocketEstablished)
+                {
+                    responseContent.SetStream(new Http2ReadWriteStream(this));
+                }
                 else
                 {
                     responseContent.SetStream(new Http2ReadStream(this));
                 }
+                if (NetEventSource.Log.IsEnabled()) Trace($"Received response: {_response}");
 
                 // Process Set-Cookie headers.
                 if (_connection._pool.Settings._useCookies)
@@ -1025,8 +1066,6 @@ namespace System.Net.Http
 
             private (bool wait, int bytesRead) TryReadFromBuffer(Span<byte> buffer, bool partOfSyncRead = false)
             {
-                Debug.Assert(buffer.Length > 0);
-
                 Debug.Assert(!Monitor.IsEntered(SyncObject));
                 lock (SyncObject)
                 {
@@ -1058,11 +1097,6 @@ namespace System.Net.Http
 
             public int ReadData(Span<byte> buffer, HttpResponseMessage responseMessage)
             {
-                if (buffer.Length == 0)
-                {
-                    return 0;
-                }
-
                 (bool wait, int bytesRead) = TryReadFromBuffer(buffer, partOfSyncRead: true);
                 if (wait)
                 {
@@ -1077,7 +1111,7 @@ namespace System.Net.Http
                 {
                     _windowManager.AdjustWindow(bytesRead, this);
                 }
-                else
+                else if (buffer.Length != 0)
                 {
                     // We've hit EOF.  Pull in from the Http2Stream any trailers that were temporarily stored there.
                     MoveTrailersToResponseMessage(responseMessage);
@@ -1088,11 +1122,6 @@ namespace System.Net.Http
 
             public async ValueTask<int> ReadDataAsync(Memory<byte> buffer, HttpResponseMessage responseMessage, CancellationToken cancellationToken)
             {
-                if (buffer.Length == 0)
-                {
-                    return 0;
-                }
-
                 (bool wait, int bytesRead) = TryReadFromBuffer(buffer.Span);
                 if (wait)
                 {
@@ -1106,7 +1135,7 @@ namespace System.Net.Http
                 {
                     _windowManager.AdjustWindow(bytesRead, this);
                 }
-                else
+                else if (buffer.Length != 0)
                 {
                     // We've hit EOF.  Pull in from the Http2Stream any trailers that were temporarily stored there.
                     MoveTrailersToResponseMessage(responseMessage);
@@ -1302,6 +1331,13 @@ namespace System.Net.Http
                 {
                     Cancel();
                 }
+                else if (_sendRstOnResponseClose)
+                {
+                    // Send RST_STREAM with CANCEL to notify the server that it shouldn't
+                    // expect the request body.
+                    // If this fails, it means that the connection is aborting and we will be reset.
+                    _connection.LogExceptions(_connection.SendRstStreamAsync(StreamId, Http2ProtocolErrorCode.Cancel));
+                }
 
                 lock (SyncObject)
                 {
@@ -1396,12 +1432,61 @@ namespace System.Net.Http
                 Failed
             }
 
-            private sealed class Http2ReadStream : HttpBaseStream
+            private sealed class Http2ReadStream : Http2ReadWriteStream
+            {
+                public Http2ReadStream(Http2Stream http2Stream) : base(http2Stream)
+                {
+                    base.CloseResponseBodyOnDispose = true;
+                }
+
+                public override bool CanWrite => false;
+
+                public override void Write(ReadOnlySpan<byte> buffer) => throw new NotSupportedException(SR.net_http_content_readonly_stream);
+
+                public override ValueTask WriteAsync(ReadOnlyMemory<byte> destination, CancellationToken cancellationToken) => ValueTask.FromException(new NotSupportedException(SR.net_http_content_readonly_stream));
+            }
+
+            private sealed class Http2WriteStream : Http2ReadWriteStream
+            {
+                public long BytesWritten { get; private set; }
+
+                public long ContentLength { get; }
+
+                public Http2WriteStream(Http2Stream http2Stream, long contentLength) : base(http2Stream)
+                {
+                    Debug.Assert(contentLength >= -1);
+                    ContentLength = contentLength;
+                }
+
+                public override bool CanRead => false;
+
+                public override int Read(Span<byte> buffer) => throw new NotSupportedException(SR.net_http_content_writeonly_stream);
+
+                public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken) => ValueTask.FromException<int>(new NotSupportedException(SR.net_http_content_writeonly_stream));
+
+                public override void CopyTo(Stream destination, int bufferSize) => throw new NotSupportedException(SR.net_http_content_writeonly_stream);
+
+                public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken) => Task.FromException(new NotSupportedException(SR.net_http_content_writeonly_stream));
+
+                public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
+                {
+                    BytesWritten += buffer.Length;
+
+                    if ((ulong)BytesWritten > (ulong)ContentLength) // If ContentLength == -1, this will always be false
+                    {
+                        return ValueTask.FromException(new HttpRequestException(SR.net_http_content_write_larger_than_content_length));
+                    }
+
+                    return base.WriteAsync(buffer, cancellationToken);
+                }
+            }
+
+            public class Http2ReadWriteStream : HttpBaseStream
             {
                 private Http2Stream? _http2Stream;
                 private readonly HttpResponseMessage _responseMessage;
 
-                public Http2ReadStream(Http2Stream http2Stream)
+                public Http2ReadWriteStream(Http2Stream http2Stream)
                 {
                     Debug.Assert(http2Stream != null);
                     Debug.Assert(http2Stream._response != null);
@@ -1409,7 +1494,7 @@ namespace System.Net.Http
                     _responseMessage = _http2Stream._response;
                 }
 
-                ~Http2ReadStream()
+                ~Http2ReadWriteStream()
                 {
                     if (NetEventSource.Log.IsEnabled()) _http2Stream?.Trace("");
                     try
@@ -1421,6 +1506,8 @@ namespace System.Net.Http
                         if (NetEventSource.Log.IsEnabled()) _http2Stream?.Trace($"Error: {e}");
                     }
                 }
+
+                protected bool CloseResponseBodyOnDispose { get; set; }
 
                 protected override void Dispose(bool disposing)
                 {
@@ -1435,18 +1522,21 @@ namespace System.Net.Http
                     // protocol, we have little choice: if someone drops the Http2ReadStream without
                     // disposing of it, we need to a) signal to the server that the stream is being
                     // canceled, and b) clean up the associated state in the Http2Connection.
-
-                    http2Stream.CloseResponseBody();
+                    if (CloseResponseBodyOnDispose)
+                    {
+                        http2Stream.CloseResponseBody();
+                    }
 
                     base.Dispose(disposing);
                 }
 
                 public override bool CanRead => _http2Stream != null;
-                public override bool CanWrite => false;
+                public override bool CanWrite => _http2Stream != null;
 
                 public override int Read(Span<byte> destination)
                 {
-                    Http2Stream http2Stream = _http2Stream ?? throw new ObjectDisposedException(nameof(Http2ReadStream));
+                    Http2Stream? http2Stream = _http2Stream;
+                    ObjectDisposedException.ThrowIf(http2Stream is null, this);
 
                     return http2Stream.ReadData(destination, _responseMessage);
                 }
@@ -1485,44 +1575,8 @@ namespace System.Net.Http
                         http2Stream.CopyToAsync(_responseMessage, destination, bufferSize, cancellationToken);
                 }
 
-                public override void Write(ReadOnlySpan<byte> buffer) => throw new NotSupportedException(SR.net_http_content_readonly_stream);
-
-                public override ValueTask WriteAsync(ReadOnlyMemory<byte> destination, CancellationToken cancellationToken) => throw new NotSupportedException();
-            }
-
-            private sealed class Http2WriteStream : HttpBaseStream
-            {
-                private Http2Stream? _http2Stream;
-
-                public long BytesWritten { get; private set; }
-
-                public Http2WriteStream(Http2Stream http2Stream)
-                {
-                    Debug.Assert(http2Stream != null);
-                    _http2Stream = http2Stream;
-                }
-
-                protected override void Dispose(bool disposing)
-                {
-                    Http2Stream? http2Stream = Interlocked.Exchange(ref _http2Stream, null);
-                    if (http2Stream == null)
-                    {
-                        return;
-                    }
-
-                    base.Dispose(disposing);
-                }
-
-                public override bool CanRead => false;
-                public override bool CanWrite => _http2Stream != null;
-
-                public override int Read(Span<byte> buffer) => throw new NotSupportedException();
-
-                public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken) => throw new NotSupportedException();
-
                 public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
                 {
-                    BytesWritten += buffer.Length;
 
                     Http2Stream? http2Stream = _http2Stream;
 

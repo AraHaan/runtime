@@ -11,9 +11,6 @@
 #define JITINTERFACE_H
 
 #include "corjit.h"
-#ifdef FEATURE_PREJIT
-#include "corcompile.h"
-#endif // FEATURE_PREJIT
 
 #ifndef TARGET_UNIX
 #define MAX_UNCHECKED_OFFSET_FOR_NULL_OBJECT ((32*1024)-1)   // when generating JIT code
@@ -69,12 +66,16 @@ bool SigInfoFlagsAreValid (CORINFO_SIG_INFO *sig)
 void InitJITHelpers1();
 void InitJITHelpers2();
 
-#ifndef CROSSGEN_COMPILE
 PCODE UnsafeJitFunction(PrepareCodeConfig* config,
                         COR_ILMETHOD_DECODER* header,
                         CORJIT_FLAGS flags,
                         ULONG* sizeOfCode = NULL);
-#endif // CROSSGEN_COMPILE
+
+void setILIntrinsicMethodInfo(CORINFO_METHOD_INFO* methInfo,
+                              uint8_t* ilcode,
+                              int ilsize,
+                              int maxstack);
+
 
 void getMethodInfoHelper(MethodDesc * ftn,
                          CORINFO_METHOD_HANDLE ftnHnd,
@@ -89,7 +90,8 @@ void getMethodInfoILMethodHeaderHelper(
 
 BOOL LoadDynamicInfoEntry(Module *currentModule,
                           RVA fixupRva,
-                          SIZE_T *entry);
+                          SIZE_T *entry,
+                          BOOL mayUsePrecompiledNDirectMethods = TRUE);
 
 //
 // The legacy x86 monitor helpers do not need a state argument
@@ -392,7 +394,7 @@ extern "C"
     void STDCALL JIT_MemCpy(void *dest, const void *src, SIZE_T count);
 
     void STDMETHODCALLTYPE JIT_ProfilerEnterLeaveTailcallStub(UINT_PTR ProfilerHandle);
-#ifndef TARGET_ARM64
+#if !defined(TARGET_ARM64) && !defined(TARGET_LOONGARCH64)
     void STDCALL JIT_StackProbe();
 #endif // TARGET_ARM64
 };
@@ -411,6 +413,7 @@ class CEEInfo : public ICorJitInfo
     void GetTypeContext(CORINFO_CONTEXT_HANDLE context, SigTypeContext* pTypeContext);
     BOOL ContextIsInstantiated(CORINFO_CONTEXT_HANDLE context);
 
+    void HandleException(struct _EXCEPTION_POINTERS* pExceptionPointers);
 public:
 #include "icorjitinfoimpl_generated.h"
     uint32_t getClassAttribsInternal (CORINFO_CLASS_HANDLE cls);
@@ -428,7 +431,7 @@ public:
     static CorInfoHelpFunc getSharedStaticsHelper(FieldDesc * pField, MethodTable * pFieldMT);
 
     static size_t findNameOfToken (Module* module, mdToken metaTOK,
-                            __out_ecount (FQNameCapacity) char * szFQName, size_t FQNameCapacity);
+                            _Out_writes_ (FQNameCapacity) char * szFQName, size_t FQNameCapacity);
 
     DWORD getMethodAttribsInternal (CORINFO_METHOD_HANDLE ftnHnd);
 
@@ -463,10 +466,7 @@ protected:
         CORINFO_EH_CLAUSE*      clause,
         COR_ILMETHOD_DECODER*   pILHeader);
 
-    bool isVerifyOnly()
-    {
-        return m_fVerifyOnly;
-    }
+    void freeArrayInternal(void* array);
 
 public:
 
@@ -478,14 +478,6 @@ public:
         CORINFO_GET_TAILCALL_HELPERS_FLAGS flags,
         CORINFO_TAILCALL_HELPERS* pResult);
 
-    // Returns whether we are generating code for NGen image.
-    bool IsCompilingForNGen()
-    {
-        LIMITED_METHOD_CONTRACT;
-        // NGen is the only place where we set the override
-        return this != m_pOverride;
-    }
-
     // This normalizes EE type information into the form expected by the JIT.
     //
     // If typeHnd contains exact type information, then *clsRet will contain
@@ -494,10 +486,8 @@ public:
                                       TypeHandle typeHnd = TypeHandle() /* optional in */,
                                       CORINFO_CLASS_HANDLE *clsRet = NULL /* optional out */ );
 
-    CEEInfo(MethodDesc * fd = NULL, bool fVerifyOnly = false, bool fAllowInlining = true) :
-        m_pOverride(NULL),
+    CEEInfo(MethodDesc * fd = NULL, bool fAllowInlining = true) :
         m_pMethodBeingCompiled(fd),
-        m_fVerifyOnly(fVerifyOnly),
         m_pThread(GetThreadNULLOk()),
         m_hMethodForSecurity_Key(NULL),
         m_pMethodForSecurity_Value(NULL),
@@ -532,7 +522,7 @@ private:
 
 #ifdef _DEBUG
     InlineSString<MAX_CLASSNAME_LENGTH> ssClsNameBuff;
-    ScratchBuffer<MAX_CLASSNAME_LENGTH> ssClsNameBuffScratch;
+    InlineSString<MAX_CLASSNAME_LENGTH> ssClsNameBuffUTF8;
 #endif
 
 public:
@@ -572,15 +562,7 @@ public:
 #endif
 
 protected:
-    // NGen provides its own modifications to EE-JIT interface. From technical reason it cannot simply inherit
-    // from code:CEEInfo class (because it has dependencies on VM that NGen does not want).
-    // Therefore the "normal" EE-JIT interface has code:m_pOverride hook that is set either to
-    //   * 'this' (code:CEEInfo) at runtime, or to
-    //   *  code:ZapInfo - the NGen specific implementation of the interface.
-    ICorDynamicInfo * m_pOverride;
-
     MethodDesc*             m_pMethodBeingCompiled;             // Top-level method being compiled
-    bool                    m_fVerifyOnly;
     Thread *                m_pThread;                          // Cached current thread for faster JIT-EE transitions
     CORJIT_FLAGS            m_jitFlags;
 
@@ -622,7 +604,6 @@ struct  HeapList;
 struct _hpCodeHdr;
 typedef struct _hpCodeHdr CodeHeader;
 
-#ifndef CROSSGEN_COMPILE
 // CEEJitInfo is the concrete implementation of callbacks that the EE must provide for the JIT to do its
 // work.   See code:ICorJitInfo#JitToEEInterface for more on this interface.
 class CEEJitInfo : public CEEInfo
@@ -713,23 +694,31 @@ public:
         m_pCodeHeap = NULL;
 
         if (m_pOffsetMapping != NULL)
-            delete [] ((BYTE*) m_pOffsetMapping);
+            freeArrayInternal(m_pOffsetMapping);
 
         if (m_pNativeVarInfo != NULL)
-            delete [] ((BYTE*) m_pNativeVarInfo);
+            freeArrayInternal(m_pNativeVarInfo);
 
         m_iOffsetMapping = 0;
         m_pOffsetMapping = NULL;
         m_iNativeVarInfo = 0;
         m_pNativeVarInfo = NULL;
 
+        if (m_inlineTreeNodes != NULL)
+            freeArrayInternal(m_inlineTreeNodes);
+        if (m_richOffsetMappings != NULL)
+            freeArrayInternal(m_richOffsetMappings);
+
+        m_inlineTreeNodes = NULL;
+        m_numInlineTreeNodes = 0;
+        m_richOffsetMappings = NULL;
+        m_numRichOffsetMappings = 0;
+
 #ifdef FEATURE_ON_STACK_REPLACEMENT
         if (m_pPatchpointInfoFromJit != NULL)
-            delete [] ((BYTE*) m_pPatchpointInfoFromJit);
+            freeArrayInternal(m_pPatchpointInfoFromJit);
 
         m_pPatchpointInfoFromJit = NULL;
-        m_pPatchpointInfoFromRuntime = NULL;
-        m_ilOffset = 0;
 #endif
 
 #ifdef FEATURE_EH_FUNCLETS
@@ -805,9 +794,9 @@ public:
     }
 #endif
 
-    CEEJitInfo(MethodDesc* fd,  COR_ILMETHOD_DECODER* header,
-               EEJitManager* jm, bool fVerifyOnly, bool allowInlining = true)
-        : CEEInfo(fd, fVerifyOnly, allowInlining),
+    CEEJitInfo(MethodDesc* fd, COR_ILMETHOD_DECODER* header,
+               EEJitManager* jm, bool allowInlining = true)
+        : CEEInfo(fd, allowInlining),
           m_jitManager(jm),
           m_CodeHeader(NULL),
           m_CodeHeaderRW(NULL),
@@ -838,6 +827,10 @@ public:
           m_pOffsetMapping(NULL),
           m_iNativeVarInfo(0),
           m_pNativeVarInfo(NULL),
+          m_inlineTreeNodes(NULL),
+          m_numInlineTreeNodes(0),
+          m_richOffsetMappings(NULL),
+          m_numRichOffsetMappings(0),
 #ifdef FEATURE_ON_STACK_REPLACEMENT
           m_pPatchpointInfoFromJit(NULL),
           m_pPatchpointInfoFromRuntime(NULL),
@@ -851,8 +844,6 @@ public:
             GC_NOTRIGGER;
             MODE_ANY;
         } CONTRACTL_END;
-
-        m_pOverride = this;
     }
 
     ~CEEJitInfo()
@@ -870,14 +861,14 @@ public:
         }
 
         if (m_pOffsetMapping != NULL)
-            delete [] ((BYTE*) m_pOffsetMapping);
+            freeArrayInternal(m_pOffsetMapping);
 
         if (m_pNativeVarInfo != NULL)
-            delete [] ((BYTE*) m_pNativeVarInfo);
+            freeArrayInternal(m_pNativeVarInfo);
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
         if (m_pPatchpointInfoFromJit != NULL)
-            delete [] ((BYTE*) m_pPatchpointInfoFromJit);
+            freeArrayInternal(m_pPatchpointInfoFromJit);
 #endif
 #ifdef FEATURE_PGO
         if (m_foundPgoData != NULL)
@@ -899,6 +890,12 @@ public:
     void setVars(CORINFO_METHOD_HANDLE ftn, ULONG32 cVars,
                  ICorDebugInfo::NativeVarInfo *vars) override final;
     void CompressDebugInfo();
+
+    void reportRichMappings(
+        ICorDebugInfo::InlineTreeNode*    inlineTreeNodes,
+        uint32_t                          numInlineTreeNodes,
+        ICorDebugInfo::RichOffsetMapping* mappings,
+        uint32_t                          numMappings) override final;
 
     void* getHelperFtn(CorInfoHelpFunc    ftnNum,                         /* IN  */
                        void **            ppIndirection) override final;  /* OUT */
@@ -994,6 +991,11 @@ protected :
     ULONG32                 m_iNativeVarInfo;
     ICorDebugInfo::NativeVarInfo * m_pNativeVarInfo;
 
+    ICorDebugInfo::InlineTreeNode    *m_inlineTreeNodes;
+    ULONG32                           m_numInlineTreeNodes;
+    ICorDebugInfo::RichOffsetMapping *m_richOffsetMappings;
+    ULONG32                           m_numRichOffsetMappings;
+
 #ifdef FEATURE_ON_STACK_REPLACEMENT
     PatchpointInfo        * m_pPatchpointInfoFromJit;
     PatchpointInfo        * m_pPatchpointInfoFromRuntime;
@@ -1020,7 +1022,6 @@ protected :
     } m_gphCache;
 
 };
-#endif // CROSSGEN_COMPILE
 
 /*********************************************************************/
 /*********************************************************************/
@@ -1162,4 +1163,3 @@ FCDECL1(INT64, GetCompiledMethodCount, CLR_BOOL currentThread);
 FCDECL1(INT64, GetCompilationTimeInTicks, CLR_BOOL currentThread);
 
 #endif // JITINTERFACE_H
-

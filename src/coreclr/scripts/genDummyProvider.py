@@ -6,7 +6,7 @@
 ##  interface from a manifest file
 ##
 ##  The intended use if for platforms which support event pipe
-##  but do not have a an eventing platform to recieve report events
+##  but do not have a an eventing platform to receive report events
 
 import os
 from genEventing import *
@@ -147,7 +147,7 @@ def main(argv):
 
     required = parser.add_argument_group('required arguments')
     required.add_argument('--man',  type=str, required=True,
-                                    help='full path to manifest containig the description of events')
+                                    help='full path to manifest containing the description of events')
     required.add_argument('--intermediate', type=str, required=True,
                                     help='full path to eventprovider  intermediate directory')
     required.add_argument('--runtimeflavor', type=str,default="CoreCLR",

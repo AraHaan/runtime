@@ -25,7 +25,7 @@ using System.Text;
 using System.Runtime.CompilerServices;
 namespace Microsoft.Diagnostics.Tracing
 #else
-using Internal.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 namespace System.Diagnostics.Tracing
 #endif
 {
@@ -90,14 +90,10 @@ namespace System.Diagnostics.Tracing
             EventSourceSettings config,
             params string[]? traits)
             : this(
-                eventSourceName == null ? default : GenerateGuidFromName(eventSourceName.ToUpperInvariant()),
-                eventSourceName!,
+                GenerateGuidFromName((eventSourceName ?? throw new ArgumentNullException(nameof(eventSourceName))).ToUpperInvariant()),
+                eventSourceName,
                 config, traits)
         {
-            if (eventSourceName == null)
-            {
-                throw new ArgumentNullException(nameof(eventSourceName));
-            }
         }
 
         /// <summary>
@@ -163,6 +159,9 @@ namespace System.Diagnostics.Tracing
         /// create the fields of the event.
         /// </param>
 #if !ES_BUILD_STANDALONE
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                    Justification = "EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                    "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
         [RequiresUnreferencedCode(EventSourceRequiresUnreferenceMessage)]
         public unsafe void Write<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(
 #else
@@ -204,6 +203,9 @@ namespace System.Diagnostics.Tracing
         /// create the fields of the event.
         /// </param>
 #if !ES_BUILD_STANDALONE
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                    Justification = "EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                    "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
         [RequiresUnreferencedCode(EventSourceRequiresUnreferenceMessage)]
         public unsafe void Write<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(
 #else
@@ -247,6 +249,9 @@ namespace System.Diagnostics.Tracing
         /// create the fields of the event.
         /// </param>
 #if !ES_BUILD_STANDALONE
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                    Justification = "EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                    "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
         [RequiresUnreferencedCode(EventSourceRequiresUnreferenceMessage)]
         public unsafe void Write<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(
 #else
@@ -297,6 +302,9 @@ namespace System.Diagnostics.Tracing
         /// create the fields of the event.
         /// </param>
 #if !ES_BUILD_STANDALONE
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                    Justification = "EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                    "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
         [RequiresUnreferencedCode(EventSourceRequiresUnreferenceMessage)]
         public unsafe void Write<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(
 #else

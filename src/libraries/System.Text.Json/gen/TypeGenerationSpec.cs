@@ -4,13 +4,15 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using System.Text.Json.Reflection;
 using System.Text.Json.Serialization;
+using Microsoft.CodeAnalysis;
 
 namespace System.Text.Json.SourceGeneration
 {
     [DebuggerDisplay("Type={Type}, ClassType={ClassType}")]
-    internal class TypeGenerationSpec
+    internal sealed class TypeGenerationSpec
     {
         /// <summary>
         /// Fully qualified assembly name, prefixed with "global::", e.g. global::System.Numerics.BigInteger.
@@ -18,11 +20,21 @@ namespace System.Text.Json.SourceGeneration
         public string TypeRef { get; private set; }
 
         /// <summary>
-        /// The name of the public JsonTypeInfo<T> property for this type on the generated context class.
+        /// If specified as a root type via <c>JsonSerializableAttribute</c>, specifies the location of the attribute application.
+        /// </summary>
+        public Location? AttributeLocation { get; set; }
+
+        /// <summary>
+        /// The name of the public <c>JsonTypeInfo&lt;T&gt;</c> property for this type on the generated context class.
         /// For example, if the context class is named MyJsonContext, and the value of this property is JsonMessage;
         /// then users will call MyJsonContext.JsonMessage to access generated metadata for the type.
         /// </summary>
         public string TypeInfoPropertyName { get; set; }
+
+        /// <summary>
+        /// Method used to generate JsonTypeInfo given options instance
+        /// </summary>
+        public string CreateTypeInfoMethodName => $"Create_{TypeInfoPropertyName}";
 
         public JsonSourceGenerationMode GenerationMode { get; set; }
 
@@ -37,6 +49,7 @@ namespace System.Text.Json.SourceGeneration
         public bool ImplementsIJsonOnSerialized { get; private set; }
         public bool ImplementsIJsonOnSerializing { get; private set; }
 
+        public bool IsPolymorphic { get; private set; }
         public bool IsValueType { get; private set; }
 
         public bool CanBeNull { get; private set; }
@@ -44,6 +57,8 @@ namespace System.Text.Json.SourceGeneration
         public JsonNumberHandling? NumberHandling { get; private set; }
 
         public List<PropertyGenerationSpec>? PropertyGenSpecList { get; private set; }
+
+        public ParameterGenerationSpec[]? CtorParamGenSpecArray { get; private set; }
 
         public CollectionType CollectionType { get; private set; }
 
@@ -55,16 +70,24 @@ namespace System.Text.Json.SourceGeneration
 
         public TypeGenerationSpec? NullableUnderlyingTypeMetadata { get; private set; }
 
+        /// <summary>
+        /// Supports deserialization of extension data dictionaries typed as <c>I[ReadOnly]Dictionary&lt;string, object/JsonElement&gt;</c>.
+        /// Specifies a concrete type to instanciate, which would be <c>Dictionary&lt;string, object/JsonElement&gt;</c>.
+        /// </summary>
+        public string? RuntimeTypeRef { get; private set; }
+
+        public TypeGenerationSpec? ExtensionDataPropertyTypeSpec { get; private set; }
+
         public string? ConverterInstantiationLogic { get; private set; }
 
-        public string FastPathSerializeMethodName
-        {
-            get
-            {
-                Debug.Assert(GenerateSerializationLogic);
-                return $"{TypeInfoPropertyName}Serialize";
-            }
-        }
+        // Only generate certain helper methods if necessary.
+        public bool HasPropertyFactoryConverters { get; private set; }
+        public bool HasTypeFactoryConverter { get; private set; }
+
+        // The spec is derived from cached `System.Type` instances, which are generally annotation-agnostic.
+        // Hence we can only record the potential for nullable annotations being possible for the runtime type.
+        // TODO: consider deriving the generation spec from the Roslyn symbols directly.
+        public bool CanContainNullableReferenceAnnotations { get; private set; }
 
         public string? ImmutableCollectionBuilderName
         {
@@ -96,14 +119,21 @@ namespace System.Text.Json.SourceGeneration
             ClassType classType,
             JsonNumberHandling? numberHandling,
             List<PropertyGenerationSpec>? propertyGenSpecList,
+            ParameterGenerationSpec[]? ctorParamGenSpecArray,
             CollectionType collectionType,
             TypeGenerationSpec? collectionKeyTypeMetadata,
             TypeGenerationSpec? collectionValueTypeMetadata,
             ObjectConstructionStrategy constructionStrategy,
             TypeGenerationSpec? nullableUnderlyingTypeMetadata,
+            string? runtimeTypeRef,
+            TypeGenerationSpec? extensionDataPropertyTypeSpec,
             string? converterInstantiationLogic,
             bool implementsIJsonOnSerialized,
-            bool implementsIJsonOnSerializing)
+            bool implementsIJsonOnSerializing,
+            bool hasTypeFactoryConverter,
+            bool canContainNullableReferenceAnnotations,
+            bool hasPropertyFactoryConverters,
+            bool isPolymorphic)
         {
             GenerationMode = generationMode;
             TypeRef = type.GetCompilableName();
@@ -112,16 +142,23 @@ namespace System.Text.Json.SourceGeneration
             ClassType = classType;
             IsValueType = type.IsValueType;
             CanBeNull = !IsValueType || nullableUnderlyingTypeMetadata != null;
+            IsPolymorphic = isPolymorphic;
             NumberHandling = numberHandling;
             PropertyGenSpecList = propertyGenSpecList;
+            CtorParamGenSpecArray = ctorParamGenSpecArray;
             CollectionType = collectionType;
             CollectionKeyTypeMetadata = collectionKeyTypeMetadata;
             CollectionValueTypeMetadata = collectionValueTypeMetadata;
             ConstructionStrategy = constructionStrategy;
             NullableUnderlyingTypeMetadata = nullableUnderlyingTypeMetadata;
+            RuntimeTypeRef = runtimeTypeRef;
+            ExtensionDataPropertyTypeSpec = extensionDataPropertyTypeSpec;
             ConverterInstantiationLogic = converterInstantiationLogic;
             ImplementsIJsonOnSerialized = implementsIJsonOnSerialized;
             ImplementsIJsonOnSerializing = implementsIJsonOnSerializing;
+            CanContainNullableReferenceAnnotations = canContainNullableReferenceAnnotations;
+            HasTypeFactoryConverter = hasTypeFactoryConverter;
+            HasPropertyFactoryConverters = hasPropertyFactoryConverters;
         }
 
         public bool TryFilterSerializableProps(
@@ -135,7 +172,6 @@ namespace System.Text.Json.SourceGeneration
             for (int i = 0; i < PropertyGenSpecList.Count; i++)
             {
                 PropertyGenerationSpec propGenSpec = PropertyGenSpecList[i];
-                bool hasJsonInclude = propGenSpec.HasJsonInclude;
                 JsonIgnoreCondition? ignoreCondition = propGenSpec.DefaultIgnoreCondition;
 
                 if (ignoreCondition == JsonIgnoreCondition.WhenWritingNull && !propGenSpec.TypeGenerationSpec.CanBeNull)
@@ -143,17 +179,21 @@ namespace System.Text.Json.SourceGeneration
                     goto ReturnFalse;
                 }
 
-                if (!propGenSpec.IsPublic)
+                // In case of JsonInclude fail if either:
+                // 1. the getter is not accessible by the source generator or
+                // 2. neither getter or setter methods are public.
+                if (propGenSpec.HasJsonInclude && (!propGenSpec.CanUseGetter || !propGenSpec.IsPublic))
                 {
-                    if (hasJsonInclude)
-                    {
-                        goto ReturnFalse;
-                    }
+                    goto ReturnFalse;
+                }
 
+                // Discard any getters not accessible by the source generator.
+                if (!propGenSpec.CanUseGetter)
+                {
                     continue;
                 }
 
-                if (!propGenSpec.IsProperty && !hasJsonInclude && !options.IncludeFields)
+                if (!propGenSpec.IsProperty && !propGenSpec.HasJsonInclude && !options.IncludeFields)
                 {
                     continue;
                 }
@@ -198,7 +238,7 @@ namespace System.Text.Json.SourceGeneration
             castingRequiredForProps = PropertyGenSpecList.Count > serializableProperties.Count;
             return true;
 
-ReturnFalse:
+        ReturnFalse:
             serializableProperties = null;
             castingRequiredForProps = false;
             return false;
@@ -206,11 +246,24 @@ ReturnFalse:
 
         private bool FastPathIsSupported()
         {
+            if (IsPolymorphic)
+            {
+                return false;
+            }
+
             if (ClassType == ClassType.Object)
             {
+                if (ExtensionDataPropertyTypeSpec != null)
+                {
+                    return false;
+                }
+
                 foreach (PropertyGenerationSpec property in PropertyGenSpecList)
                 {
-                    if (property.TypeGenerationSpec.Type.IsObjectType())
+                    if (property.TypeGenerationSpec.Type.IsObjectType() ||
+                        property.NumberHandling == JsonNumberHandling.AllowNamedFloatingPointLiterals ||
+                        property.NumberHandling == JsonNumberHandling.WriteAsString ||
+                        property.ConverterInstantiationLogic is not null)
                     {
                         return false;
                     }
@@ -222,6 +275,7 @@ ReturnFalse:
             switch (CollectionType)
             {
                 case CollectionType.NotApplicable:
+                case CollectionType.IAsyncEnumerableOfT:
                     return false;
                 case CollectionType.IDictionary:
                 case CollectionType.Dictionary:

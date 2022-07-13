@@ -291,14 +291,14 @@ void trace_hostpolicy_entrypoint_invocation(const pal::string_t& entryPointName)
         _STRINGIFY(HOST_POLICY_PKG_NAME),
         _STRINGIFY(HOST_POLICY_PKG_VER),
         _STRINGIFY(HOST_POLICY_PKG_REL_DIR),
-        get_arch(),
+        get_current_arch_name(),
         entryPointName.c_str());
 }
 
 //
 // Loads and initilizes the hostpolicy.
 //
-// If hostpolicy is already initalized, the library will not be
+// If hostpolicy is already initialized, the library will not be
 // reinitialized.
 //
 SHARED_API int HOSTPOLICY_CALLTYPE corehost_load(host_interface_t* init)
@@ -824,11 +824,6 @@ SHARED_API int HOSTPOLICY_CALLTYPE corehost_unload()
     return StatusCode::Success;
 }
 
-typedef void(HOSTPOLICY_CALLTYPE *corehost_resolve_component_dependencies_result_fn)(
-    const pal::char_t* assembly_paths,
-    const pal::char_t* native_search_paths,
-    const pal::char_t* resource_search_paths);
-
 SHARED_API int HOSTPOLICY_CALLTYPE corehost_resolve_component_dependencies(
     const pal::char_t *component_main_assembly_path,
     corehost_resolve_component_dependencies_result_fn result)
@@ -966,7 +961,7 @@ SHARED_API int HOSTPOLICY_CALLTYPE corehost_resolve_component_dependencies(
 // By default no callback is registered in which case the errors are written to stderr.
 //
 // Each call to the error writer is sort of like writing a single line (the EOL character is omitted).
-// Multiple calls to the error writer may occure for one failure.
+// Multiple calls to the error writer may occur for one failure.
 //
 SHARED_API corehost_error_writer_fn HOSTPOLICY_CALLTYPE corehost_set_error_writer(corehost_error_writer_fn error_writer)
 {

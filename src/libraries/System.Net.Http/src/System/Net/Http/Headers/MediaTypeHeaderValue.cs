@@ -12,7 +12,7 @@ namespace System.Net.Http.Headers
     {
         private const string charSet = "charset";
 
-        private ObjectCollection<NameValueHeaderValue>? _parameters;
+        private UnvalidatedObjectCollection<NameValueHeaderValue>? _parameters;
         private string? _mediaType;
 
         public string? CharSet
@@ -53,7 +53,7 @@ namespace System.Net.Http.Headers
             }
         }
 
-        public ICollection<NameValueHeaderValue> Parameters => _parameters ??= new ObjectCollection<NameValueHeaderValue>();
+        public ICollection<NameValueHeaderValue> Parameters => _parameters ??= new UnvalidatedObjectCollection<NameValueHeaderValue>();
 
         [DisallowNull]
         public string? MediaType
@@ -80,9 +80,19 @@ namespace System.Net.Http.Headers
         }
 
         public MediaTypeHeaderValue(string mediaType)
+            : this(mediaType, charSet: null)
+        {
+        }
+
+        public MediaTypeHeaderValue(string mediaType, string? charSet)
         {
             CheckMediaTypeFormat(mediaType, nameof(mediaType));
             _mediaType = mediaType;
+
+            if (!string.IsNullOrEmpty(charSet))
+            {
+                CharSet = charSet;
+            }
         }
 
         public override string ToString()
@@ -158,7 +168,7 @@ namespace System.Net.Http.Headers
             }
 
             int current = startIndex + mediaTypeLength;
-            current = current + HttpRuleParser.GetWhitespaceLength(input, current);
+            current += HttpRuleParser.GetWhitespaceLength(input, current);
             MediaTypeHeaderValue mediaTypeHeader;
 
             // If we're not done and we have a parameter delimiter, then we have a list of parameters.
@@ -169,7 +179,7 @@ namespace System.Net.Http.Headers
 
                 current++; // skip delimiter.
                 int parameterLength = NameValueHeaderValue.GetNameValueListLength(input, current, ';',
-                    (ObjectCollection<NameValueHeaderValue>)mediaTypeHeader.Parameters);
+                    (UnvalidatedObjectCollection<NameValueHeaderValue>)mediaTypeHeader.Parameters);
 
                 if (parameterLength == 0)
                 {
@@ -203,7 +213,7 @@ namespace System.Net.Http.Headers
             }
 
             int current = startIndex + typeLength;
-            current = current + HttpRuleParser.GetWhitespaceLength(input, current);
+            current += HttpRuleParser.GetWhitespaceLength(input, current);
 
             // Parse the separator between type and subtype
             if ((current >= input.Length) || (input[current] != '/'))
@@ -211,7 +221,7 @@ namespace System.Net.Http.Headers
                 return 0;
             }
             current++; // skip delimiter.
-            current = current + HttpRuleParser.GetWhitespaceLength(input, current);
+            current += HttpRuleParser.GetWhitespaceLength(input, current);
 
             // Parse the subtype, i.e. <subtype> in media type string "<type>/<subtype>; param1=value1; param2=value2"
             int subtypeLength = HttpRuleParser.GetTokenLength(input, current);

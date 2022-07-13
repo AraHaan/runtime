@@ -923,7 +923,7 @@ namespace System.Text.Json.Serialization.Tests
         public int Int { get; set; }
     }
 
-    public class ClassWithConstructor_SimpleAndComplexParameters : ITestClassWithParameterizedCtor
+    public class ObjWCtorMixedParams : ITestClassWithParameterizedCtor
     {
         public byte MyByte { get; }
         public sbyte MySByte { get; set; }
@@ -961,7 +961,7 @@ namespace System.Text.Json.Serialization.Tests
         public ImmutableSortedSet<string> MyStringImmutableSortedSetT { get; }
         public List<string> MyListOfNullString { get; }
 
-        public ClassWithConstructor_SimpleAndComplexParameters(
+        public ObjWCtorMixedParams(
             byte myByte,
             char myChar,
             string myString,
@@ -1011,8 +1011,8 @@ namespace System.Text.Json.Serialization.Tests
             MyListOfNullString = myListOfNullString;
         }
 
-        public static ClassWithConstructor_SimpleAndComplexParameters GetInstance() =>
-            JsonSerializer.Deserialize<ClassWithConstructor_SimpleAndComplexParameters>(s_json);
+        public static ObjWCtorMixedParams GetInstance() =>
+            JsonSerializer.Deserialize<ObjWCtorMixedParams>(s_json);
 
         public static string s_json => $"{{{s_partialJson1},{s_partialJson2}}}";
 
@@ -1308,7 +1308,8 @@ namespace System.Text.Json.Serialization.Tests
             Int56 = int56; Int57 = int57; Int58 = int58; Int59 = int59; Int60 = int60; Int61 = int61; Int62 = int62; Int63 = int63;
         }
 
-        public static string Json {
+        public static string Json
+        {
             get
             {
                 StringBuilder sb = new StringBuilder();
@@ -1849,23 +1850,23 @@ namespace System.Text.Json.Serialization.Tests
     public class Parameterized_Class_With_ComplexTuple : ITestClassWithParameterizedCtor
     {
         public Tuple<
-                ClassWithConstructor_SimpleAndComplexParameters,
-                ClassWithConstructor_SimpleAndComplexParameters,
-                ClassWithConstructor_SimpleAndComplexParameters,
-                ClassWithConstructor_SimpleAndComplexParameters,
-                ClassWithConstructor_SimpleAndComplexParameters,
-                ClassWithConstructor_SimpleAndComplexParameters,
-                ClassWithConstructor_SimpleAndComplexParameters> MyTuple { get; }
+                ObjWCtorMixedParams,
+                ObjWCtorMixedParams,
+                ObjWCtorMixedParams,
+                ObjWCtorMixedParams,
+                ObjWCtorMixedParams,
+                ObjWCtorMixedParams,
+                ObjWCtorMixedParams> MyTuple { get; }
 
         public Parameterized_Class_With_ComplexTuple(
             Tuple<
-                ClassWithConstructor_SimpleAndComplexParameters,
-                ClassWithConstructor_SimpleAndComplexParameters,
-                ClassWithConstructor_SimpleAndComplexParameters,
-                ClassWithConstructor_SimpleAndComplexParameters,
-                ClassWithConstructor_SimpleAndComplexParameters,
-                ClassWithConstructor_SimpleAndComplexParameters,
-                ClassWithConstructor_SimpleAndComplexParameters> myTuple) => MyTuple = myTuple;
+                ObjWCtorMixedParams,
+                ObjWCtorMixedParams,
+                ObjWCtorMixedParams,
+                ObjWCtorMixedParams,
+                ObjWCtorMixedParams,
+                ObjWCtorMixedParams,
+                ObjWCtorMixedParams> myTuple) => MyTuple = myTuple;
 
         private const string s_inner_json = @"
             {
@@ -2282,7 +2283,7 @@ namespace System.Text.Json.Serialization.Tests
     {
         public int X { get; }
         public int Y { get; }
-        public int Z { get; set;  }
+        public int Z { get; set; }
 
         [JsonConstructor]
         public Point_With_Property(int x, int y)
@@ -2325,18 +2326,18 @@ namespace System.Text.Json.Serialization.Tests
             = new MyEventsListerItem
             {
                 Campaign = "A very nice campaign",
-                EndDate = DateTime.UtcNow.AddDays(7),
+                EndDate = DateTimeTestHelpers.FixedDateTimeValue.AddDays(7),
                 EventId = 321,
                 EventName = "wonderful name",
                 Organization = "Local Animal Shelter",
-                StartDate = DateTime.UtcNow.AddDays(-7),
+                StartDate = DateTimeTestHelpers.FixedDateTimeValue.AddDays(-7),
                 TimeZone = TimeZoneInfo.Utc.DisplayName,
                 VolunteerCount = 15,
                 Tasks = Enumerable.Repeat(
                     new MyEventsListerItemTask
                     {
-                        StartDate = DateTime.UtcNow,
-                        EndDate = DateTime.UtcNow.AddDays(1),
+                        StartDate = DateTimeTestHelpers.FixedDateTimeValue,
+                        EndDate = DateTimeTestHelpers.FixedDateTimeValue.AddDays(1),
                         Name = "A very nice task to have"
                     }, 4).ToList()
             };

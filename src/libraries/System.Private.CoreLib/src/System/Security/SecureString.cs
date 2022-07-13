@@ -24,10 +24,8 @@ namespace System.Security
         [CLSCompliant(false)]
         public unsafe SecureString(char* value, int length)
         {
-            if (value == null)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
+            ArgumentNullException.ThrowIfNull(value);
+
             if (length < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(length), SR.ArgumentOutOfRange_NeedNonNegNum);
@@ -308,10 +306,7 @@ namespace System.Security
 
         private void EnsureNotDisposed()
         {
-            if (_buffer == null)
-            {
-                throw new ObjectDisposedException(GetType().Name);
-            }
+            ObjectDisposedException.ThrowIf(_buffer == null, this);
         }
 
         internal unsafe IntPtr MarshalToBSTR()

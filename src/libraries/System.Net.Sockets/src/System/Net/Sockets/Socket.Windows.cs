@@ -19,7 +19,9 @@ namespace System.Net.Sockets
         private static CachedSerializedEndPoint? s_cachedMappedAnyV6EndPoint;
         private DynamicWinsockMethods? _dynamicWinsockMethods;
 
+#pragma warning disable CA1822
         internal void ReplaceHandleIfNecessaryAfterFailedConnect() { /* nop on Windows */ }
+#pragma warning restore CA1822
 
         private sealed class CachedSerializedEndPoint
         {
@@ -397,14 +399,11 @@ namespace System.Net.Sockets
 
         private void SendFileInternal(string? fileName, ReadOnlySpan<byte> preBuffer, ReadOnlySpan<byte> postBuffer, TransmitFileOptions flags)
         {
-            // Open the file, if any
-            FileStream? fileStream = OpenFile(fileName);
-
             SocketError errorCode;
-            using (fileStream)
-            {
-                SafeFileHandle? fileHandle = fileStream?.SafeFileHandle;
 
+            // Open the file, if any
+            using (SafeFileHandle? fileHandle = OpenFileHandle(fileName))
+            {
                 // This can throw ObjectDisposedException.
                 errorCode = SocketPal.SendFile(_handle, fileHandle, preBuffer, postBuffer, flags);
             }

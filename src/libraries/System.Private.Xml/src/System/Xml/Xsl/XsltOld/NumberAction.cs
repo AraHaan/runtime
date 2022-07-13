@@ -12,7 +12,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace System.Xml.Xsl.XsltOld
 {
-    internal class NumberAction : ContainerAction
+    internal sealed class NumberAction : ContainerAction
     {
         internal sealed class FormatInfo
         {
@@ -127,20 +127,10 @@ namespace System.Xml.Xsl.XsltOld
                 }
                 else
                 {
-                    str = Convert.ToString(val, CultureInfo.InvariantCulture);
+                    str = val.ToString(CultureInfo.InvariantCulture);
                 }
 
-                if (str.Length >= minLength)
-                {
-                    return str;
-                }
-                else
-                {
-                    StringBuilder sb = new StringBuilder(minLength);
-                    sb.Append('0', minLength - str.Length);
-                    sb.Append(str);
-                    return sb.ToString();
-                }
+                return str.PadLeft(minLength, '0');
             }
         }
 
@@ -481,7 +471,7 @@ namespace System.Xml.Xsl.XsltOld
             return false;
         }
 
-        private XPathNodeType BasicNodeType(XPathNodeType type)
+        private static XPathNodeType BasicNodeType(XPathNodeType type)
         {
             if (type == XPathNodeType.SignificantWhitespace || type == XPathNodeType.Whitespace)
             {
@@ -519,11 +509,6 @@ namespace System.Xml.Xsl.XsltOld
             }
             if (groupingSep != null)
             {
-                if (groupingSep.Length > 1)
-                {
-                    // It is a breaking change to throw an exception, SQLBUDT 324367
-                    //throw XsltException.Create(SR.Xslt_CharAttribute, "grouping-separator");
-                }
                 numberingFormat.setGroupingSeparator(groupingSep);
             }
             if (0 < cFormats)
@@ -663,8 +648,6 @@ namespace System.Xml.Xsl.XsltOld
                         {
                             // 60-based Zodiak numbering begins with two characters
                             seq = NumberingSequence.Zodiac3;
-                            tokLen--;
-                            startLen++;
                         }
                         else
                         {

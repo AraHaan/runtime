@@ -31,7 +31,7 @@ namespace System.Data.Common
         internal readonly int _objectID = System.Threading.Interlocked.Increment(ref s_objectTypeCount);
 
         [Conditional("DEBUG")]
-        private void AssertReaderHandleFieldCount(DataReaderContainer readerHandler)
+        private static void AssertReaderHandleFieldCount(DataReaderContainer readerHandler)
         {
 #if DEBUG
             Debug.Assert(readerHandler.FieldCount > 0, "Scenario expects non-empty results but no fields reported by reader");
@@ -201,7 +201,7 @@ namespace System.Data.Common
             }
         }
 
-        [Obsolete("CloneInternals() has been deprecated.  Use the DataAdapter(DataAdapter from) constructor.  https://go.microsoft.com/fwlink/?linkid=14202")]
+        [Obsolete("CloneInternals() has been deprecated. Use the DataAdapter(DataAdapter from) constructor instead.")]
         protected virtual DataAdapter CloneInternals()
         {
             DataAdapter clone = (DataAdapter)Activator.CreateInstance(GetType())!;

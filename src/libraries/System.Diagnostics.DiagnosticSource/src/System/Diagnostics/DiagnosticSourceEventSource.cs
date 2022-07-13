@@ -160,6 +160,17 @@ namespace System.Diagnostics
     /// See the DiagnosticSourceEventSourceBridgeTest.cs for more explicit examples of using this bridge.
     /// </summary>
     [EventSource(Name = "Microsoft-Diagnostics-DiagnosticSource")]
+    // These suppressions can go away with https://github.com/mono/linker/issues/2175
+    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2113:ReflectionToRequiresUnreferencedCode",
+        Justification = "In EventSource, EnsureDescriptorsInitialized's use of GetType preserves methods on Delegate and MulticastDelegate " +
+                        "because the nested type OverrideEventProvider's base type EventProvider defines a delegate. " +
+                        "This includes Delegate and MulticastDelegate methods which require unreferenced code, but " +
+                        "EnsureDescriptorsInitialized does not access these members and is safe to call.")]
+    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2115:ReflectionToDynamicallyAccessedMembers",
+        Justification = "In EventSource, EnsureDescriptorsInitialized's use of GetType preserves methods on Delegate and MulticastDelegate " +
+                        "because the nested type OverrideEventProvider's base type EventProvider defines a delegate. " +
+                        "This includes Delegate and MulticastDelegate methods which have dynamically accessed members requirements, but " +
+                        "EnsureDescriptorsInitialized does not access these members and is safe to call.")]
     internal sealed class DiagnosticSourceEventSource : EventSource
     {
         public static DiagnosticSourceEventSource Log = new DiagnosticSourceEventSource();
@@ -472,8 +483,7 @@ namespace System.Diagnostics
             public static void CreateFilterAndTransformList(ref FilterAndTransform? specList, string? filterAndPayloadSpecs, DiagnosticSourceEventSource eventSource)
             {
                 DestroyFilterAndTransformList(ref specList, eventSource);        // Stop anything that was on before.
-                if (filterAndPayloadSpecs == null)
-                    filterAndPayloadSpecs = "";
+                filterAndPayloadSpecs ??= "";
 
                 // Points just beyond the last point in the string that has yet to be parsed. Thus we start with the whole string.
                 int endIdx = filterAndPayloadSpecs.Length;
@@ -631,10 +641,7 @@ namespace System.Diagnostics
                         _eventSource.Message("DiagnosticSource: Could not find Event to log Activity " + activityName);
                 }
 
-                if (writeEvent == null)
-                {
-                    writeEvent = _eventSource.Event;
-                }
+                writeEvent ??= _eventSource.Event;
 
                 // Set up a subscription that watches for the given Diagnostic Sources and events which will call back
                 // to the EventSource.
@@ -649,6 +656,9 @@ namespace System.Diagnostics
 
                         [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode",
                             Justification = "DiagnosticSource.Write is marked with RequiresUnreferencedCode.")]
+                        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2119",
+                            Justification = "DAM on EventSource references this compiler-generated local function which calls a " +
+                                            "method that requires unreferenced code. EventSource will not access this local function.")]
                         void OnEventWritten(KeyValuePair<string, object?> evnt)
                         {
                             // The filter given to the DiagnosticSource may not work if users don't is 'IsEnabled' as expected.
@@ -744,13 +754,13 @@ namespace System.Diagnostics
                 {
                     activitySourceName = entry.Slice(0, eventNameIndex).Trim();
 
-                    ReadOnlySpan<char> suffixPart = entry.Slice(eventNameIndex + 1, entry.Length - eventNameIndex - 1).Trim();
+                    ReadOnlySpan<char> suffixPart = entry.Slice(eventNameIndex + 1).Trim();
                     int samplingResultIndex = suffixPart.IndexOf('-');
                     if (samplingResultIndex >= 0)
                     {
                         // We have the format "[AS]SourceName/[EventName]-[SamplingResult]
                         eventName = suffixPart.Slice(0, samplingResultIndex).Trim();
-                        suffixPart = suffixPart.Slice(samplingResultIndex + 1, suffixPart.Length - samplingResultIndex - 1).Trim();
+                        suffixPart = suffixPart.Slice(samplingResultIndex + 1).Trim();
 
                         if (suffixPart.Length > 0)
                         {
@@ -806,7 +816,7 @@ namespace System.Diagnostics
                     activitySourceName = activitySourceName.Slice(0, plusSignIndex).Trim();
                 }
 
-                var transform = new FilterAndTransform(filterAndPayloadSpec, endIdx, colonIdx, activitySourceName.ToString(), activityName, supportedEvent, samplingResult, eventSource);
+                new FilterAndTransform(filterAndPayloadSpec, endIdx, colonIdx, activitySourceName.ToString(), activityName, supportedEvent, samplingResult, eventSource);
             }
 
             // Check if we are interested to listen to such ActivitySource
@@ -1013,6 +1023,9 @@ namespace System.Diagnostics
                 }
             }
 
+            [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                Justification = "In EventSource, EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
             [RequiresUnreferencedCode(DiagnosticSource.WriteRequiresUnreferencedCode)]
             public List<KeyValuePair<string, string?>> Morph(object? args)
             {
@@ -1094,6 +1107,9 @@ namespace System.Diagnostics
 
             // Given a type generate all the implicit transforms for type (that is for every field
             // generate the spec that fetches it).
+            [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                Justification = "In EventSource, EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
             [RequiresUnreferencedCode(DiagnosticSource.WriteRequiresUnreferencedCode)]
             private static TransformSpec? MakeImplicitTransforms(Type type)
             {
@@ -1173,12 +1189,11 @@ namespace System.Diagnostics
                     if (0 <= dotIdx)
                         idIdx = dotIdx + 1;
 
-                    string propertName = transformSpec.Substring(idIdx, endIdx - idIdx);
-                    _fetches = new PropertySpec(propertName, _fetches);
+                    string propertyName = transformSpec.Substring(idIdx, endIdx - idIdx);
+                    _fetches = new PropertySpec(propertyName, _fetches);
 
                     // If the user did not explicitly set a name, it is the last one (first to be processed from the end).
-                    if (_outputName == null)
-                        _outputName = propertName;
+                    _outputName ??= propertyName;
 
                     endIdx = dotIdx;    // This works even when LastIndexOf return -1.
                 }
@@ -1189,6 +1204,9 @@ namespace System.Diagnostics
             /// if the spec is OUTSTR=EVENT_VALUE.PROP1.PROP2.PROP3 and the ultimate value of PROP3 is
             /// 10 then the return key value pair is  KeyValuePair("OUTSTR","10")
             /// </summary>
+            [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                Justification = "In EventSource, EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
             [RequiresUnreferencedCode(DiagnosticSource.WriteRequiresUnreferencedCode)]
             public KeyValuePair<string, string?> Morph(object? obj)
             {
@@ -1240,6 +1258,9 @@ namespace System.Diagnostics
                 /// Given an object fetch the property that this PropertySpec represents.
                 /// obj may be null when IsStatic is true, otherwise it must be non-null.
                 /// </summary>
+                [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                    Justification = "In EventSource, EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                    "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
                 [RequiresUnreferencedCode(DiagnosticSource.WriteRequiresUnreferencedCode)]
                 public object? Fetch(object? obj)
                 {
@@ -1283,6 +1304,9 @@ namespace System.Diagnostics
                     /// <summary>
                     /// Create a property fetcher for a propertyName
                     /// </summary>
+                    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2112:ReflectionToRequiresUnreferencedCode",
+                        Justification = "In EventSource, EnsureDescriptorsInitialized's use of GetType preserves this method which " +
+                                        "requires unreferenced code, but EnsureDescriptorsInitialized does not access this member and is safe to call.")]
                     [RequiresUnreferencedCode(DiagnosticSource.WriteRequiresUnreferencedCode)]
                     public static PropertyFetch FetcherForProperty(Type? type, string propertyName)
                     {
@@ -1319,7 +1343,19 @@ namespace System.Diagnostics
                         }
                         else
                         {
-                            PropertyInfo? propertyInfo = typeInfo.GetProperty(propertyName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                            PropertyInfo? propertyInfo = typeInfo.GetDeclaredProperty(propertyName);
+                            if (propertyInfo == null)
+                            {
+                                foreach (PropertyInfo pi in typeInfo.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static))
+                                {
+                                    if (pi.Name == propertyName)
+                                    {
+                                        propertyInfo = pi;
+                                        break;
+                                    }
+                                }
+                            }
+
                             if (propertyInfo == null)
                             {
                                 Log.Message($"Property {propertyName} not found on {type}. Ensure the name is spelled correctly. If you published the application with PublishTrimmed=true, ensure the property was not trimmed away.");

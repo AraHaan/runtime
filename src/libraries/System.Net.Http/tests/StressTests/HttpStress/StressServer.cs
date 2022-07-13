@@ -41,6 +41,8 @@ namespace HttpStress
 
         public StressServer(Configuration configuration)
         {
+            WorkaroundAssemblyResolutionIssues();
+
             ServerUri = configuration.ServerUri;
             (string scheme, string hostname, int port) = ParseServerUri(configuration.ServerUri);
             IWebHostBuilder host = WebHost.CreateDefaultBuilder();
@@ -116,38 +118,34 @@ namespace HttpStress
                         else
                         {
                             listenOptions.Protocols =
-                                configuration.HttpVersion ==  HttpVersion.Version20 ?
+                                configuration.HttpVersion == HttpVersion.Version20 ?
                                 HttpProtocols.Http2 :
-                                HttpProtocols.Http1 ;
+                                HttpProtocols.Http1;
                         }
                     }
                 });
-
-                if (configuration.HttpVersion == HttpVersion.Version30)
-                {
-                    host = host.UseQuic(options =>
-                    {
-                        options.Alpn = "h3-29";
-                        options.IdleTimeout = TimeSpan.FromMinutes(1);
-                    });
-                }
             };
 
             LoggerConfiguration loggerConfiguration = new LoggerConfiguration();
             if (configuration.Trace)
             {
+                if (!Directory.Exists(LogHttpEventListener.LogDirectory))
+                {
+                    Directory.CreateDirectory(LogHttpEventListener.LogDirectory);
+                }
                 // Clear existing logs first.
-                foreach (var filename in Directory.GetFiles(".", "server*.log"))
+                foreach (var filename in Directory.GetFiles(LogHttpEventListener.LogDirectory, "server*.log"))
                 {
                     try
                     {
                         File.Delete(filename);
-                    } catch {}
+                    }
+                    catch { }
                 }
 
                 loggerConfiguration = loggerConfiguration
                     // Output diagnostics to the file
-                    .WriteTo.File("server.log", fileSizeLimitBytes: 50 << 20, rollOnFileSizeLimit: true)
+                    .WriteTo.File(Path.Combine(LogHttpEventListener.LogDirectory, "server.log"), fileSizeLimitBytes: 100 << 20, rollOnFileSizeLimit: true)
                     .MinimumLevel.Debug();
             }
             if (configuration.LogAspNet)
@@ -318,6 +316,13 @@ namespace HttpStress
                 // Read the full request but don't send back a response body.
                 await context.Request.Body.CopyToAsync(Stream.Null);
             });
+        }
+
+        private static void WorkaroundAssemblyResolutionIssues()
+        {
+            // For some reason, System.Security.Cryptography.Encoding.dll fails to resolve when being loaded on-demand by AspNetCore.
+            // Enforce early-loading to workaround this issue.
+            _ = new Oid();
         }
 
         private static void AppendChecksumHeader(IHeaderDictionary headers, ulong checksum)

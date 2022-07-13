@@ -4,9 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Build.Framework;
@@ -19,7 +19,7 @@ namespace Microsoft.Workload.Build.Tasks
     public class InstallWorkloadFromArtifacts : Task
     {
         [Required, NotNull]
-        public ITaskItem?     WorkloadId         { get; set; }
+        public ITaskItem[]    WorkloadIds         { get; set; } = Array.Empty<ITaskItem>();
 
         [Required, NotNull]
         public string?        VersionBand        { get; set; }
@@ -28,14 +28,37 @@ namespace Microsoft.Workload.Build.Tasks
         public string?        LocalNuGetsPath    { get; set; }
 
         [Required, NotNull]
+        public string?        TemplateNuGetConfigPath { get; set; }
+
+        [Required, NotNull]
         public string?        SdkDir             { get; set; }
 
-        public ITaskItem[]    ExtraNuGetSources  { get; set; } = Array.Empty<ITaskItem>();
+        public bool           OnlyUpdateManifests{ get; set; }
+
+        private const string s_nugetInsertionTag = "<!-- TEST_RESTORE_SOURCES_INSERTION_LINE -->";
 
         public override bool Execute()
         {
-            if (!HasMetadata(WorkloadId, nameof(WorkloadId), "Version") ||
-                !HasMetadata(WorkloadId, nameof(WorkloadId), "ManifestName"))
+            try
+            {
+                foreach (var workloadIdItem in WorkloadIds)
+                {
+                    if (!ExecuteInternal(workloadIdItem))
+                        return false;
+                }
+                return true;
+            }
+            catch (LogAsErrorException laee)
+            {
+                Log.LogError(laee.Message);
+                return false;
+            }
+        }
+
+        private bool ExecuteInternal(ITaskItem workloadId)
+        {
+            if (!HasMetadata(workloadId, nameof(workloadId), "Version") ||
+                !HasMetadata(workloadId, nameof(workloadId), "ManifestName"))
             {
                 return false;
             }
@@ -46,11 +69,20 @@ namespace Microsoft.Workload.Build.Tasks
                 return false;
             }
 
-            Log.LogMessage(MessageImportance.High, $"{Environment.NewLine}** Installing workload manifest {WorkloadId.ItemSpec} **{Environment.NewLine}");
+            if (!File.Exists(TemplateNuGetConfigPath))
+            {
+                Log.LogError($"Cannot find TemplateNuGetConfigPath={TemplateNuGetConfigPath}");
+                return false;
+            }
+
+            Log.LogMessage(MessageImportance.High, $"{Environment.NewLine}** Installing workload manifest {workloadId.ItemSpec} **{Environment.NewLine}");
 
             string nugetConfigContents = GetNuGetConfig();
-            if (!InstallWorkloadManifest(WorkloadId.GetMetadata("ManifestName"), WorkloadId.GetMetadata("Version"), nugetConfigContents, stopOnMissing: true))
+            if (!InstallWorkloadManifest(workloadId, workloadId.GetMetadata("ManifestName"), workloadId.GetMetadata("Version"), nugetConfigContents, stopOnMissing: true))
                 return false;
+
+            if (OnlyUpdateManifests)
+                return !Log.HasLoggedErrors;
 
             string nugetConfigPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
             File.WriteAllText(nugetConfigPath, nugetConfigContents);
@@ -59,7 +91,7 @@ namespace Microsoft.Workload.Build.Tasks
             (int exitCode, string output) = Utils.TryRunProcess(
                                                     Log,
                                                     Path.Combine(SdkDir, "dotnet"),
-                                                    $"workload install --skip-manifest-update --no-cache --configfile \"{nugetConfigPath}\" {WorkloadId.ItemSpec}",
+                                                    $"workload install --skip-manifest-update --no-cache --configfile \"{nugetConfigPath}\" {workloadId.ItemSpec}",
                                                     workingDir: Path.GetTempPath(),
                                                     silent: false,
                                                     debugMessageImportance: MessageImportance.High);
@@ -81,28 +113,14 @@ namespace Microsoft.Workload.Build.Tasks
 
         private string GetNuGetConfig()
         {
-            StringBuilder nugetConfigBuilder = new();
-            nugetConfigBuilder.AppendLine($"<configuration>{Environment.NewLine}<packageSources>");
+            string contents = File.ReadAllText(TemplateNuGetConfigPath);
+            if (contents.IndexOf(s_nugetInsertionTag) < 0)
+                throw new LogAsErrorException($"Could not find {s_nugetInsertionTag} in {TemplateNuGetConfigPath}");
 
-            nugetConfigBuilder.AppendLine($@"<add key=""nuget-local"" value=""{LocalNuGetsPath}"" />");
-            foreach (ITaskItem source in ExtraNuGetSources)
-            {
-                string key = source.ItemSpec;
-                string value = source.GetMetadata("Value");
-                if (string.IsNullOrEmpty(value))
-                {
-                    Log.LogWarning($"ExtraNuGetSource {key} is missing Value metadata");
-                    continue;
-                }
-
-                nugetConfigBuilder.AppendLine($@"<add key=""{key}"" value=""{value}"" />");
-            }
-
-            nugetConfigBuilder.AppendLine($"</packageSources>{Environment.NewLine}</configuration>");
-            return nugetConfigBuilder.ToString();
+            return contents.Replace(s_nugetInsertionTag, $@"<add key=""nuget-local"" value=""{LocalNuGetsPath}"" />");
         }
 
-        private bool InstallWorkloadManifest(string name, string version, string nugetConfigContents, bool stopOnMissing)
+        private bool InstallWorkloadManifest(ITaskItem workloadId, string name, string version, string nugetConfigContents, bool stopOnMissing)
         {
             Log.LogMessage(MessageImportance.High, $"Installing workload manifest for {name}/{version}");
 
@@ -155,9 +173,9 @@ namespace Microsoft.Workload.Build.Tasks
             {
                 foreach ((string depName, string depVersion) in manifest.DependsOn)
                 {
-                    if (!InstallWorkloadManifest(depName, depVersion, nugetConfigContents, stopOnMissing: false))
+                    if (!InstallWorkloadManifest(workloadId, depName, depVersion, nugetConfigContents, stopOnMissing: false))
                     {
-                        Log.LogWarning($"Could not install manifest {depName}/{depVersion}. This can be ignored if the workload {WorkloadId.ItemSpec} doesn't depend on it.");
+                        Log.LogWarning($"Could not install manifest {depName}/{depVersion}. This can be ignored if the workload {workloadId.ItemSpec} doesn't depend on it.");
                         continue;
                     }
                 }
@@ -188,10 +206,10 @@ namespace Microsoft.Workload.Build.Tasks
                                 + $"{Environment.NewLine}Using the first one: {first}");
             }
 
-            return first ?? Path.Combine(parentDir, dirName);
+            return first ?? Path.Combine(parentDir, dirName.ToLower(CultureInfo.InvariantCulture));
         }
 
-        private record ManifestInformation(
+        private sealed record ManifestInformation(
             object Version,
             string Description,
 
@@ -202,7 +220,7 @@ namespace Microsoft.Workload.Build.Tasks
             object Data
         );
 
-        private record WorkloadInformation(
+        private sealed record WorkloadInformation(
             bool Abstract,
             string Kind,
             string Description,
@@ -212,7 +230,7 @@ namespace Microsoft.Workload.Build.Tasks
             List<string> Platforms
         );
 
-        private record PackVersionInformation(
+        private sealed record PackVersionInformation(
             string Kind,
             string Version,
             [property: JsonPropertyName("alias-to")]
@@ -220,7 +238,7 @@ namespace Microsoft.Workload.Build.Tasks
         );
     }
 
-    internal record PackageReference(string Name,
+    internal sealed record PackageReference(string Name,
                                      string Version,
                                      string OutputDir,
                                      string relativeSourceDir = "");

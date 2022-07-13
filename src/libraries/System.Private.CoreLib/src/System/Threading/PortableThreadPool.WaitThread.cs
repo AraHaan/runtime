@@ -45,11 +45,7 @@ namespace System.Threading
             _waitThreadLock.Acquire();
             try
             {
-                WaitThreadNode? current = _waitThreadsHead;
-                if (current == null) // Lazily create the first wait thread.
-                {
-                    _waitThreadsHead = current = new WaitThreadNode(new WaitThread());
-                }
+                WaitThreadNode? current = _waitThreadsHead ??= new WaitThreadNode(new WaitThread()); // Lazily create the first wait thread.
 
                 // Register the wait handle on the first wait thread that is not at capacity.
                 WaitThreadNode prev;
@@ -384,7 +380,8 @@ namespace System.Threading
                     UnregisterWait(registeredHandle, blocking: false); // We shouldn't block the wait thread on the unregistration.
                 }
 
-                ThreadPool.UnsafeQueueWaitCompletion(new CompleteWaitThreadPoolWorkItem(registeredHandle, timedOut));
+                ThreadPool.UnsafeQueueHighPriorityWorkItemInternal(
+                    new CompleteWaitThreadPoolWorkItem(registeredHandle, timedOut));
             }
 
             /// <summary>
@@ -442,9 +439,9 @@ namespace System.Threading
                 try
                 {
                     // If this handle is not already pending removal and hasn't already been removed
-                    if (Array.IndexOf(_registeredWaits, handle) != -1)
+                    if (Array.IndexOf(_registeredWaits, handle) >= 0)
                     {
-                        if (Array.IndexOf(_pendingRemoves, handle) == -1)
+                        if (Array.IndexOf(_pendingRemoves, handle) < 0)
                         {
                             _pendingRemoves[_numPendingRemoves++] = handle;
                             _changeHandlesEvent.Set(); // Tell the wait thread that there are changes pending.

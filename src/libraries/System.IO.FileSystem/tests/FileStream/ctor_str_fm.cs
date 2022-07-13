@@ -13,8 +13,6 @@ namespace System.IO.Tests
             return new FileStream(path, mode);
         }
 
-        protected virtual long InitialLength => 0;
-
         protected virtual string GetExpectedParamName(string paramName) => paramName;
 
         [Fact]
@@ -97,7 +95,7 @@ namespace System.IO.Tests
             using (FileStream fs = CreateFileStream(fileName, FileMode.Create))
             {
                 // Ensure that the file was re-created
-                Assert.Equal(InitialLength, fs.Length);
+                Assert.Equal(0, fs.Length);
                 Assert.Equal(0L, fs.Position);
                 Assert.True(fs.CanRead);
                 Assert.True(fs.CanWrite);
@@ -148,7 +146,7 @@ namespace System.IO.Tests
             using (FileStream fs = CreateFileStream(fileName, FileMode.Open))
             {
                 // Ensure that the file was re-opened
-                Assert.Equal(Math.Max(1L, InitialLength), fs.Length);
+                Assert.Equal(1, fs.Length);
                 Assert.Equal(0L, fs.Position);
                 Assert.True(fs.CanRead);
                 Assert.True(fs.CanWrite);
@@ -177,7 +175,7 @@ namespace System.IO.Tests
             using (FileStream fs = CreateFileStream(fileName, FileMode.OpenOrCreate))
             {
                 // Ensure that the file was re-opened
-                Assert.Equal(Math.Max(1L, InitialLength), fs.Length);
+                Assert.Equal(1, fs.Length);
                 Assert.Equal(0L, fs.Position);
                 Assert.True(fs.CanRead);
                 Assert.True(fs.CanWrite);
@@ -204,7 +202,7 @@ namespace System.IO.Tests
             using (FileStream fs = CreateFileStream(fileName, FileMode.Truncate))
             {
                 // Ensure that the file was re-opened and truncated
-                Assert.Equal(InitialLength, fs.Length);
+                Assert.Equal(0, fs.Length);
                 Assert.Equal(0L, fs.Position);
                 Assert.True(fs.CanRead);
                 Assert.True(fs.CanWrite);
@@ -220,12 +218,12 @@ namespace System.IO.Tests
                 Assert.False(fs.CanRead);
                 Assert.True(fs.CanWrite);
 
-                fs.Write(Encoding.ASCII.GetBytes("abcde"));
+                fs.Write("abcde"u8);
                 Assert.Equal(5, fs.Length);
                 Assert.Equal(5, fs.Position);
                 Assert.Equal(1, fs.Seek(1, SeekOrigin.Begin));
 
-                fs.Write(Encoding.ASCII.GetBytes("xyz"));
+                fs.Write("xyz"u8);
                 Assert.Equal(4, fs.Position);
                 Assert.Equal(5, fs.Length);
             }
@@ -246,7 +244,7 @@ namespace System.IO.Tests
             using (FileStream fs = CreateFileStream(fileName, FileMode.Append))
             {
                 // Ensure that the file was re-opened and position set to end
-                Assert.Equal(Math.Max(1L, InitialLength), fs.Length);
+                Assert.Equal(1, fs.Length);
 
                 long position = fs.Position;
                 Assert.Equal(fs.Length, position);
@@ -259,12 +257,12 @@ namespace System.IO.Tests
                 Assert.Throws<IOException>(() => fs.Seek(0, SeekOrigin.Begin));
                 Assert.Throws<NotSupportedException>(() => fs.ReadByte());
 
-                fs.Write(Encoding.ASCII.GetBytes("abcde"));
+                fs.Write("abcde"u8);
                 Assert.Equal(position + 5, fs.Position);
 
                 Assert.Equal(position, fs.Seek(position, SeekOrigin.Begin));
                 Assert.Equal(position + 1, fs.Seek(1, SeekOrigin.Current));
-                fs.Write(Encoding.ASCII.GetBytes("xyz"));
+                fs.Write("xyz"u8);
             }
 
             Assert.Equal(initialContents + "axyze", File.ReadAllText(fileName));

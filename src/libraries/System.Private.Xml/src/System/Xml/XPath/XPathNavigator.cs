@@ -36,7 +36,7 @@ namespace System.Xml.XPath
         // XPathItem
         //-----------------------------------------------
 
-        public override sealed bool IsNode
+        public sealed override bool IsNode
         {
             get { return true; }
         }
@@ -78,11 +78,7 @@ namespace System.Xml.XPath
                 {
                     if (schemaInfo.Validity == XmlSchemaValidity.Valid)
                     {
-                        schemaType = schemaInfo.MemberType;
-                        if (schemaType == null)
-                        {
-                            schemaType = schemaInfo.SchemaType;
-                        }
+                        schemaType = schemaInfo.MemberType ?? schemaInfo.SchemaType;
                         if (schemaType != null)
                         {
                             datatype = schemaType.Datatype;
@@ -111,10 +107,8 @@ namespace System.Xml.XPath
 
         public virtual void SetTypedValue(object typedValue)
         {
-            if (typedValue == null)
-            {
-                throw new ArgumentNullException(nameof(typedValue));
-            }
+            ArgumentNullException.ThrowIfNull(typedValue);
+
             switch (NodeType)
             {
                 case XPathNodeType.Element:
@@ -132,16 +126,10 @@ namespace System.Xml.XPath
                 {
                     value = schemaType.ValueConverter.ToString(typedValue, this);
                     XmlSchemaDatatype? datatype = schemaType.Datatype;
-                    if (datatype != null)
-                    {
-                        datatype.ParseValue(value, NameTable, this);
-                    }
+                    datatype?.ParseValue(value, NameTable, this);
                 }
             }
-            if (value == null)
-            {
-                value = XmlUntypedConverter.Untyped.ToString(typedValue, this);
-            }
+            value ??= XmlUntypedConverter.Untyped.ToString(typedValue, this);
             SetValue(value);
         }
 
@@ -156,11 +144,7 @@ namespace System.Xml.XPath
                 {
                     if (schemaInfo.Validity == XmlSchemaValidity.Valid)
                     {
-                        schemaType = schemaInfo.MemberType;
-                        if (schemaType == null)
-                        {
-                            schemaType = schemaInfo.SchemaType;
-                        }
+                        schemaType = schemaInfo.MemberType ?? schemaInfo.SchemaType;
                         if (schemaType != null)
                         {
                             datatype = schemaType.Datatype;
@@ -198,11 +182,7 @@ namespace System.Xml.XPath
                 {
                     if (schemaInfo.Validity == XmlSchemaValidity.Valid)
                     {
-                        schemaType = schemaInfo.MemberType;
-                        if (schemaType == null)
-                        {
-                            schemaType = schemaInfo.SchemaType;
-                        }
+                        schemaType = schemaInfo.MemberType ?? schemaInfo.SchemaType;
                         if (schemaType != null)
                         {
                             return schemaType.ValueConverter.ToBoolean(Value);
@@ -236,11 +216,7 @@ namespace System.Xml.XPath
                 {
                     if (schemaInfo.Validity == XmlSchemaValidity.Valid)
                     {
-                        schemaType = schemaInfo.MemberType;
-                        if (schemaType == null)
-                        {
-                            schemaType = schemaInfo.SchemaType;
-                        }
+                        schemaType = schemaInfo.MemberType ?? schemaInfo.SchemaType;
                         if (schemaType != null)
                         {
                             return schemaType.ValueConverter.ToDateTime(Value);
@@ -274,11 +250,7 @@ namespace System.Xml.XPath
                 {
                     if (schemaInfo.Validity == XmlSchemaValidity.Valid)
                     {
-                        schemaType = schemaInfo.MemberType;
-                        if (schemaType == null)
-                        {
-                            schemaType = schemaInfo.SchemaType;
-                        }
+                        schemaType = schemaInfo.MemberType ?? schemaInfo.SchemaType;
                         if (schemaType != null)
                         {
                             return schemaType.ValueConverter.ToDouble(Value);
@@ -312,11 +284,7 @@ namespace System.Xml.XPath
                 {
                     if (schemaInfo.Validity == XmlSchemaValidity.Valid)
                     {
-                        schemaType = schemaInfo.MemberType;
-                        if (schemaType == null)
-                        {
-                            schemaType = schemaInfo.SchemaType;
-                        }
+                        schemaType = schemaInfo.MemberType ?? schemaInfo.SchemaType;
                         if (schemaType != null)
                         {
                             return schemaType.ValueConverter.ToInt32(Value);
@@ -350,11 +318,7 @@ namespace System.Xml.XPath
                 {
                     if (schemaInfo.Validity == XmlSchemaValidity.Valid)
                     {
-                        schemaType = schemaInfo.MemberType;
-                        if (schemaType == null)
-                        {
-                            schemaType = schemaInfo.SchemaType;
-                        }
+                        schemaType = schemaInfo.MemberType ?? schemaInfo.SchemaType;
                         if (schemaType != null)
                         {
                             return schemaType.ValueConverter.ToInt64(Value);
@@ -379,10 +343,7 @@ namespace System.Xml.XPath
 
         public override object ValueAs(Type returnType, IXmlNamespaceResolver? nsResolver)
         {
-            if (nsResolver == null)
-            {
-                nsResolver = this;
-            }
+            nsResolver ??= this;
             IXmlSchemaInfo? schemaInfo = SchemaInfo;
             XmlSchemaType? schemaType;
             XmlSchemaDatatype? datatype;
@@ -390,11 +351,7 @@ namespace System.Xml.XPath
             {
                 if (schemaInfo.Validity == XmlSchemaValidity.Valid)
                 {
-                    schemaType = schemaInfo.MemberType;
-                    if (schemaType == null)
-                    {
-                        schemaType = schemaInfo.SchemaType;
-                    }
+                    schemaType = schemaInfo.MemberType ?? schemaInfo.SchemaType;
                     if (schemaType != null)
                     {
                         return schemaType.ValueConverter.ChangeType(Value, returnType, nsResolver);
@@ -606,8 +563,8 @@ namespace System.Xml.XPath
 
         public virtual void WriteSubtree(XmlWriter writer)
         {
-            if (null == writer)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
+
             writer.WriteNode(this, true);
         }
 
@@ -1093,7 +1050,7 @@ namespace System.Xml.XPath
             return validityTracker.IsValid;
         }
 
-        private XmlReader GetValidatingReader(XmlReader reader, XmlSchemaSet schemas, ValidationEventHandler validationEvent, XmlSchemaType? schemaType, XmlSchemaElement? schemaElement, XmlSchemaAttribute? schemaAttribute)
+        private static XmlReader GetValidatingReader(XmlReader reader, XmlSchemaSet schemas, ValidationEventHandler validationEvent, XmlSchemaType? schemaType, XmlSchemaElement? schemaElement, XmlSchemaAttribute? schemaAttribute)
         {
             if (schemaAttribute != null)
             {
@@ -1225,10 +1182,7 @@ namespace System.Xml.XPath
             Query query = Query.Clone(cexpr.QueryTree);
             query.Reset();
 
-            if (context == null)
-            {
-                context = new XPathSingletonIterator(this.Clone(), /*moved:*/true);
-            }
+            context ??= new XPathSingletonIterator(this.Clone(), moved: true);
 
             object result = query.Evaluate(context);
 
@@ -1343,10 +1297,8 @@ namespace System.Xml.XPath
 
         public virtual void ReplaceSelf(XmlReader newNode)
         {
-            if (newNode == null)
-            {
-                throw new ArgumentNullException(nameof(newNode));
-            }
+            ArgumentNullException.ThrowIfNull(newNode);
+
             XPathNodeType type = NodeType;
             if (type == XPathNodeType.Root
                 || type == XPathNodeType.Attribute
@@ -1361,10 +1313,8 @@ namespace System.Xml.XPath
 
         public virtual void ReplaceSelf(XPathNavigator newNode)
         {
-            if (newNode == null)
-            {
-                throw new ArgumentNullException(nameof(newNode));
-            }
+            ArgumentNullException.ThrowIfNull(newNode);
+
             XmlReader reader = newNode.CreateReader();
             ReplaceSelf(reader);
         }
@@ -1381,14 +1331,14 @@ namespace System.Xml.XPath
                 // Attributes and namespaces are not allowed at the top-level by the well-formed writer
                 if (NodeType == XPathNodeType.Attribute)
                 {
-                    return string.Concat(Name, "=\"", Value, "\"");
+                    return $"{Name}=\"{Value}\"";
                 }
                 else if (NodeType == XPathNodeType.Namespace)
                 {
                     if (LocalName.Length == 0)
-                        return string.Concat("xmlns=\"", Value, "\"");
+                        return $"xmlns=\"{Value}\"";
                     else
-                        return string.Concat("xmlns:", LocalName, "=\"", Value, "\"");
+                        return $"xmlns:{LocalName}=\"{Value}\"";
                 }
 
                 stringWriter = new StringWriter(CultureInfo.InvariantCulture);
@@ -1467,10 +1417,7 @@ namespace System.Xml.XPath
 
             set
             {
-                if (value == null)
-                {
-                    throw new ArgumentNullException(nameof(value));
-                }
+                ArgumentNullException.ThrowIfNull(value);
 
                 switch (NodeType)
                 {
@@ -1503,10 +1450,8 @@ namespace System.Xml.XPath
 
         public virtual void AppendChild(XmlReader newChild)
         {
-            if (newChild == null)
-            {
-                throw new ArgumentNullException(nameof(newChild));
-            }
+            ArgumentNullException.ThrowIfNull(newChild);
+
             XmlWriter writer = AppendChild();
             BuildSubtree(newChild, writer);
             writer.Close();
@@ -1514,10 +1459,8 @@ namespace System.Xml.XPath
 
         public virtual void AppendChild(XPathNavigator newChild)
         {
-            if (newChild == null)
-            {
-                throw new ArgumentNullException(nameof(newChild));
-            }
+            ArgumentNullException.ThrowIfNull(newChild);
+
             if (!IsValidChildType(newChild.NodeType))
             {
                 throw new InvalidOperationException(SR.Xpn_BadPosition);
@@ -1534,10 +1477,8 @@ namespace System.Xml.XPath
 
         public virtual void PrependChild(XmlReader newChild)
         {
-            if (newChild == null)
-            {
-                throw new ArgumentNullException(nameof(newChild));
-            }
+            ArgumentNullException.ThrowIfNull(newChild);
+
             XmlWriter writer = PrependChild();
             BuildSubtree(newChild, writer);
             writer.Close();
@@ -1545,10 +1486,8 @@ namespace System.Xml.XPath
 
         public virtual void PrependChild(XPathNavigator newChild)
         {
-            if (newChild == null)
-            {
-                throw new ArgumentNullException(nameof(newChild));
-            }
+            ArgumentNullException.ThrowIfNull(newChild);
+
             if (!IsValidChildType(newChild.NodeType))
             {
                 throw new InvalidOperationException(SR.Xpn_BadPosition);
@@ -1565,10 +1504,8 @@ namespace System.Xml.XPath
 
         public virtual void InsertBefore(XmlReader newSibling)
         {
-            if (newSibling == null)
-            {
-                throw new ArgumentNullException(nameof(newSibling));
-            }
+            ArgumentNullException.ThrowIfNull(newSibling);
+
             XmlWriter writer = InsertBefore();
             BuildSubtree(newSibling, writer);
             writer.Close();
@@ -1576,10 +1513,8 @@ namespace System.Xml.XPath
 
         public virtual void InsertBefore(XPathNavigator newSibling)
         {
-            if (newSibling == null)
-            {
-                throw new ArgumentNullException(nameof(newSibling));
-            }
+            ArgumentNullException.ThrowIfNull(newSibling);
+
             if (!IsValidSiblingType(newSibling.NodeType))
             {
                 throw new InvalidOperationException(SR.Xpn_BadPosition);
@@ -1596,10 +1531,8 @@ namespace System.Xml.XPath
 
         public virtual void InsertAfter(XmlReader newSibling)
         {
-            if (newSibling == null)
-            {
-                throw new ArgumentNullException(nameof(newSibling));
-            }
+            ArgumentNullException.ThrowIfNull(newSibling);
+
             XmlWriter writer = InsertAfter();
             BuildSubtree(newSibling, writer);
             writer.Close();
@@ -1607,10 +1540,8 @@ namespace System.Xml.XPath
 
         public virtual void InsertAfter(XPathNavigator newSibling)
         {
-            if (newSibling == null)
-            {
-                throw new ArgumentNullException(nameof(newSibling));
-            }
+            ArgumentNullException.ThrowIfNull(newSibling);
+
             if (!IsValidSiblingType(newSibling.NodeType))
             {
                 throw new InvalidOperationException(SR.Xpn_BadPosition);
@@ -1629,7 +1560,7 @@ namespace System.Xml.XPath
             DeleteRange(this);
         }
 
-        public virtual void PrependChildElement(string prefix, string localName, string namespaceURI, string value)
+        public virtual void PrependChildElement(string? prefix, string localName, string? namespaceURI, string? value)
         {
             XmlWriter writer = PrependChild();
             writer.WriteStartElement(prefix, localName, namespaceURI);
@@ -1641,7 +1572,7 @@ namespace System.Xml.XPath
             writer.Close();
         }
 
-        public virtual void AppendChildElement(string prefix, string localName, string namespaceURI, string value)
+        public virtual void AppendChildElement(string? prefix, string localName, string? namespaceURI, string? value)
         {
             XmlWriter writer = AppendChild();
             writer.WriteStartElement(prefix, localName, namespaceURI);
@@ -1653,7 +1584,7 @@ namespace System.Xml.XPath
             writer.Close();
         }
 
-        public virtual void InsertElementBefore(string prefix, string localName, string namespaceURI, string value)
+        public virtual void InsertElementBefore(string? prefix, string localName, string? namespaceURI, string? value)
         {
             XmlWriter writer = InsertBefore();
             writer.WriteStartElement(prefix, localName, namespaceURI);
@@ -1665,7 +1596,7 @@ namespace System.Xml.XPath
             writer.Close();
         }
 
-        public virtual void InsertElementAfter(string prefix, string localName, string namespaceURI, string value)
+        public virtual void InsertElementAfter(string? prefix, string localName, string? namespaceURI, string? value)
         {
             XmlWriter writer = InsertAfter();
             writer.WriteStartElement(prefix, localName, namespaceURI);
@@ -1677,7 +1608,7 @@ namespace System.Xml.XPath
             writer.Close();
         }
 
-        public virtual void CreateAttribute(string prefix, string localName, string namespaceURI, string value)
+        public virtual void CreateAttribute(string? prefix, string localName, string? namespaceURI, string? value)
         {
             XmlWriter writer = CreateAttributes();
             writer.WriteStartAttribute(prefix, localName, namespaceURI);
@@ -1888,7 +1819,7 @@ namespace System.Xml.XPath
         // namespace(0)    ?(0)            before(-1)      before(-2)
         // attribute(1)    after(1)        ?(0)            before(-1)
         // other    (2)    after(2)        after(1)        ?(0)
-        private XmlNodeOrder CompareSiblings(XPathNavigator n1, XPathNavigator n2)
+        private static XmlNodeOrder CompareSiblings(XPathNavigator n1, XPathNavigator n2)
         {
             int cmp = 0;
 
@@ -2068,10 +1999,7 @@ namespace System.Xml.XPath
 
         private XmlReader CreateContextReader(string xml, bool fromCurrentNode)
         {
-            if (xml == null)
-            {
-                throw new ArgumentNullException(nameof(xml));
-            }
+            ArgumentNullException.ThrowIfNull(xml);
 
             // We have to set the namespace context for the reader.
             XPathNavigator editor = CreateNavigator();
@@ -2097,7 +2025,7 @@ namespace System.Xml.XPath
             return reader;
         }
 
-        internal void BuildSubtree(XmlReader reader, XmlWriter writer)
+        internal static void BuildSubtree(XmlReader reader, XmlWriter writer)
         {
             // important (perf) string literal...
             string xmlnsUri = XmlReservedNs.NsXmlNs; // http://www.w3.org/2000/xmlns/
@@ -2228,19 +2156,19 @@ namespace System.Xml.XPath
                 switch (_nav.NodeType)
                 {
                     case XPathNodeType.Element:
-                        result += ", Name=\"" + _nav.Name + '"';
+                        result += $", Name=\"{_nav.Name}\"";
                         break;
                     case XPathNodeType.Attribute:
                     case XPathNodeType.Namespace:
                     case XPathNodeType.ProcessingInstruction:
-                        result += ", Name=\"" + _nav.Name + '"';
-                        result += ", Value=\"" + XmlConvert.EscapeValueForDebuggerDisplay(_nav.Value) + '"';
+                        result += $", Name=\"{_nav.Name}\"";
+                        result += $", Value=\"{XmlConvert.EscapeValueForDebuggerDisplay(_nav.Value)}\"";
                         break;
                     case XPathNodeType.Text:
                     case XPathNodeType.Whitespace:
                     case XPathNodeType.SignificantWhitespace:
                     case XPathNodeType.Comment:
-                        result += ", Value=\"" + XmlConvert.EscapeValueForDebuggerDisplay(_nav.Value) + '"';
+                        result += $", Value=\"{XmlConvert.EscapeValueForDebuggerDisplay(_nav.Value)}\"";
                         break;
                 }
                 return result;

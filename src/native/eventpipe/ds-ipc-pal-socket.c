@@ -289,7 +289,7 @@ inline
 ds_ipc_mode_t
 ipc_socket_set_default_umask (void)
 {
-#if defined(DS_IPC_PAL_AF_UNIX) && defined(__APPLE__)
+#if defined(DS_IPC_PAL_AF_UNIX) && (defined(__APPLE__) || defined(__FreeBSD__))
 	// This will set the default permission bit to 600
 	return umask (~(S_IRUSR | S_IWUSR));
 #else
@@ -302,7 +302,7 @@ inline
 void
 ipc_socket_reset_umask (ds_ipc_mode_t mode)
 {
-#if defined(DS_IPC_PAL_AF_UNIX) && defined(__APPLE__)
+#if defined(DS_IPC_PAL_AF_UNIX) && (defined(__APPLE__) || defined(__FreeBSD__))
 	umask (mode);
 #endif
 }
@@ -323,11 +323,8 @@ ipc_socket_create_uds (DiagnosticsIpc *ipc)
 	DS_ENTER_BLOCKING_PAL_SECTION;
 	new_socket = socket (ipc->server_address_family, socket_type, 0);
 #ifndef SOCK_CLOEXEC
-	if (new_socket != DS_IPC_INVALID_SOCKET) {
-		if (fcntl (new_socket, F_SETFD, FD_CLOEXEC) == -1) {
-			EP_ASSERT (!"Failed to set CLOEXEC");
-		}
-	}
+	if (new_socket != DS_IPC_INVALID_SOCKET)
+		fcntl (new_socket, F_SETFD, FD_CLOEXEC); // ignore any failures; this is best effort
 #endif // SOCK_CLOEXEC
 	DS_EXIT_BLOCKING_PAL_SECTION;
 	return new_socket;
@@ -356,9 +353,9 @@ ipc_socket_create_tcp (DiagnosticsIpc *ipc)
 	new_socket = socket (ipc->server_address_family, socket_type, IPPROTO_TCP);
 	if (new_socket != DS_IPC_INVALID_SOCKET) {
 #ifndef SOCK_CLOEXEC
-		if (fcntl (new_socket, F_SETFD, FD_CLOEXEC) == -1) {
-			EP_ASSERT (!"Failed to set CLOEXEC");
-		}
+#ifndef HOST_WIN32
+		fcntl (new_socket, F_SETFD, FD_CLOEXEC); // ignore any failures; this is best effort
+#endif // HOST_WIN32
 #endif // SOCK_CLOEXEC
 		int option_value = 1;
 		setsockopt (new_socket, IPPROTO_TCP, TCP_NODELAY, (const char*)&option_value, sizeof (option_value));
@@ -415,7 +412,7 @@ inline
 int
 ipc_socket_set_permission (ds_ipc_socket_t s)
 {
-#if defined(DS_IPC_PAL_AF_UNIX) && !defined(__APPLE__)
+#if defined(DS_IPC_PAL_AF_UNIX) && !(defined(__APPLE__) || defined(__FreeBSD__))
 	int result_fchmod;
 	DS_ENTER_BLOCKING_PAL_SECTION;
 	do {
@@ -463,8 +460,8 @@ ipc_poll_fds (
 	result_poll = WSAPoll (fds, (ULONG)nfds, (INT)timeout);
 #else
 #ifndef EP_NO_RT_DEPENDENCY
-	int64_t start;
-	int64_t stop;
+	int64_t start = 0;
+	int64_t stop = 0;
 	bool retry_poll = false;
 	do {
 		if (timeout != EP_INFINITE_WAIT)
@@ -533,8 +530,22 @@ ipc_socket_accept (
 	ds_ipc_socket_t client_socket;
 	DS_ENTER_BLOCKING_PAL_SECTION;
 	do {
-		client_socket = accept (s, address, address_len);
+#if HAVE_ACCEPT4 && defined(SOCK_CLOEXEC)
+    	client_socket = accept4 (s, address, address_len, SOCK_CLOEXEC);
+#else
+    	client_socket = accept (s, address, address_len);
+#endif
 	} while (ipc_retry_syscall (client_socket));
+
+#if !HAVE_ACCEPT4 || !defined(SOCK_CLOEXEC)
+#if defined(FD_CLOEXEC)
+		if (client_socket != -1)
+		{
+			// ignore any failures; this is best effort
+			fcntl (client_socket, F_SETFD, FD_CLOEXEC);
+		}
+#endif
+#endif
 	DS_EXIT_BLOCKING_PAL_SECTION;
 	return client_socket;
 }
@@ -837,7 +848,7 @@ ipc_alloc_tcp_address (
 
 	const ep_char8_t *host_address = address;
 	const ep_char8_t *host_port = strrchr (address, ':');
-	
+
 	if (host_port && host_port != host_address) {
 		size_t host_address_len = host_port - address;
 		address [host_address_len] = 0;
@@ -873,7 +884,7 @@ ipc_alloc_tcp_address (
 		if (!ipc->server_address && info->ai_family == AF_INET) {
 			server_address = ep_rt_object_alloc (struct sockaddr_in);
 			if (server_address) {
-				server_address->sin_family = info->ai_family;
+				server_address->sin_family = (uint8_t) info->ai_family;
 				server_address->sin_port = htons (port);
 				server_address->sin_addr = ((struct sockaddr_in*)info->ai_addr)->sin_addr;
 				ipc->server_address = (ds_ipc_socket_address_t *)server_address;
@@ -887,7 +898,7 @@ ipc_alloc_tcp_address (
 		if (!ipc->server_address && info->ai_family == AF_INET6) {
 			server_address6 = ep_rt_object_alloc (struct sockaddr_in6);
 			if (server_address6) {
-				server_address6->sin6_family = info->ai_family;
+				server_address6->sin6_family = (uint8_t) info->ai_family;
 				server_address6->sin6_port = htons (port);
 				server_address6->sin6_addr = ((struct sockaddr_in6*)info->ai_addr)->sin6_addr;
 				ipc->server_address = (ds_ipc_socket_address_t *)server_address6;

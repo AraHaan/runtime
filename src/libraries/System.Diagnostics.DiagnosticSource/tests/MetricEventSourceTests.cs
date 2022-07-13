@@ -16,7 +16,7 @@ namespace System.Diagnostics.Metrics.Tests
     public class MetricEventSourceTests
     {
         ITestOutputHelper _output;
-        const double IntervalSecs = 1;
+        const double IntervalSecs = 10;
         static readonly TimeSpan s_waitForEventTimeout = TimeSpan.FromSeconds(60);
 
         public MetricEventSourceTests(ITestOutputHelper output)
@@ -376,7 +376,7 @@ namespace System.Diagnostics.Metrics.Tests
 
         [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsNotBrowser))]
         [OuterLoop("Slow and has lots of console spew")]
-        public void EventSourcePublishesEndEventsOnNewListener()
+        public void EventSourceRejectsNewListener()
         {
             using Meter meter = new Meter("TestMeter7");
             Counter<int> c = meter.CreateCounter<int>("counter1", "hat", "Fooz!!");
@@ -395,11 +395,13 @@ namespace System.Diagnostics.Metrics.Tests
                 listener.WaitForCollectionStop(s_waitForEventTimeout, 2);
                 c.Add(12);
                 h.Record(26);
-                listener.WaitForCollectionStop(s_waitForEventTimeout, 3);
 
-                // some alternate listener starts listening
+                // some alternate listener attempts to listen in the middle
                 using MetricsEventListener listener2 = new MetricsEventListener(_output, MetricsEventListener.TimeSeriesValues, IntervalSecs, "ADifferentMeter");
-                listener.WaitForEndInstrumentReporting(s_waitForEventTimeout, 4);
+                listener2.WaitForMultipleSessionsNotSupportedError(s_waitForEventTimeout);
+
+
+                listener.WaitForCollectionStop(s_waitForEventTimeout, 3);
                 events = listener.Events.ToArray();
             }
 
@@ -409,7 +411,6 @@ namespace System.Diagnostics.Metrics.Tests
             AssertGaugeEventsPresent(events, meter.Name, og.Name, "", og.Unit, "9", "18", "27");
             AssertHistogramEventsPresent(events, meter.Name, h.Name, "", h.Unit, "0.5=19;0.95=19;0.99=19", "0.5=26;0.95=26;0.99=26");
             AssertCollectStartStopEventsPresent(events, IntervalSecs, 3);
-            AssertEndInstrumentReportingEventsPresent(events, c, oc, og, h);
         }
 
         [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsNotBrowser))]
@@ -646,6 +647,104 @@ namespace System.Diagnostics.Metrics.Tests
             AssertCollectStartStopEventsPresent(events, IntervalSecs, 3);
         }
 
+        [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsNotBrowser))]
+        [OuterLoop("Slow and has lots of console spew")]
+        public void EventSourceWorksWithSequentialListeners()
+        {
+            using Meter meter = new Meter("TestMeter16");
+            Counter<int> c = meter.CreateCounter<int>("counter1");
+            int counterState = 3;
+            ObservableCounter<int> oc = meter.CreateObservableCounter<int>("observableCounter1", () => { counterState += 7; return counterState; });
+            int gaugeState = 0;
+            ObservableGauge<int> og = meter.CreateObservableGauge<int>("observableGauge1", () => { gaugeState += 9; return gaugeState; });
+            Histogram<int> h = meter.CreateHistogram<int>("histogram1");
+
+            EventWrittenEventArgs[] events;
+            using (MetricsEventListener listener = new MetricsEventListener(_output, MetricsEventListener.TimeSeriesValues, IntervalSecs, "TestMeter16"))
+            {
+                listener.WaitForCollectionStop(s_waitForEventTimeout, 1);
+                c.Add(5);
+                h.Record(19);
+                listener.WaitForCollectionStop(s_waitForEventTimeout, 2);
+                c.Add(12);
+                h.Record(26);
+                listener.WaitForCollectionStop(s_waitForEventTimeout, 3);
+                events = listener.Events.ToArray();
+            }
+
+            AssertBeginInstrumentReportingEventsPresent(events, c, oc, og, h);
+            AssertInitialEnumerationCompleteEventPresent(events);
+            AssertCounterEventsPresent(events, meter.Name, c.Name, "", "", "5", "12");
+            AssertCounterEventsPresent(events, meter.Name, oc.Name, "", "", "", "7");
+            AssertGaugeEventsPresent(events, meter.Name, og.Name, "", "", "9", "18");
+            AssertHistogramEventsPresent(events, meter.Name, h.Name, "", "", "0.5=19;0.95=19;0.99=19", "0.5=26;0.95=26;0.99=26");
+            AssertCollectStartStopEventsPresent(events, IntervalSecs, 3);
+
+            // Now create a new listener and do everything a 2nd time. Because the listener above has been disposed the source should be
+            // free to accept a new connection.
+            events = null;
+            using (MetricsEventListener listener = new MetricsEventListener(_output, MetricsEventListener.TimeSeriesValues, IntervalSecs, "TestMeter16"))
+            {
+                listener.WaitForCollectionStop(s_waitForEventTimeout, 1);
+                c.Add(5);
+                h.Record(19);
+                listener.WaitForCollectionStop(s_waitForEventTimeout, 2);
+                c.Add(12);
+                h.Record(26);
+                listener.WaitForCollectionStop(s_waitForEventTimeout, 3);
+                events = listener.Events.ToArray();
+            }
+
+            AssertBeginInstrumentReportingEventsPresent(events, c, oc, og, h);
+            AssertInitialEnumerationCompleteEventPresent(events);
+            AssertCounterEventsPresent(events, meter.Name, c.Name, "", "", "5", "12");
+            AssertCounterEventsPresent(events, meter.Name, oc.Name, "", "", "", "7");
+            AssertGaugeEventsPresent(events, meter.Name, og.Name, "", "", "36", "45");
+            AssertHistogramEventsPresent(events, meter.Name, h.Name, "", "", "0.5=19;0.95=19;0.99=19", "0.5=26;0.95=26;0.99=26");
+            AssertCollectStartStopEventsPresent(events, IntervalSecs, 3);
+        }
+
+        [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsNotBrowser))]
+        [OuterLoop("Slow and has lots of console spew")]
+        public void EventSourceEnforcesHistogramLimitAndNotMaxTimeSeries()
+        {
+            using Meter meter = new Meter("TestMeter17");
+            Histogram<int> h = meter.CreateHistogram<int>("histogram1");
+
+
+            EventWrittenEventArgs[] events;
+            // MaxTimeSeries = 3, MaxHistograms = 2
+            // HistogramLimitReached should be raised when Record(tags: "Color=green"), but TimeSeriesLimitReached should not be raised
+            using (MetricsEventListener listener = new MetricsEventListener(_output, MetricsEventListener.TimeSeriesValues, IntervalSecs, 3, 2, "TestMeter17"))
+            {
+                listener.WaitForCollectionStop(s_waitForEventTimeout, 1);
+
+                h.Record(5, new KeyValuePair<string, object?>("Color", "red"));
+                h.Record(6, new KeyValuePair<string, object?>("Color", "blue"));
+                h.Record(7, new KeyValuePair<string, object?>("Color", "green"));
+                h.Record(8, new KeyValuePair<string, object?>("Color", "yellow"));
+                listener.WaitForCollectionStop(s_waitForEventTimeout, 2);
+
+                h.Record(12, new KeyValuePair<string, object?>("Color", "red"));
+                h.Record(13, new KeyValuePair<string, object?>("Color", "blue"));
+                h.Record(14, new KeyValuePair<string, object?>("Color", "green"));
+                h.Record(15, new KeyValuePair<string, object?>("Color", "yellow"));
+                listener.WaitForCollectionStop(s_waitForEventTimeout, 3);
+                events = listener.Events.ToArray();
+            }
+
+            AssertBeginInstrumentReportingEventsPresent(events, h);
+            AssertInitialEnumerationCompleteEventPresent(events);
+            AssertHistogramEventsPresent(events, meter.Name, h.Name, "Color=red", "", "0.5=5;0.95=5;0.99=5", "0.5=12;0.95=12;0.99=12");
+            AssertHistogramEventsPresent(events, meter.Name, h.Name, "Color=blue", "", "0.5=6;0.95=6;0.99=6", "0.5=13;0.95=13;0.99=13");
+            AssertHistogramLimitPresent(events);
+            AssertTimeSeriesLimitNotPresent(events);
+            AssertHistogramEventsNotPresent(events, meter.Name, h.Name, "Color=green");
+            AssertHistogramEventsNotPresent(events, meter.Name, h.Name, "Color=yellow");
+            AssertCollectStartStopEventsPresent(events, IntervalSecs, 3);
+        }
+
+
         private void AssertBeginInstrumentReportingEventsPresent(EventWrittenEventArgs[] events, params Instrument[] expectedInstruments)
         {
             var beginReportEvents = events.Where(e => e.EventName == "BeginInstrumentReporting").Select(e =>
@@ -706,6 +805,11 @@ namespace System.Diagnostics.Metrics.Tests
         private void AssertTimeSeriesLimitPresent(EventWrittenEventArgs[] events)
         {
             Assert.Equal(1, events.Where(e => e.EventName == "TimeSeriesLimitReached").Count());
+        }
+
+        private void AssertTimeSeriesLimitNotPresent(EventWrittenEventArgs[] events)
+        {
+            Assert.Equal(0, events.Where(e => e.EventName == "TimeSeriesLimitReached").Count());
         }
 
         private void AssertHistogramLimitPresent(EventWrittenEventArgs[] events)
@@ -961,10 +1065,20 @@ namespace System.Diagnostics.Metrics.Tests
             }
         }
 
+        public override void Dispose()
+        {
+            if (_source != null)
+            {
+                // workaround for https://github.com/dotnet/runtime/issues/56378
+                DisableEvents(_source);
+            }
+            base.Dispose();
+        }
+
         protected override void OnEventWritten(EventWrittenEventArgs eventData)
         {
             string sessionId = eventData.Payload[0].ToString();
-            if(sessionId != "" && sessionId != _sessionId)
+            if (eventData.EventName != "MultipleSessionsNotSupportedError" && sessionId != "" && sessionId != _sessionId)
             {
                 return;
             }
@@ -988,68 +1102,36 @@ namespace System.Diagnostics.Metrics.Tests
             _autoResetEvent.Set();
         }
 
-        public void WaitForCollectionStop(TimeSpan timeout, int numStops)
-        {
-            DateTime startTime = DateTime.Now;
-            DateTime stopTime = startTime + timeout;
-            int initialStopCount = GetCountCollectionStops();
-            while (true)
-            {
-                if (GetCountCollectionStops() >= numStops)
-                {
-                    return;
-                }
-                TimeSpan remainingTime = stopTime - DateTime.Now;
-                if (remainingTime.TotalMilliseconds < 0 || !_autoResetEvent.WaitOne(remainingTime))
-                {
-                    int currentStopCount = GetCountCollectionStops();
-                    throw new TimeoutException("Timed out waiting for a StopCollection event. " +
-                        $"StartTime={startTime} stopTime={stopTime} initialStopCount={initialStopCount} currentStopCount={currentStopCount} targetStopCount={numStops}");
-                }
-            }
-        }
+        public void WaitForCollectionStop(TimeSpan timeout, int numEvents) => WaitForEvent(timeout, numEvents, "CollectionStop");
 
-        public void WaitForEndInstrumentReporting(TimeSpan timeout, int numEvents)
+        public void WaitForEndInstrumentReporting(TimeSpan timeout, int numEvents) => WaitForEvent(timeout, numEvents, "EndInstrumentReporting");
+
+        public void WaitForEnumerationComplete(TimeSpan timeout) => WaitForEvent(timeout, 1, "InitialInstrumentEnumerationComplete");
+
+        public void WaitForMultipleSessionsNotSupportedError(TimeSpan timeout) => WaitForEvent(timeout, 1, "MultipleSessionsNotSupportedError");
+
+        void WaitForEvent(TimeSpan timeout, int numEvents, string eventName)
         {
             DateTime startTime = DateTime.Now;
             DateTime stopTime = startTime + timeout;
-            int initialEventCount = GetCountEndInstrumentReporting();
+            int initialEventCount = GetCountEvents(eventName);
             while (true)
             {
-                if (GetCountEndInstrumentReporting() >= numEvents)
+                if (GetCountEvents(eventName) >= numEvents)
                 {
                     return;
                 }
                 TimeSpan remainingTime = stopTime - DateTime.Now;
                 if (remainingTime.TotalMilliseconds < 0 || !_autoResetEvent.WaitOne(remainingTime))
                 {
-                    int currentEventCount = GetCountEndInstrumentReporting();
-                    throw new TimeoutException("Timed out waiting for a EndInstrumentReporting event. " +
+                    int currentEventCount = GetCountEvents(eventName);
+                    throw new TimeoutException($"Timed out waiting for a {eventName} event. " +
                         $"StartTime={startTime} stopTime={stopTime} initialEventCount={initialEventCount} currentEventCount={currentEventCount} targetEventCount={numEvents}");
                 }
             }
         }
 
-        public void WaitForEnumerationComplete(TimeSpan timeout)
-        {
-            DateTime startTime = DateTime.Now;
-            DateTime stopTime = startTime + timeout;
-            int initialEventCount = GetCountEnumerationComplete();
-            while (true)
-            {
-                if (GetCountEnumerationComplete() >= 1)
-                {
-                    return;
-                }
-                TimeSpan remainingTime = stopTime - DateTime.Now;
-                if (remainingTime.TotalMilliseconds < 0 || !_autoResetEvent.WaitOne(remainingTime))
-                {
-                    int currentEventCount = GetCountEnumerationComplete();
-                    throw new TimeoutException("Timed out waiting for a EndInstrumentReporting event. " +
-                        $"StartTime={startTime} stopTime={stopTime} initialEventCount={initialEventCount} currentEventCount={currentEventCount}");
-                }
-            }
-        }
+
 
         private void AssertOnError()
         {
@@ -1064,29 +1146,12 @@ namespace System.Diagnostics.Metrics.Tests
             }
         }
 
-        private int GetCountCollectionStops()
+        private int GetCountEvents(string eventName)
         {
             lock (this)
             {
                 AssertOnError();
-                return Events.Where(e => e.EventName == "CollectionStop").Count();
-            }
-        }
-
-        private int GetCountEndInstrumentReporting()
-        {
-            lock (this)
-            {
-                AssertOnError();
-                return Events.Where(e => e.EventName == "EndInstrumentReporting").Count();
-            }
-        }
-
-        private int GetCountEnumerationComplete()
-        {
-            lock (this)
-            {
-                return Events.Where(e => e.EventName == "InitialInstrumentEnumerationComplete").Count();
+                return Events.Where(e => e.EventName == eventName).Count();
             }
         }
     }

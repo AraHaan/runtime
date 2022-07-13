@@ -7,15 +7,17 @@
     </GetSharedFrameworkFilesForReadyToRunDependsOn>
     <PublishReadyToRun Condition="'$(RuntimeFlavor)' != 'Mono'">true</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(RuntimeFlavor)' == 'Mono'">false</PublishReadyToRun>
-    <!-- Disable crossgen on FreeBSD, NetBSD, illumos and Solaris for now. This can be revisited when we have full support. -->
-    <PublishReadyToRun Condition="'$(TargetOS)'=='FreeBSD' Or '$(TargetOS)'=='NetBSD' Or '$(TargetOS)'=='illumos' Or '$(TargetOS)'=='Solaris'">false</PublishReadyToRun>
+    <!-- Disable crossgen on NetBSD, illumos and Solaris for now. This can be revisited when we have full support. -->
+    <PublishReadyToRun Condition="'$(TargetOS)'=='NetBSD' Or '$(TargetOS)'=='illumos' Or '$(TargetOS)'=='Solaris'">false</PublishReadyToRun>
+    <!-- Disable crossgen on FreeBSD when cross building from Linux. -->
+    <PublishReadyToRun Condition="'$(TargetOS)'=='FreeBSD' and '$(CrossBuild)'=='true'">false</PublishReadyToRun>
     <!-- These components are installed by the root shared framework, but not others. -->
     <IncludeWerRelatedKeys>true</IncludeWerRelatedKeys>
     <IncludeBreadcrumbStoreFolder>true</IncludeBreadcrumbStoreFolder>
     <MacOSPackageDescription>The .NET Shared Framework</MacOSPackageDescription>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(RuntimeFlavor)' == 'Mono'">
+  <PropertyGroup Condition="'$(RuntimeFlavor)' == 'Mono' and '$(RuntimeFlavor)' != '$(PrimaryRuntimeFlavor)'">
     <RuntimeSpecificFrameworkSuffix>Mono</RuntimeSpecificFrameworkSuffix>
   </PropertyGroup>
   <PropertyGroup Condition="'$(MonoEnableLLVM)' == 'true' and '$(RuntimeFlavor)' == 'Mono' and '$(TargetsMobile)' != 'true' and '$(TargetsBrowser)' != 'true'">
@@ -64,7 +66,7 @@
         <TargetPath>tools</TargetPath>
       </RuntimeFiles>
 
-      <RuntimeFiles Condition="'$(TargetsMobile)' == 'true'"
+      <RuntimeFiles
         Include="@(MonoIncludeFiles)"
         ExcludeFromDataFiles="true">
         <TargetPath>runtimes/$(RuntimeIdentifier)/native/include/%(RecursiveDir)</TargetPath>

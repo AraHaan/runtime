@@ -143,7 +143,7 @@ namespace System.Xml.Xsl.IlGen
             if (storageType == typeof(byte[]))
                 ToAtomicValue = typeof(XmlILStorageConverter).GetMethod("BytesToAtomicValue");
             else if (storageType != typeof(XPathItem) && storageType != typeof(XPathNavigator))
-                ToAtomicValue = typeof(XmlILStorageConverter).GetMethod(storageType.Name + "ToAtomicValue");
+                ToAtomicValue = typeof(XmlILStorageConverter).GetMethod($"{storageType.Name}ToAtomicValue");
         }
     }
 
@@ -605,8 +605,7 @@ namespace System.Xml.Xsl.IlGen
         public void CallSyncToNavigator()
         {
             // Get helper method from module
-            if (_methSyncToNav == null)
-                _methSyncToNav = _module.FindMethod("SyncToNavigator");
+            _methSyncToNav ??= _module.FindMethod("SyncToNavigator");
 
             Call(_methSyncToNav!);
         }
@@ -803,6 +802,7 @@ namespace System.Xml.Xsl.IlGen
             Emit(OpCodes.Ret);
         }
 
+#pragma warning disable CA1822
         [Conditional("DEBUG")]
         private void TraceCall(OpCode opcode, MethodInfo meth)
         {
@@ -830,6 +830,7 @@ namespace System.Xml.Xsl.IlGen
             }
 #endif
         }
+#pragma warning restore CA1822
 
         public void Call(MethodInfo meth)
         {

@@ -34,6 +34,18 @@ namespace System.Formats.Asn1
             return Asn1Tag.Decode(_span, out _);
         }
 
+        internal ReadOnlySpan<byte> PeekContentBytes()
+        {
+            AsnDecoder.ReadEncodedValue(
+                _span,
+                _ruleSet,
+                out int contentOffset,
+                out int contentLength,
+                out _);
+
+            return _span.Slice(contentOffset, contentLength);
+        }
+
         internal ReadOnlySpan<byte> PeekEncodedValue()
         {
             AsnDecoder.ReadEncodedValue(_span, _ruleSet, out _, out _, out int consumed);
@@ -193,6 +205,13 @@ namespace System.Formats.Asn1
         internal string ReadCharacterString(UniversalTagNumber encodingType, Asn1Tag? expectedTag = default)
         {
             string ret = AsnDecoder.ReadCharacterString(_span, _ruleSet, encodingType, out int consumed, expectedTag);
+            _span = _span.Slice(consumed);
+            return ret;
+        }
+
+        internal TEnum ReadEnumeratedValue<TEnum>(Asn1Tag? expectedTag = null) where TEnum : Enum
+        {
+            TEnum ret = AsnDecoder.ReadEnumeratedValue<TEnum>(_span, _ruleSet, out int consumed, expectedTag);
             _span = _span.Slice(consumed);
             return ret;
         }

@@ -23,6 +23,18 @@
 
 #if defined(TARGET_OSX) && defined(TARGET_AMD64)
 #include <mach/mach.h>
+#include <sys/sysctl.h>
+
+bool IsProcessTranslated()
+{
+   int ret = 0;
+   size_t size = sizeof(ret);
+   if (sysctlbyname("sysctl.proc_translated", &ret, &size, NULL, 0) == -1)
+   {
+      return false;
+   }
+   return ret == 1;
+}
 #endif // TARGET_OSX && TARGET_AMD64
 
 #ifndef TARGET_OSX
@@ -41,6 +53,12 @@ bool VMToOSInterface::CreateDoubleMemoryMapper(void** pHandle, size_t *pMaxExecu
 
 #ifdef TARGET_FREEBSD
     int fd = shm_open(SHM_ANON, O_RDWR | O_CREAT, S_IRWXU);
+#elif defined(TARGET_SUNOS) // has POSIX implementation
+    char name[24];
+    sprintf(name, "/shm-dotnet-%d", getpid());
+    name[sizeof(name) - 1] = '\0';
+    shm_unlink(name);
+    int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
 #else // TARGET_FREEBSD
     int fd = memfd_create("doublemapper", MFD_CLOEXEC);
 #endif // TARGET_FREEBSD
@@ -59,6 +77,15 @@ bool VMToOSInterface::CreateDoubleMemoryMapper(void** pHandle, size_t *pMaxExecu
     *pMaxExecutableCodeSize = MaxDoubleMappedSize;
     *pHandle = (void*)(size_t)fd;
 #else // !TARGET_OSX
+
+#ifdef TARGET_AMD64
+    if (IsProcessTranslated())
+    {
+        // Rosetta doesn't support double mapping correctly
+        return false;
+    }
+#endif // TARGET_AMD64
+
     *pMaxExecutableCodeSize = SIZE_MAX;
     *pHandle = NULL;
 #endif // !TARGET_OSX
@@ -73,7 +100,7 @@ void VMToOSInterface::DestroyDoubleMemoryMapper(void *mapperHandle)
 #endif
 }
 
-extern "C" void* PAL_VirtualReserveFromExecutableMemoryAllocatorWithinRange(const void* lpBeginAddress, const void* lpEndAddress, size_t dwSize);
+extern "C" void* PAL_VirtualReserveFromExecutableMemoryAllocatorWithinRange(const void* lpBeginAddress, const void* lpEndAddress, size_t dwSize, int fStoreAllocationInfo);
 
 #ifdef TARGET_OSX
 bool IsMapJitFlagNeeded()
@@ -112,34 +139,42 @@ void* VMToOSInterface::ReserveDoubleMappedMemory(void *mapperHandle, size_t offs
 {
     int fd = (int)(size_t)mapperHandle;
 
-    if (rangeStart != NULL || rangeEnd != NULL)
+    bool isUnlimitedRange = (rangeStart == NULL) && (rangeEnd == NULL);
+
+    if (isUnlimitedRange)
     {
-        void* result = PAL_VirtualReserveFromExecutableMemoryAllocatorWithinRange(rangeStart, rangeEnd, size);
+        rangeEnd = (void*)SIZE_MAX;
+    }
+
+    void* result = PAL_VirtualReserveFromExecutableMemoryAllocatorWithinRange(rangeStart, rangeEnd, size, 0 /* fStoreAllocationInfo */);
 #ifndef TARGET_OSX
-        if (result != NULL)
+    if (result != NULL)
+    {
+        // Map the shared memory over the range reserved from the executable memory allocator.
+        result = mmap(result, size, PROT_NONE, MAP_SHARED | MAP_FIXED, fd, offset);
+        if (result == MAP_FAILED)
         {
-            // Map the shared memory over the range reserved from the executable memory allocator.
-            result = mmap(result, size, PROT_NONE, MAP_SHARED | MAP_FIXED, fd, offset);
-            if (result == MAP_FAILED)
-            {
-                assert(false);
-                result = NULL;
-            }
+            assert(false);
+            result = NULL;
         }
+    }
 #endif // TARGET_OSX
 
+    // For requests with limited range, don't try to fall back to reserving at any address
+    if ((result != NULL) || !isUnlimitedRange)
+    {
         return result;
     }
 
 #ifndef TARGET_OSX
-    void* result = mmap(NULL, size, PROT_NONE, MAP_SHARED, fd, offset);
+    result = mmap(NULL, size, PROT_NONE, MAP_SHARED, fd, offset);
 #else
     int mmapFlags = MAP_ANON | MAP_PRIVATE;
     if (IsMapJitFlagNeeded())
     {
         mmapFlags |= MAP_JIT;
     }
-    void* result = mmap(NULL, size, PROT_NONE, mmapFlags, -1, 0);
+    result = mmap(NULL, size, PROT_NONE, mmapFlags, -1, 0);
 #endif    
     if (result == MAP_FAILED)
     {

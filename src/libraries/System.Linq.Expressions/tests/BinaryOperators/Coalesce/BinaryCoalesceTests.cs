@@ -494,8 +494,7 @@ namespace System.Linq.Expressions.Tests
             Assert.Equal(1, func());
         }
 
-#if FEATURE_COMPILE
-        [Fact]
+        [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsNotLinqExpressionsBuiltWithIsInterpretingOnly))]
         [ActiveIssue("https://github.com/mono/mono/issues/14919", TestRuntimes.Mono)]
         public static void VerifyIL_NullableIntCoalesceToNullableInt()
         {
@@ -507,7 +506,7 @@ namespace System.Linq.Expressions.Tests
             f.VerifyIL(
                 @".method valuetype [System.Private.CoreLib]System.Nullable`1<int32> ::lambda_method(class [System.Linq.Expressions]System.Runtime.CompilerServices.Closure,valuetype [System.Private.CoreLib]System.Nullable`1<int32>,valuetype [System.Private.CoreLib]System.Nullable`1<int32>)
                 {
-                    .maxstack 2
+                    .maxstack 1
                     .locals init (
                         [0] valuetype [System.Private.CoreLib]System.Nullable`1<int32>
                     )
@@ -523,7 +522,6 @@ namespace System.Linq.Expressions.Tests
                     IL_0015: ret
                 }");
         }
-#endif
 
         [Theory, ClassData(typeof(CompilationTypes))]
         public static void CoalesceWideningLeft(bool useInterpreter)

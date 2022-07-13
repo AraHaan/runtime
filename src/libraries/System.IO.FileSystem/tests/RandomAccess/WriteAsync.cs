@@ -9,7 +9,6 @@ using Xunit;
 
 namespace System.IO.Tests
 {
-    [ActiveIssue("https://github.com/dotnet/runtime/issues/34582", TestPlatforms.Windows, TargetFrameworkMonikers.Netcoreapp, TestRuntimes.Mono)]
     [SkipOnPlatform(TestPlatforms.Browser, "async file IO is not supported on browser")]
     public class RandomAccess_WriteAsync : RandomAccess_Base<ValueTask>
     {
@@ -50,6 +49,22 @@ namespace System.IO.Tests
             {
                 await RandomAccess.WriteAsync(handle, Array.Empty<byte>(), fileOffset: 0);
             }
+        }
+
+        [Theory]
+        [MemberData(nameof(GetSyncAsyncOptions))]
+        public async Task WriteBeyondEndOfFileExtendsTheFileAsync(FileOptions options)
+        {
+            string filePath = GetTestFilePath();
+
+            using (SafeFileHandle handle = File.OpenHandle(filePath, FileMode.CreateNew, FileAccess.Write, options: options))
+            {
+                Assert.Equal(0, RandomAccess.GetLength(handle));
+                await RandomAccess.WriteAsync(handle, new byte[1] { 1 }, fileOffset: 1);
+                Assert.Equal(2, RandomAccess.GetLength(handle));
+            }
+
+            Assert.Equal(new byte[] { 0, 1 }, await File.ReadAllBytesAsync(filePath));
         }
 
         [Theory]

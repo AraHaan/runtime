@@ -13,7 +13,7 @@ using Microsoft.Build.Utilities;
 
 namespace Microsoft.Workload.Build.Tasks
 {
-    internal class PackageInstaller
+    internal sealed class PackageInstaller
     {
         private readonly string _tempDir;
         private string _nugetConfigContents;
@@ -68,7 +68,7 @@ namespace Microsoft.Workload.Build.Tasks
             }
 
             IList<(PackageReference, string)> failedToRestore = references
-                                                             .Select(r => (r, Path.Combine(_packagesDir, r.Name.ToLower(), r.Version)))
+                                                             .Select(r => (r, Path.Combine(_packagesDir, r.Name.ToLowerInvariant(), r.Version)))
                                                              .Where(tuple => !Directory.Exists(tuple.Item2))
                                                              .ToList();
 
@@ -88,7 +88,7 @@ namespace Microsoft.Workload.Build.Tasks
         {
             foreach (var pkgRef in references)
             {
-                var source = Path.Combine(_packagesDir, pkgRef.Name.ToLower(), pkgRef.Version, pkgRef.relativeSourceDir);
+                var source = Path.Combine(_packagesDir, pkgRef.Name.ToLowerInvariant(), pkgRef.Version, pkgRef.relativeSourceDir);
                 if (!Directory.Exists(source))
                 {
                     LogErrorOrWarning($"Failed to restore {pkgRef.Name}/{pkgRef.Version} (could not find {source})", stopOnMissing);

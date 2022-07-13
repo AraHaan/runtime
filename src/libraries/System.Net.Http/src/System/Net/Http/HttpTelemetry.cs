@@ -18,6 +18,7 @@ namespace System.Net.Http
 
         private long _openedHttp11Connections;
         private long _openedHttp20Connections;
+        private long _openedHttp30Connections;
 
         // NOTE
         // - The 'Start' and 'Stop' suffixes on the following event names have special meaning in EventSource. They
@@ -158,6 +159,21 @@ namespace System.Net.Http
             ConnectionClosed(versionMajor: 2, versionMinor: 0);
         }
 
+        [NonEvent]
+        public void Http30ConnectionEstablished()
+        {
+            Interlocked.Increment(ref _openedHttp30Connections);
+            ConnectionEstablished(versionMajor: 3, versionMinor: 0);
+        }
+
+        [NonEvent]
+        public void Http30ConnectionClosed()
+        {
+            long count = Interlocked.Decrement(ref _openedHttp30Connections);
+            Debug.Assert(count >= 0);
+            ConnectionClosed(versionMajor: 3, versionMinor: 0);
+        }
+
 #if !ES_BUILD_STANDALONE
         [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode",
             Justification = "Parameters to this method are primitive and are trimmer safe")]
@@ -167,9 +183,9 @@ namespace System.Net.Http
         {
             if (IsEnabled())
             {
-                if (arg1 == null) arg1 = "";
-                if (arg2 == null) arg2 = "";
-                if (arg4 == null) arg4 = "";
+                arg1 ??= "";
+                arg2 ??= "";
+                arg4 ??= "";
 
                 fixed (char* arg1Ptr = arg1)
                 fixed (char* arg2Ptr = arg2)

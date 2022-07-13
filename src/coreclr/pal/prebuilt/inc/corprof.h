@@ -271,8 +271,6 @@ extern "C"{
 /* interface __MIDL_itf_corprof_0000_0000 */
 /* [local] */ 
 
-#define CorDB_CONTROL_Profiling         "Cor_Enable_Profiling"
-#define CorDB_CONTROL_ProfilingL       L"Cor_Enable_Profiling"
 #if 0
 typedef LONG32 mdToken;
 
@@ -574,7 +572,7 @@ enum __MIDL___MIDL_itf_corprof_0000_0000_0006
         COR_PRF_HIGH_REQUIRE_PROFILE_IMAGE  = 0,
         COR_PRF_HIGH_MONITOR_LARGEOBJECT_ALLOCATED  = 0x40,
         COR_PRF_HIGH_MONITOR_EVENT_PIPE = 0x80,
-        COR_PRF_HIGH_MONITOR_PINNEDOBJECT_ALLOCATED  = 0x100,
+        COR_PRF_HIGH_MONITOR_PINNEDOBJECT_ALLOCATED = 0x100,
         COR_PRF_HIGH_ALLOWABLE_AFTER_ATTACH = ( ( ( ( ( COR_PRF_HIGH_IN_MEMORY_SYMBOLS_UPDATED | COR_PRF_HIGH_MONITOR_DYNAMIC_FUNCTION_UNLOADS )  | COR_PRF_HIGH_BASIC_GC )  | COR_PRF_HIGH_MONITOR_GC_MOVED_OBJECTS )  | COR_PRF_HIGH_MONITOR_LARGEOBJECT_ALLOCATED )  | COR_PRF_HIGH_MONITOR_EVENT_PIPE ) ,
         COR_PRF_HIGH_ALLOWABLE_NOTIFICATION_PROFILER    = ( ( ( ( ( ( COR_PRF_HIGH_IN_MEMORY_SYMBOLS_UPDATED | COR_PRF_HIGH_MONITOR_DYNAMIC_FUNCTION_UNLOADS )  | COR_PRF_HIGH_DISABLE_TIERED_COMPILATION )  | COR_PRF_HIGH_BASIC_GC )  | COR_PRF_HIGH_MONITOR_GC_MOVED_OBJECTS )  | COR_PRF_HIGH_MONITOR_LARGEOBJECT_ALLOCATED )  | COR_PRF_HIGH_MONITOR_EVENT_PIPE ) ,
         COR_PRF_HIGH_MONITOR_IMMUTABLE  = COR_PRF_HIGH_DISABLE_TIERED_COMPILATION
@@ -8374,7 +8372,7 @@ EXTERN_C const IID IID_ICorProfilerCallback11;
     ICorProfilerCallback11 : public ICorProfilerCallback10
     {
     public:
-        virtual HRESULT STDMETHODCALLTYPE LoadAsNotficationOnly( 
+        virtual HRESULT STDMETHODCALLTYPE LoadAsNotificationOnly( 
             BOOL *pbNotificationOnly) = 0;
         
     };
@@ -8844,7 +8842,7 @@ EXTERN_C const IID IID_ICorProfilerCallback11;
             ICorProfilerCallback11 * This,
             /* [in] */ EVENTPIPE_PROVIDER provider);
         
-        HRESULT ( STDMETHODCALLTYPE *LoadAsNotficationOnly )( 
+        HRESULT ( STDMETHODCALLTYPE *LoadAsNotificationOnly )( 
             ICorProfilerCallback11 * This,
             BOOL *pbNotificationOnly);
         
@@ -9163,8 +9161,8 @@ EXTERN_C const IID IID_ICorProfilerCallback11;
     ( (This)->lpVtbl -> EventPipeProviderCreated(This,provider) ) 
 
 
-#define ICorProfilerCallback11_LoadAsNotficationOnly(This,pbNotificationOnly)   \
-    ( (This)->lpVtbl -> LoadAsNotficationOnly(This,pbNotificationOnly) ) 
+#define ICorProfilerCallback11_LoadAsNotificationOnly(This,pbNotificationOnly)  \
+    ( (This)->lpVtbl -> LoadAsNotificationOnly(This,pbNotificationOnly) ) 
 
 #endif /* COBJMACROS */
 

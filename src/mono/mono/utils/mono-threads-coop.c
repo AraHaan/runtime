@@ -41,7 +41,7 @@
 #elif defined (HOST_WASM)
 //TODO: figure out wasm stack scanning
 #define SAVE_REGS_ON_STACK do {} while (0)
-#else 
+#else
 #define SAVE_REGS_ON_STACK __builtin_unwind_init ();
 #endif
 
@@ -95,12 +95,11 @@ coop_tls_pop (gpointer received_cookie)
 static void
 check_info (MonoThreadInfo *info, const gchar *action, const gchar *state, const char *func)
 {
-	if (!info)
-		g_error ("%s Cannot %s GC %s region if the thread is not attached", func, action, state);
-	if (!mono_thread_info_is_current (info))
-		g_error ("%s [%p] Cannot %s GC %s region on a different thread", func, mono_thread_info_get_tid (info), action, state);
-	if (!mono_thread_info_is_live (info))
-		g_error ("%s [%p] Cannot %s GC %s region if the thread is not live", func, mono_thread_info_get_tid (info), action, state);
+#ifdef ENABLE_CHECKED_BUILD
+	g_assertf (info, "%s Cannot %s GC %s region if the thread is not attached", func, action, state);
+	g_assertf (mono_thread_info_is_current (info), "%s [%p] Cannot %s GC %s region on a different thread", func, mono_thread_info_get_tid (info), action, state);
+	g_assertf (mono_thread_info_is_live (info), "%s [%p] Cannot %s GC %s region if the thread is not live", func, mono_thread_info_get_tid (info), action, state);
+#endif
 }
 
 static int coop_reset_blocking_count;
@@ -179,7 +178,7 @@ copy_stack_data_internal (MonoThreadInfo *info, MonoStackData *stackdata_begin, 
 
 	state = &info->thread_saved_state [SELF_SUSPEND_STATE_INDEX];
 
-	stackdata_size = (char*)mono_stackdata_get_stackpointer (stackdata_begin) - (char*)stackdata_end;
+	stackdata_size = GPTRDIFF_TO_INT ((char*)mono_stackdata_get_stackpointer (stackdata_begin) - (char*)stackdata_end);
 
 	if (((gsize) stackdata_begin & (SIZEOF_VOID_P - 1)) != 0)
 		g_error ("%s stackdata_begin (%p) must be %d-byte aligned", mono_stackdata_get_function_name (stackdata_begin), stackdata_begin, SIZEOF_VOID_P);

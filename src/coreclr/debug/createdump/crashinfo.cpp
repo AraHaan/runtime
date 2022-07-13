@@ -13,10 +13,16 @@ CrashInfo::CrashInfo(pid_t pid, bool gatherFrames, pid_t crashThread, uint32_t s
     m_pid(pid),
     m_ppid(-1),
     m_hdac(nullptr),
+    m_pClrDataEnumRegions(nullptr),
+    m_pClrDataProcess(nullptr),
     m_gatherFrames(gatherFrames),
     m_crashThread(crashThread),
     m_signal(signal),
-    m_moduleInfos(&ModuleInfoCompare)
+    m_moduleInfos(&ModuleInfoCompare),
+    m_mainModule(nullptr),
+    m_cbModuleMappings(0),
+    m_dataTargetPagesAdded(0),
+    m_enumMemoryPagesAdded(0)
 {
     g_crashInfo = this;
 #ifdef __APPLE__
@@ -43,6 +49,15 @@ CrashInfo::~CrashInfo()
     }
     m_moduleInfos.clear();
 
+    // Clean up DAC interfaces
+    if (m_pClrDataEnumRegions != nullptr)
+    {
+        m_pClrDataEnumRegions->Release();
+    }
+    if (m_pClrDataProcess != nullptr)
+    {
+        m_pClrDataProcess->Release();
+    }
     // Unload DAC module
     if (m_hdac != nullptr)
     {
@@ -55,7 +70,7 @@ CrashInfo::~CrashInfo()
         kern_return_t result = ::mach_port_deallocate(mach_task_self(), m_task);
         if (result != KERN_SUCCESS)
         {
-            fprintf(stderr, "~CrashInfo: mach_port_deallocate FAILED %x %s\n", result, mach_error_string(result));
+            printf_error("Internal error: mach_port_deallocate FAILED %s (%x)\n", mach_error_string(result), result);
         }
     }
 #endif
@@ -103,7 +118,7 @@ CrashInfo::EnumMemoryRegion(
     /* [in] */ CLRDATA_ADDRESS address,
     /* [in] */ ULONG32 size)
 {
-    InsertMemoryRegion((ULONG_PTR)address, size);
+    m_enumMemoryPagesAdded += InsertMemoryRegion((ULONG_PTR)address, size);
     return S_OK;
 }
 
@@ -133,7 +148,7 @@ CrashInfo::GatherCrashInfo(MINIDUMP_TYPE minidumpType)
         return false;
     }
     // Gather all the module memory mappings (from /dev/$pid/maps)
-    if (!EnumerateModuleMappings())
+    if (!EnumerateMemoryRegions())
     {
         return false;
     }
@@ -143,9 +158,28 @@ CrashInfo::GatherCrashInfo(MINIDUMP_TYPE minidumpType)
         return false;
     }
 #endif
+    // Load and initialize DAC interfaces
+    if (!InitializeDAC())
+    {
+        return false;
+    }
+    // Enumerate all the managed modules. On MacOS only the native modules have been added
+    // to the module mapping list at this point and adds the managed modules. This needs to
+    // be done before the other mappings is initialized.
+    if (!EnumerateManagedModules())
+    {
+        return false;
+    }
+#ifdef __APPLE__
+    InitializeOtherMappings();
+#endif
+    if (!UnwindAllThreads())
+    {
+        return false;
+    }
     if (g_diagnosticsVerbose)
     {
-        TRACE_VERBOSE("Module addresses:\n");
+        TRACE("Module addresses:\n");
         for (const MemoryRegion& region : m_moduleAddresses)
         {
             region.Trace();
@@ -156,14 +190,14 @@ CrashInfo::GatherCrashInfo(MINIDUMP_TYPE minidumpType)
     {
         for (const MemoryRegion& region : m_moduleMappings)
         {
-            InsertMemoryBackedRegion(region);
+            InsertMemoryRegion(region);
         }
         for (const MemoryRegion& region : m_otherMappings)
         {
             // Don't add uncommitted pages to the full dump
             if ((region.Permissions() & (PF_R | PF_W | PF_X)) != 0)
             {
-                InsertMemoryBackedRegion(region);
+                InsertMemoryRegion(region);
             }
         }
     }
@@ -176,9 +210,13 @@ CrashInfo::GatherCrashInfo(MINIDUMP_TYPE minidumpType)
             for (const MemoryRegion& region : m_otherMappings)
             {
                 uint32_t permissions = region.Permissions();
+#ifdef __APPLE__
+                if (permissions == (PF_R | PF_W))
+#else
                 if (permissions == (PF_R | PF_W) || permissions == (PF_R | PF_W | PF_X))
+#endif
                 {
-                    InsertMemoryBackedRegion(region);
+                    InsertMemoryRegion(region);
                 }
             }
         }
@@ -189,33 +227,43 @@ CrashInfo::GatherCrashInfo(MINIDUMP_TYPE minidumpType)
             thread->GetThreadStack();
         }
     }
-    // Gather all the useful memory regions from the DAC
-    if (!EnumerateMemoryRegionsWithDAC(minidumpType))
-    {
-        return false;
-    }
-    // Join all adjacent memory regions
-    CombineMemoryRegions();
     return true;
+}
+
+static const char*
+GetHResultString(HRESULT hr)
+{
+    switch (hr)
+    {
+        case E_FAIL:
+            return "The operation has failed";
+        case E_INVALIDARG:
+            return "Invalid argument";
+        case E_OUTOFMEMORY:
+            return "Out of memory";
+        case CORDBG_E_UNCOMPATIBLE_PLATFORMS:
+            return "The operation failed because debuggee and debugger are on incompatible platforms";
+        case CORDBG_E_MISSING_DEBUGGER_EXPORTS:
+            return "The debuggee memory space does not have the expected debugging export table";
+        case CORDBG_E_UNSUPPORTED:
+            return "The specified action is unsupported by this version of the runtime";
+    }
+    return "";
 }
 
 //
 // Enumerate all the memory regions using the DAC memory region support given a minidump type
 //
 bool
-CrashInfo::EnumerateMemoryRegionsWithDAC(MINIDUMP_TYPE minidumpType)
+CrashInfo::InitializeDAC()
 {
     ReleaseHolder<DumpDataTarget> dataTarget = new DumpDataTarget(*this);
     PFN_CLRDataCreateInstance pfnCLRDataCreateInstance = nullptr;
-    ICLRDataEnumMemoryRegions* pClrDataEnumRegions = nullptr;
-    IXCLRDataProcess* pClrDataProcess = nullptr;
-    HRESULT hr = S_OK;
     bool result = false;
+    HRESULT hr = S_OK;
 
     if (!m_coreclrPath.empty())
     {
-        TRACE("EnumerateMemoryRegionsWithDAC: Memory enumeration STARTED\n");
-
         // We assume that the DAC is in the same location as the libcoreclr.so module
         std::string dacPath;
         dacPath.append(m_coreclrPath);
@@ -225,151 +273,170 @@ CrashInfo::EnumerateMemoryRegionsWithDAC(MINIDUMP_TYPE minidumpType)
         m_hdac = LoadLibraryA(dacPath.c_str());
         if (m_hdac == nullptr)
         {
-            fprintf(stderr, "LoadLibraryA(%s) FAILED %d\n", dacPath.c_str(), GetLastError());
+            printf_error("InitializeDAC: LoadLibraryA(%s) FAILED %s\n", dacPath.c_str(), GetLastErrorString().c_str());
             goto exit;
         }
         pfnCLRDataCreateInstance = (PFN_CLRDataCreateInstance)GetProcAddress(m_hdac, "CLRDataCreateInstance");
         if (pfnCLRDataCreateInstance == nullptr)
         {
-            fprintf(stderr, "GetProcAddress(CLRDataCreateInstance) FAILED %d\n", GetLastError());
+            printf_error("InitializeDAC: GetProcAddress(CLRDataCreateInstance) FAILED %s\n", GetLastErrorString().c_str());
             goto exit;
         }
-        if ((minidumpType & MiniDumpWithFullMemory) == 0)
-        {
-            hr = pfnCLRDataCreateInstance(__uuidof(ICLRDataEnumMemoryRegions), dataTarget, (void**)&pClrDataEnumRegions);
-            if (FAILED(hr))
-            {
-                fprintf(stderr, "CLRDataCreateInstance(ICLRDataEnumMemoryRegions) FAILED %08x\n", hr);
-                goto exit;
-            }
-            // Calls CrashInfo::EnumMemoryRegion for each memory region found by the DAC
-            hr = pClrDataEnumRegions->EnumMemoryRegions(this, minidumpType, CLRDATA_ENUM_MEM_DEFAULT);
-            if (FAILED(hr))
-            {
-                fprintf(stderr, "EnumMemoryRegions FAILED %08x\n", hr);
-                goto exit;
-            }
-        }
-        hr = pfnCLRDataCreateInstance(__uuidof(IXCLRDataProcess), dataTarget, (void**)&pClrDataProcess);
+        hr = pfnCLRDataCreateInstance(__uuidof(ICLRDataEnumMemoryRegions), dataTarget, (void**)&m_pClrDataEnumRegions);
         if (FAILED(hr))
         {
-            fprintf(stderr, "CLRDataCreateInstance(IXCLRDataProcess) FAILED %08x\n", hr);
+            printf_error("InitializeDAC: CLRDataCreateInstance(ICLRDataEnumMemoryRegions) FAILED %s (%08x)\n", GetHResultString(hr), hr);
             goto exit;
         }
-        TRACE("EnumerateMemoryRegionsWithDAC: Memory enumeration FINISHED\n");
-        if (!EnumerateManagedModules(pClrDataProcess))
+        hr = pfnCLRDataCreateInstance(__uuidof(IXCLRDataProcess), dataTarget, (void**)&m_pClrDataProcess);
+        if (FAILED(hr))
         {
+            printf_error("InitializeDAC: CLRDataCreateInstance(IXCLRDataProcess) FAILED %s (%08x)\n", GetHResultString(hr), hr);
             goto exit;
         }
     }
-    else {
-        TRACE("EnumerateMemoryRegionsWithDAC: coreclr not found; not using DAC\n");
-    }
-    if (!UnwindAllThreads(pClrDataProcess))
+    else
     {
-        goto exit;
+        printf_error("InitializeDAC: coreclr not found; not using DAC\n");
     }
     result = true;
 exit:
-    if (pClrDataEnumRegions != nullptr)
-    {
-        pClrDataEnumRegions->Release();
-    }
-    if (pClrDataProcess != nullptr)
-    {
-        pClrDataProcess->Release();
-    }
     return result;
+}
+
+//
+// Enumerate all the memory regions using the DAC memory region support given a minidump type
+//
+bool
+CrashInfo::EnumerateMemoryRegionsWithDAC(MINIDUMP_TYPE minidumpType)
+{
+    if (m_pClrDataEnumRegions != nullptr && (minidumpType & MiniDumpWithFullMemory) == 0)
+    {
+        TRACE("EnumerateMemoryRegionsWithDAC: Memory enumeration STARTED (%d %d)\n", m_enumMemoryPagesAdded, m_dataTargetPagesAdded);
+
+        // Since on both Linux and MacOS all the RW regions will be added for heap
+        // dumps by createdump, the only thing differentiating a MiniDumpNormal and
+        // a MiniDumpWithPrivateReadWriteMemory is that the later uses the EnumMemory
+        // APIs. This is kind of expensive on larger applications (4 minutes, or even
+        // more), and this should already be in RW pages. Change the dump type to the
+        // faster normal one. This one already ensures necessary DAC globals, etc.
+        // without the costly assembly, module, class, type runtime data structures
+        // enumeration.
+        if (minidumpType & MiniDumpWithPrivateReadWriteMemory)
+        {
+            char* fastHeapDumps = getenv("COMPlus_DbgEnableFastHeapDumps");
+            if (fastHeapDumps != nullptr && strcmp(fastHeapDumps, "1") == 0)
+            {
+                minidumpType = MiniDumpNormal;
+            }
+        }
+        // Calls CrashInfo::EnumMemoryRegion for each memory region found by the DAC
+        HRESULT hr = m_pClrDataEnumRegions->EnumMemoryRegions(this, minidumpType, CLRDATA_ENUM_MEM_DEFAULT);
+        if (FAILED(hr))
+        {
+            printf_error("EnumMemoryRegions FAILED %s (%08x)\n", GetHResultString(hr), hr);
+            return false;
+        }
+        TRACE("EnumerateMemoryRegionsWithDAC: Memory enumeration FINISHED (%d %d)\n", m_enumMemoryPagesAdded, m_dataTargetPagesAdded);
+    }
+    return true;
 }
 
 //
 // Enumerate all the managed modules and replace the module mapping with the module name found.
 //
 bool
-CrashInfo::EnumerateManagedModules(IXCLRDataProcess* pClrDataProcess)
+CrashInfo::EnumerateManagedModules()
 {
     CLRDATA_ENUM enumModules = 0;
-    bool result = true;
     HRESULT hr = S_OK;
 
-    if (FAILED(hr = pClrDataProcess->StartEnumModules(&enumModules))) {
-        fprintf(stderr, "StartEnumModules FAILED %08x\n", hr);
-        return false;
-    }
-
-    while (true)
+    if (m_pClrDataProcess != nullptr)
     {
-        ReleaseHolder<IXCLRDataModule> pClrDataModule;
-        if ((hr = pClrDataProcess->EnumModule(&enumModules, &pClrDataModule)) != S_OK) {
-            break;
+        TRACE("EnumerateManagedModules: Module enumeration STARTED (%d)\n", m_dataTargetPagesAdded);
+
+        if (FAILED(hr = m_pClrDataProcess->StartEnumModules(&enumModules))) {
+            printf_error("StartEnumModules FAILED %s (%08x)\n", GetHResultString(hr), hr);
+            return false;
         }
 
-        // Skip any dynamic modules. The Request call below on some DACs crashes on dynamic modules.
-        ULONG32 flags;
-        if ((hr = pClrDataModule->GetFlags(&flags)) != S_OK) {
-            TRACE("MODULE: GetFlags FAILED %08x\n", hr);
-            continue;
-        }
-        if (flags & CLRDATA_MODULE_IS_DYNAMIC) {
-            TRACE("MODULE: Skipping dynamic module\n");
-            continue;
-        }
-
-        DacpGetModuleData moduleData;
-        if (SUCCEEDED(hr = moduleData.Request(pClrDataModule.GetPtr())))
+        while (true)
         {
-            TRACE("MODULE: %" PRIA PRIx64 " dyn %d inmem %d file %d pe %" PRIA PRIx64 " pdb %" PRIA PRIx64, (uint64_t)moduleData.LoadedPEAddress, moduleData.IsDynamic,
-                moduleData.IsInMemory, moduleData.IsFileLayout, (uint64_t)moduleData.PEFile, (uint64_t)moduleData.InMemoryPdbAddress);
+            ReleaseHolder<IXCLRDataModule> pClrDataModule;
+            if ((hr = m_pClrDataProcess->EnumModule(&enumModules, &pClrDataModule)) != S_OK) {
+                break;
+            }
 
-            if (!moduleData.IsDynamic && moduleData.LoadedPEAddress != 0)
+            // Skip any dynamic modules. The Request call below on some DACs crashes on dynamic modules.
+            ULONG32 flags;
+            if ((hr = pClrDataModule->GetFlags(&flags)) != S_OK) {
+                TRACE("MODULE: GetFlags FAILED %08x\n", hr);
+                continue;
+            }
+            if (flags & CLRDATA_MODULE_IS_DYNAMIC) {
+                TRACE("MODULE: Skipping dynamic module\n");
+                continue;
+            }
+
+            DacpGetModuleData moduleData;
+            if (SUCCEEDED(hr = moduleData.Request(pClrDataModule.GetPtr())))
             {
-                ArrayHolder<WCHAR> wszUnicodeName = new WCHAR[MAX_LONGPATH + 1];
-                if (SUCCEEDED(hr = pClrDataModule->GetFileName(MAX_LONGPATH, nullptr, wszUnicodeName)))
+                TRACE("MODULE: %" PRIA PRIx64 " dyn %d inmem %d file %d pe %" PRIA PRIx64 " pdb %" PRIA PRIx64, (uint64_t)moduleData.LoadedPEAddress, moduleData.IsDynamic,
+                    moduleData.IsInMemory, moduleData.IsFileLayout, (uint64_t)moduleData.PEAssembly, (uint64_t)moduleData.InMemoryPdbAddress);
+
+                if (!moduleData.IsDynamic && moduleData.LoadedPEAddress != 0)
                 {
-                    std::string moduleName = FormatString("%S", wszUnicodeName.GetPtr());
+                    ArrayHolder<WCHAR> wszUnicodeName = new WCHAR[MAX_LONGPATH + 1];
+                    if (SUCCEEDED(hr = pClrDataModule->GetFileName(MAX_LONGPATH, nullptr, wszUnicodeName)))
+                    {
+                        std::string moduleName = FormatString("%S", wszUnicodeName.GetPtr());
 
-                    // Change the module mapping name
-                    ReplaceModuleMapping(moduleData.LoadedPEAddress, moduleData.LoadedPESize, moduleName);
+                        // Change the module mapping name
+                        AddOrReplaceModuleMapping(moduleData.LoadedPEAddress, moduleData.LoadedPESize, moduleName);
 
-                    // Add managed module info
-                    AddModuleInfo(true, moduleData.LoadedPEAddress, pClrDataModule, moduleName);
+                        // Add managed module info
+                        AddModuleInfo(true, moduleData.LoadedPEAddress, pClrDataModule, moduleName);
+                    }
+                    else {
+                        TRACE("\nModule.GetFileName FAILED %08x\n", hr);
+                    }
                 }
                 else {
-                    TRACE("\nModule.GetFileName FAILED %08x\n", hr);
+                    TRACE("\n");
                 }
             }
             else {
-                TRACE("\n");
+                TRACE("moduleData.Request FAILED %08x\n", hr);
             }
         }
-        else {
-            TRACE("moduleData.Request FAILED %08x\n", hr);
+
+        if (enumModules != 0) {
+            m_pClrDataProcess->EndEnumModules(enumModules);
         }
+        TRACE("EnumerateManagedModules: Module enumeration FINISHED (%d) ModuleMappings %06llx\n", m_dataTargetPagesAdded, m_cbModuleMappings / PAGE_SIZE);
     }
-
-    if (enumModules != 0) {
-        pClrDataProcess->EndEnumModules(enumModules);
-    }
-
-    return result;
+    return true;
 }
 
 //
 // Unwind all the native threads to ensure that the dwarf unwind info is added to the core dump.
 //
 bool
-CrashInfo::UnwindAllThreads(IXCLRDataProcess* pClrDataProcess)
+CrashInfo::UnwindAllThreads()
 {
+    TRACE("UnwindAllThreads: STARTED (%d)\n", m_dataTargetPagesAdded);
     ReleaseHolder<ISOSDacInterface> pSos = nullptr;
-    pClrDataProcess->QueryInterface(__uuidof(ISOSDacInterface), (void**)&pSos);
-
+    if (m_pClrDataProcess != nullptr) {
+        m_pClrDataProcess->QueryInterface(__uuidof(ISOSDacInterface), (void**)&pSos);
+    }
     // For each native and managed thread
     for (ThreadInfo* thread : m_threads)
     {
-        if (!thread->UnwindThread(pClrDataProcess, pSos)) {
+        if (!thread->UnwindThread(m_pClrDataProcess, pSos)) {
             return false;
         }
     }
+    TRACE("UnwindAllThreads: FINISHED (%d)\n", m_dataTargetPagesAdded);
     return true;
 }
 
@@ -377,15 +444,21 @@ CrashInfo::UnwindAllThreads(IXCLRDataProcess* pClrDataProcess)
 // Replace an existing module mapping with one with a different name.
 //
 void
-CrashInfo::ReplaceModuleMapping(CLRDATA_ADDRESS baseAddress, ULONG64 size, const std::string& name)
+CrashInfo::AddOrReplaceModuleMapping(CLRDATA_ADDRESS baseAddress, ULONG64 size, const std::string& name)
 {
-    uint64_t start = (uint64_t)baseAddress;
-    uint64_t end = ((baseAddress + size) + (PAGE_SIZE - 1)) & PAGE_MASK;
-    uint32_t flags = GetMemoryRegionFlags(start);
+    // Round to page boundary (single-file managed assemblies are not page aligned)
+    ULONG_PTR start = ((ULONG_PTR)baseAddress) & PAGE_MASK;
+    assert(start > 0);
+
+    // Round up to page boundary
+    ULONG_PTR end = ((baseAddress + size) + (PAGE_SIZE - 1)) & PAGE_MASK;
+    assert(end > 0);
+
+    uint32_t flags = GetMemoryRegionFlags((ULONG_PTR)baseAddress);
 
     // Make sure that the page containing the PE header for the managed asseblies is in the dump
     // especially on MacOS where they are added artificially.
-    MemoryRegion header(flags | MEMORY_REGION_FLAG_MEMORY_BACKED, start, start + PAGE_SIZE);
+    MemoryRegion header(flags, start, start + PAGE_SIZE);
     InsertMemoryRegion(header);
 
     // Add or change the module mapping for this PE image. The managed assembly images may already
@@ -397,10 +470,10 @@ CrashInfo::ReplaceModuleMapping(CLRDATA_ADDRESS baseAddress, ULONG64 size, const
         // On MacOS the assemblies are always added.
         MemoryRegion newRegion(flags, start, end, 0, name);
         m_moduleMappings.insert(newRegion);
+        m_cbModuleMappings += newRegion.Size();
 
         if (g_diagnostics) {
-            TRACE("MODULE: ADD ");
-            newRegion.Trace();
+            newRegion.Trace("MODULE: ADD ");
         }
     }
     else if (found->FileName().compare(name) != 0)
@@ -410,13 +483,14 @@ CrashInfo::ReplaceModuleMapping(CLRDATA_ADDRESS baseAddress, ULONG64 size, const
 
         // Remove and cleanup the old one
         m_moduleMappings.erase(found);
+        m_cbModuleMappings -= found->Size();
 
-        // Add the new memory region
+        // Add the new memory region.
         m_moduleMappings.insert(newRegion);
+        m_cbModuleMappings += newRegion.Size();
 
         if (g_diagnostics) {
-            TRACE("MODULE: REPLACE ");
-            newRegion.Trace();
+            newRegion.Trace("MODULE: REPLACE ");
         }
     }
 }
@@ -555,15 +629,14 @@ CrashInfo::ReadMemory(void* address, void* buffer, size_t size)
         return false;
     }
     assert(read == size);
-    InsertMemoryRegion(reinterpret_cast<uint64_t>(address), size);
+    InsertMemoryRegion(reinterpret_cast<uint64_t>(address), read);
     return true;
 }
 
 //
-// Add this memory chunk to the list of regions to be
-// written to the core dump.
+// Add this memory chunk to the list of regions to be written to the core dump. Returns the number of pages actually added.
 //
-void
+int
 CrashInfo::InsertMemoryRegion(uint64_t address, size_t size)
 {
     assert(size < UINT_MAX);
@@ -576,22 +649,13 @@ CrashInfo::InsertMemoryRegion(uint64_t address, size_t size)
     uint64_t end = ((address + size) + (PAGE_SIZE - 1)) & PAGE_MASK;
     assert(end > 0);
 
-    InsertMemoryRegion(MemoryRegion(GetMemoryRegionFlags(start) | MEMORY_REGION_FLAG_MEMORY_BACKED, start, end));
+    return InsertMemoryRegion(MemoryRegion(GetMemoryRegionFlags(start), start, end));
 }
 
 //
-// Adds a memory backed flagged copy of the memory region. The file name is not preserved.
+// Add a memory region to the list. Returns the number of pages actually added.
 //
-void
-CrashInfo::InsertMemoryBackedRegion(const MemoryRegion& region)
-{
-    InsertMemoryRegion(MemoryRegion(region, region.Flags() | MEMORY_REGION_FLAG_MEMORY_BACKED));
-}
-
-//
-// Add a memory region to the list
-//
-void
+int
 CrashInfo::InsertMemoryRegion(const MemoryRegion& region)
 {
     // First check if the full memory region can be added without conflicts and is fully valid.
@@ -599,17 +663,18 @@ CrashInfo::InsertMemoryRegion(const MemoryRegion& region)
     if (found == m_memoryRegions.end())
     {
         // If the region is valid, add the full memory region
-        if (ValidRegion(region)) {
+        if (ValidRegion(region))
+        {
             m_memoryRegions.insert(region);
-            return;
+            return region.SizeInPages();
         }
     }
     else
     {
-        // If the memory region is wholly contained in region found and both have the
-        // same backed by memory state, we're done.
-        if (found->Contains(region) && (found->IsBackedByMemory() == region.IsBackedByMemory())) {
-            return;
+        // If the memory region is wholly contained in region found
+        if (found->Contains(region))
+        {
+            return 0;
         }
     }
     // Either part of the region was invalid, part of it hasn't been added or the backed
@@ -618,7 +683,8 @@ CrashInfo::InsertMemoryRegion(const MemoryRegion& region)
 
     // The region overlaps/conflicts with one already in the set so add one page at a
     // time to avoid the overlapping pages.
-    uint64_t numberPages = region.Size() / PAGE_SIZE;
+    uint64_t numberPages = region.SizeInPages();
+    int pagesAdded = 0;
 
     for (size_t p = 0; p < numberPages; p++, start += PAGE_SIZE)
     {
@@ -628,14 +694,15 @@ CrashInfo::InsertMemoryRegion(const MemoryRegion& region)
         if (found == m_memoryRegions.end())
         {
             // All the single pages added here will be combined in CombineMemoryRegions()
-            if (ValidRegion(memoryRegionPage)) {
+            if (ValidRegion(memoryRegionPage))
+            {
                 m_memoryRegions.insert(memoryRegionPage);
+                pagesAdded++;
             }
         }
-        else {
-            assert(found->IsBackedByMemory() || !region.IsBackedByMemory());
-        }
     }
+
+    return pagesAdded;
 }
 
 //
@@ -644,20 +711,16 @@ CrashInfo::InsertMemoryRegion(const MemoryRegion& region)
 bool
 CrashInfo::ValidRegion(const MemoryRegion& region)
 {
-    if (region.IsBackedByMemory())
+    uint64_t start = region.StartAddress();
+    uint64_t numberPages = region.SizeInPages();
+    for (size_t p = 0; p < numberPages; p++, start += PAGE_SIZE)
     {
-        uint64_t start = region.StartAddress();
+        BYTE buffer[1];
+        size_t read;
 
-        uint64_t numberPages = region.Size() / PAGE_SIZE;
-        for (size_t p = 0; p < numberPages; p++, start += PAGE_SIZE)
+        if (!ReadProcessMemory((void*)start, buffer, 1, &read))
         {
-            BYTE buffer[1];
-            size_t read;
-
-            if (!ReadProcessMemory((void*)start, buffer, 1, &read))
-            {
-                return false;
-            }
+            return false;
         }
     }
     return true;
@@ -675,7 +738,7 @@ CrashInfo::CombineMemoryRegions()
 
     // MEMORY_REGION_FLAG_SHARED and MEMORY_REGION_FLAG_PRIVATE are internal flags that
     // don't affect the core dump so ignore them when comparing the flags.
-    uint32_t flags = m_memoryRegions.begin()->Flags() & (MEMORY_REGION_FLAG_MEMORY_BACKED | MEMORY_REGION_FLAG_PERMISSIONS_MASK);
+    uint32_t flags = m_memoryRegions.begin()->Flags() & MEMORY_REGION_FLAG_PERMISSIONS_MASK;
     uint64_t start = m_memoryRegions.begin()->StartAddress();
     uint64_t end = start;
 
@@ -683,7 +746,7 @@ CrashInfo::CombineMemoryRegions()
     {
         // To combine a region it needs to be contiguous, same permissions and memory backed flag.
         if ((end == region.StartAddress()) &&
-            (flags == (region.Flags() & (MEMORY_REGION_FLAG_MEMORY_BACKED | MEMORY_REGION_FLAG_PERMISSIONS_MASK))))
+            (flags == (region.Flags() & MEMORY_REGION_FLAG_PERMISSIONS_MASK)))
         {
             end = region.EndAddress();
         }
@@ -693,7 +756,7 @@ CrashInfo::CombineMemoryRegions()
             assert(memoryRegionsNew.find(memoryRegion) == memoryRegionsNew.end());
             memoryRegionsNew.insert(memoryRegion);
 
-            flags = region.Flags() & (MEMORY_REGION_FLAG_MEMORY_BACKED | MEMORY_REGION_FLAG_PERMISSIONS_MASK);
+            flags = region.Flags() & MEMORY_REGION_FLAG_PERMISSIONS_MASK;
             start = region.StartAddress();
             end = region.EndAddress();
         }
@@ -710,7 +773,7 @@ CrashInfo::CombineMemoryRegions()
 
     if (g_diagnosticsVerbose)
     {
-        TRACE("Memory Regions:\n");
+        TRACE("Final Memory Regions:\n");
         for (const MemoryRegion& region : m_memoryRegions)
         {
             region.Trace();
@@ -733,32 +796,6 @@ CrashInfo::SearchMemoryRegions(const std::set<MemoryRegion>& regions, const Memo
         }
     }
     return nullptr;
-}
-
-void
-CrashInfo::Trace(const char* format, ...)
-{
-    if (g_diagnostics)
-    {
-        va_list args;
-        va_start(args, format);
-        vfprintf(stdout, format, args);
-        fflush(stdout);
-        va_end(args);
-    }
-}
-
-void
-CrashInfo::TraceVerbose(const char* format, ...)
-{
-    if (g_diagnosticsVerbose)
-    {
-        va_list args;
-        va_start(args, format);
-        vfprintf(stdout, format, args);
-        fflush(stdout);
-        va_end(args);
-    }
 }
 
 //
@@ -803,6 +840,22 @@ GetFileName(const std::string& fileName)
 }
 
 //
+// Returns just the directory portion of a path or empty if none
+//
+const std::string
+GetDirectory(const std::string& fileName)
+{
+    size_t last = fileName.rfind(DIRECTORY_SEPARATOR_STR_A);
+    if (last != std::string::npos) {
+        last++;
+    }
+    else {
+        last = 0;
+    }
+    return fileName.substr(0, last);
+}
+
+//
 // Formats a std::string with printf syntax. The final formated string is limited
 // to MAX_LONGPATH (1024) chars. Returns an empty string on any error.
 //
@@ -825,5 +878,5 @@ FormatGuid(const GUID* guid)
 {
     uint8_t* bytes = (uint8_t*)guid;
     return FormatString("%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
-		bytes[3], bytes[2], bytes[1], bytes[0], bytes[5], bytes[4], bytes[7], bytes[6], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
+        bytes[3], bytes[2], bytes[1], bytes[0], bytes[5], bytes[4], bytes[7], bytes[6], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
 }

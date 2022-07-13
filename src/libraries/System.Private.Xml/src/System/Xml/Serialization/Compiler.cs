@@ -77,14 +77,6 @@ namespace System.Xml.Serialization
             }
         }
 
-        // SxS: This method does not take any resource name and does not expose any resources to the caller.
-        // It's OK to suppress the SxS warning.
-        internal void AddImport(Assembly assembly)
-        {
-        }
-
-        internal void Close() { }
-
         internal TextWriter Source
         {
             get { return _writer; }
@@ -92,7 +84,9 @@ namespace System.Xml.Serialization
 
         internal static string GetTempAssemblyName(AssemblyName parent, string? ns)
         {
-            return parent.Name + ".XmlSerializers" + (string.IsNullOrEmpty(ns) ? "" : $".{GetPersistentHashCode(ns)}");
+            return string.IsNullOrEmpty(ns) ?
+                $"{parent.Name}.XmlSerializers" :
+                $"{parent.Name}.XmlSerializers.{GetPersistentHashCode(ns)}";
         }
 
         private static uint GetPersistentHashCode(string value)

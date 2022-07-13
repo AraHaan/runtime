@@ -5,10 +5,10 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
+using StringConcat = System.Xml.Xsl.Runtime.StringConcat;
 
 namespace System.Xml.Xsl.Xslt
 {
-    using StringConcat = System.Xml.Xsl.Runtime.StringConcat;
     //         a) Forward only, one pass.
     //         b) You should call MoveToFirstChildren on nonempty element node. (or may be skip)
 
@@ -1212,7 +1212,7 @@ namespace System.Xml.Xsl.Xslt
             public Location start;
             public Location valueStart;
             public Location end;
-            public string QualifiedName { get { return prefix.Length == 0 ? localName : string.Concat(prefix, ":", localName); } }
+            public string QualifiedName { get { return prefix.Length == 0 ? localName : $"{prefix}:{localName}"; } }
         }
     }
 }

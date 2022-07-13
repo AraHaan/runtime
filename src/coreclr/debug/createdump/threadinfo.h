@@ -12,6 +12,14 @@ class CrashInfo;
 #define MCREG_Cpsr(mc)    ((mc).pstate)
 #endif
 
+#if defined(__loongarch64)
+// See src/coreclr/pal/src/include/pal/context.h
+#define MCREG_Ra(mc)      ((mc).gpr[1])
+#define MCREG_Fp(mc)      ((mc).gpr[22])
+#define MCREG_Sp(mc)      ((mc).gpr[3])
+#define MCREG_Pc(mc)      ((mc).pc)
+#endif
+
 #define FPREG_ErrorOffset(fpregs) *(DWORD*)&((fpregs).rip)
 #define FPREG_ErrorSelector(fpregs) *(((WORD*)&((fpregs).rip)) + 2)
 #define FPREG_DataOffset(fpregs) *(DWORD*)&((fpregs).rdp)
@@ -19,6 +27,14 @@ class CrashInfo;
 #if defined(__arm__)
 #define user_regs_struct user_regs
 #define user_fpregs_struct user_fpregs
+#elif defined(__loongarch64)
+// struct user_regs_struct {} defined `/usr/include/loongarch64-linux-gnu/sys/user.h`
+
+struct user_fpregs_struct
+{
+  unsigned long long  fpregs[32];
+  unsigned long       fpscr;
+} __attribute__((__packed__));
 #endif
 
 #if defined(__aarch64__)
@@ -33,6 +49,8 @@ struct user_vfpregs_struct
 } __attribute__((__packed__));
 #endif
 
+#define STACK_OVERFLOW_EXCEPTION    0x800703e9
+
 class ThreadInfo
 {
 private:
@@ -43,8 +61,11 @@ private:
     bool m_managed;                             // if true, thread has managed code running
     uint64_t m_exceptionObject;                 // exception object address
     std::string m_exceptionType;                // exception type
-    int32_t m_exceptionHResult;                 // exception HRESULT
+    uint32_t m_exceptionHResult;                // exception HRESULT
     std::set<StackFrame> m_frames;              // stack frames
+    int m_repeatedFrames;                       // number of repeated frames
+    std::set<StackFrame>::const_iterator m_beginRepeat;   // beginning of stack overflow repeated frame sequence
+    std::set<StackFrame>::const_iterator m_endRepeat;     // end of repeated frame sequence
 
 #ifdef __APPLE__
     mach_port_t m_port;                         // MacOS thread port
@@ -88,9 +109,12 @@ public:
 
     inline bool IsManaged() const { return m_managed; }
     inline uint64_t ManagedExceptionObject() const { return m_exceptionObject; }
-    inline int32_t ManagedExceptionHResult() const { return m_exceptionHResult; }
+    inline uint32_t ManagedExceptionHResult() const { return m_exceptionHResult; }
     inline std::string ManagedExceptionType() const { return m_exceptionType; }
-    inline const std::set<StackFrame> StackFrames() const { return m_frames; }
+    inline const std::set<StackFrame>& StackFrames() const { return m_frames; }
+    inline int NumRepeatedFrames() const { return m_repeatedFrames;  }
+    inline bool IsBeginRepeat(std::set<StackFrame>::const_iterator& iterator) const { return m_repeatedFrames > 0 && iterator == m_beginRepeat; }
+    inline bool IsEndRepeat(std::set<StackFrame>::const_iterator& iterator) const { return  m_repeatedFrames > 0 && iterator == m_endRepeat; }
 
 #ifdef __APPLE__
 #if defined(__x86_64__)
@@ -119,6 +143,10 @@ public:
     inline const uint64_t GetStackPointer() const { return m_gpRegisters.rsp; }
     inline const uint64_t GetFramePointer() const { return m_gpRegisters.rbp; }
 #elif defined(__aarch64__)
+    inline const uint64_t GetInstructionPointer() const { return MCREG_Pc(m_gpRegisters); }
+    inline const uint64_t GetStackPointer() const { return MCREG_Sp(m_gpRegisters); }
+    inline const uint64_t GetFramePointer() const { return MCREG_Fp(m_gpRegisters); }
+#elif defined(__loongarch64)
     inline const uint64_t GetInstructionPointer() const { return MCREG_Pc(m_gpRegisters); }
     inline const uint64_t GetStackPointer() const { return MCREG_Sp(m_gpRegisters); }
     inline const uint64_t GetFramePointer() const { return MCREG_Fp(m_gpRegisters); }

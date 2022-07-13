@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -8,6 +9,19 @@ namespace CoreclrTestLib
 {
     public class MobileAppHandler
     {
+        // See https://github.com/dotnet/xharness/blob/main/src/Microsoft.DotNet.XHarness.Common/CLI/ExitCode.cs
+        // 78 - PACKAGE_INSTALLATION_FAILURE
+        // 81 - DEVICE_NOT_FOUND
+        // 82 - RETURN_CODE_NOT_SET
+        // 83 - APP_LAUNCH_FAILURE
+        // 84 - DEVICE_FILE_COPY_FAILURE
+        // 86 - PACKAGE_INSTALLATION_TIMEOUT
+        // 88 - SIMULATOR_FAILURE
+        // 89 - DEVICE_FAILURE
+        // 90 - APP_LAUNCH_TIMEOUT
+        // 91 - ADB_FAILURE
+        private static readonly int[] _knownExitCodes = new int[] { 78, 81, 82, 83, 84, 86, 88, 89, 90, 91 };
+
         public int InstallMobileApp(string platform, string category, string testBinaryBase, string reportBase)
         {
             return HandleMobileApp("install", platform, category, testBinaryBase, reportBase);
@@ -20,8 +34,8 @@ namespace CoreclrTestLib
 
         private static int HandleMobileApp(string action, string platform, string category, string testBinaryBase, string reportBase)
         {
-            //install or uninstall mobile app
             int exitCode = -100;
+
             string outputFile = Path.Combine(reportBase, action, $"{category}_{action}.output.txt");
             string errorFile = Path.Combine(reportBase, action, $"{category}_{action}.error.txt");
             bool platformValueFlag = true;
@@ -34,7 +48,6 @@ namespace CoreclrTestLib
             using (var outputWriter = new StreamWriter(outputStream))
             using (var errorWriter = new StreamWriter(errorStream))
             {
-                //Validate inputs
                 if ((platform != "android") && (platform != "apple"))
                 {
                     outputWriter.WriteLine($"Incorrect value of platform. Provided {platform}. Valid strings are android and apple.");
@@ -81,6 +94,11 @@ namespace CoreclrTestLib
                         }
                     }
 
+                    if (action == "install")
+                    {
+                        cmdStr += " --timeout 00:02:30";
+                    }
+
                     using (Process process = new Process())
                     {
                         if (OperatingSystem.IsWindows())
@@ -108,6 +126,7 @@ namespace CoreclrTestLib
                         {
                             // Process completed.
                             exitCode = process.ExitCode;
+                            CheckExitCode(exitCode, testBinaryBase, category, outputWriter);
                             Task.WaitAll(copyOutput, copyError);
                         }
                         else
@@ -125,7 +144,7 @@ namespace CoreclrTestLib
                                     cmdStr, timeout, startTime.ToString(), endTime.ToString());
                             errorWriter.WriteLine("\ncmdLine:{0} Timed Out (timeout in milliseconds: {1}, start: {2}, end: {3})",
                                     cmdStr, timeout, startTime.ToString(), endTime.ToString());
-                            
+
                             process.Kill(entireProcessTree: true);
                         }
                     }
@@ -152,8 +171,30 @@ namespace CoreclrTestLib
             {
                 cmdPrefix = "-c";
             }
-            
+
             return $"{cmdPrefix} \"{cmd}\"";
+        }
+
+        private static void CreateRetryFile(string fileName, int exitCode, string appName)
+        {
+            using (StreamWriter writer = new StreamWriter(fileName))  
+            {
+                writer.WriteLine($"appName: {appName}; exitCode: {exitCode}"); 
+            }
+        }
+
+        public static void CheckExitCode(int exitCode, string testBinaryBase, string category, StreamWriter outputWriter)
+        {
+            if (_knownExitCodes.Contains(exitCode))
+            {
+                CreateRetryFile($"{testBinaryBase}/.retry", exitCode, category);
+                outputWriter.WriteLine("\nInfra issue was detected and a work item retry was requested");
+            }
+        }
+
+        public static bool IsRetryRequested(string testBinaryBase)
+        {
+            return File.Exists($"{testBinaryBase}/.retry");
         }
     }
 }

@@ -6,8 +6,6 @@
  */
 //
 
-//
-
 #include "common.h"
 
 #include "frames.h"
@@ -26,8 +24,6 @@
 
 #include "exceptionhandling.h"
 #include "virtualcallstub.h"
-
-
 
 #if !defined(DACCESS_COMPILE)
 
@@ -199,7 +195,7 @@ RtlVirtualUnwind_Worker (
     // that the debugger is attched when we get here.
     _ASSERTE(CORDebuggerAttached());
 
-    LOG((LF_CORDB, LL_EVERYTHING, "RVU_CBSW: in RtlVitualUnwind_ClrDbgSafeWorker, ControlPc=0x%p\n", ControlPc));
+    LOG((LF_CORDB, LL_EVERYTHING, "RVU_CBSW: in RtlVirtualUnwind_ClrDbgSafeWorker, ControlPc=0x%p\n", ControlPc));
 
     BOOL     InEpilogue = FALSE;
     BOOL     HasManagedBreakpoint = FALSE;
@@ -367,7 +363,7 @@ RtlVirtualUnwind_Worker (
         // This is a jmp outside of the function, probably a tail call
         // to an import function.
         InEpilogue = TRUE;
-        NextByte += 2;
+        NextByte += 6;
     }
     else if (((TempOpcode & 0xf8) == AMD64_SIZE64_PREFIX)
             && (NextByte[1] == AMD64_JMP_IND_OP)
@@ -382,7 +378,27 @@ RtlVirtualUnwind_Worker (
         // Such an opcode is an unambiguous epilogue indication.
         //
         InEpilogue = TRUE;
+        // Account for displacement/SIB byte
+        int mod = NextByte[2] >> 6;
+        int rm = NextByte[2] & 0b111;
         NextByte += 3;
+        if (mod != 0b11)
+        {
+            // Has addressing mode
+            if (rm == 0b100)
+            {
+                NextByte++; // SIB byte
+            }
+
+            if (mod == 0b01)
+            {
+                NextByte++; // disp8
+            }
+            else if (mod == 0b10 || (mod == 0b00 && rm == 0b101))
+            {
+                NextByte += 4; // disp32
+            }
+        }
     }
 
     if (InEpilogue && HasUnmanagedBreakpoint)
@@ -603,14 +619,13 @@ AdjustContextForVirtualStub(
             _ASSERTE(!"AV in ResolveStub at unknown instruction");
             return FALSE;
         }
-        SetSP(pContext, dac_cast<PCODE>(dac_cast<PTR_BYTE>(GetSP(pContext)) + sizeof(void*))); // rollback push rdx
     }
     else
     {
         return FALSE;
     }
 
-    PCODE callsite = *dac_cast<PTR_PCODE>(GetSP(pContext)); 
+    PCODE callsite = *dac_cast<PTR_PCODE>(GetSP(pContext));
     if (pExceptionRecord != NULL)
     {
         pExceptionRecord->ExceptionAddress = (PVOID)callsite;
@@ -618,8 +633,15 @@ AdjustContextForVirtualStub(
     SetIP(pContext, callsite);
     SetSP(pContext, dac_cast<PCODE>(dac_cast<PTR_BYTE>(GetSP(pContext)) + sizeof(void*))); // Move SP to where it was at the call site
 
+#if defined(TARGET_WINDOWS)
+    DWORD64 ssp = GetSSP(pContext);
+    if (ssp != 0)
+    {
+        SetSSP(pContext, ssp + sizeof(void*));
+    }
+#endif // TARGET_WINDOWS
+
     return TRUE;
 }
 
 #endif
-
