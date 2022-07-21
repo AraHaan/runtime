@@ -164,4 +164,71 @@ namespace System.IO.Compression
         public override System.Threading.Tasks.ValueTask WriteAsync(System.ReadOnlyMemory<byte> buffer, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) { throw null; }
         public override void WriteByte(byte value) { }
     }
+    public enum ZlibCompressionLevel
+    {
+        DefaultCompression = -1,
+        NoCompression,
+        Level1,
+        BestSpeed = Level1,
+        Level2,
+        Level3,
+        Level4,
+        Level5,
+        Level6,
+        Level7,
+        Level8,
+        Level9,
+        BestCompression = Level9
+    }
+    public enum ZlibCompressionStrategy
+    {
+        DefaultStrategy,
+        Filtered,
+        HuffmanOnly,
+        Rle,
+        Fixed
+    }
+    public enum ZlibFlushCode
+    {
+        NoFlush,
+        PartialFlush,
+        SyncFlush,
+        FullFlush,
+        Finish,
+        Block,
+        Trees
+    }
+    public enum ZlibMemoryLevel
+    {
+        Level1 = 1,
+        Level2,
+        Level3,
+        Level4,
+        Level5,
+        Level6,
+        Level7,
+        Level8,
+        Level9
+    }
+    public class ZlibOptions
+    {
+        public int WindowBits { get { throw null; } }
+        public ZlibMemoryLevel MemoryLevel { get { throw null; } }
+        public ZlibFlushCode FlushMode { get { throw null; } set { throw null; } }
+        public ZlibCompressionLevel CompressionLevel { get { throw null; } }
+        public ZlibCompressionStrategy Strategy { get { throw null; } }
+        public CompressionMode CompressionMode { get { throw null; } }
+        public ZlibOptions() { }
+        public ZlibOptions(CompressionMode compressionMode) { }
+        public ZlibOptions(int windowBits, ZlibMemoryLevel memoryLevel, ZlibCompressionStrategy strategy, CompressionMode compressionMode) { }
+        public ZlibOptions(ZlibCompressionLevel compressionLevel) { }
+    }
+    public class DeflateOptions : ZlibOptions
+    {
+        public DeflateOptions(CompressionMode compressionMode) { }
+    }
+    public class GZipOptions : ZlibOptions
+    {
+        public GZipOptions(CompressionMode compressionMode) { }
+    }
 }

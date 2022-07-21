@@ -22,9 +22,19 @@ namespace System.IO.Compression
         /// <param name="stream">The stream to which compressed data is written.</param>
         /// <param name="compressionLevel">One of the enumeration values that indicates whether to emphasize speed or compression efficiency when compressing data to the stream.</param>
         /// <param name="leaveOpen"><see langword="true" /> to leave the stream open after disposing the <see cref="System.IO.Compression.BrotliStream" /> object; otherwise, <see langword="false" />.</param>
-        public BrotliStream(Stream stream, CompressionLevel compressionLevel, bool leaveOpen) : this(stream, CompressionMode.Compress, leaveOpen)
+        public BrotliStream(Stream stream, CompressionLevel compressionLevel, bool leaveOpen) : this(stream, new BrotliOptions(compressionLevel), leaveOpen) { }
+        /// <summary>Initializes a new instance of the <see cref="System.IO.Compression.BrotliStream" /> class by using the specified stream and compression level, and optionally leaves the stream open.</summary>
+        /// <param name="stream">The stream to compress.</param>
+        /// <param name="options">An instance of <see cref="BrotliOptions"/> that contains the compression level and the window bits for compressing.</param>
+        public BrotliStream(Stream stream, BrotliOptions options) : this(stream, options, false) { }
+        /// <summary>Initializes a new instance of the <see cref="System.IO.Compression.BrotliStream" /> class by using the specified stream and compression level, and optionally leaves the stream open.</summary>
+        /// <param name="stream">The stream to compress.</param>
+        /// <param name="options">An instance of <see cref="BrotliOptions"/> that contains the compression level and the window bits for compressing.</param>
+        /// <param name="leaveOpen"><see langword="true" /> to leave the stream open after disposing the <see cref="System.IO.Compression.BrotliStream" /> object; otherwise, <see langword="false" />.</param>
+        public BrotliStream(Stream stream, BrotliOptions options, bool leaveOpen)
+            : this(stream, CompressionMode.Compress, leaveOpen)
         {
-            _encoder.SetQuality(BrotliUtils.GetQualityFromCompressionLevel(compressionLevel));
+            _encoder.SetOptions(options);
         }
 
         /// <summary>Writes compressed bytes to the underlying stream from the specified byte array.</summary>

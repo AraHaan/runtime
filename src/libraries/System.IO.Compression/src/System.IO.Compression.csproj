@@ -29,6 +29,12 @@
     <Compile Include="System\IO\Compression\DeflateZLib\DeflateStream.cs" />
     <Compile Include="System\IO\Compression\DeflateZLib\Inflater.cs" />
     <Compile Include="System\IO\Compression\DeflateZLib\ZLibException.cs" />
+    <Compile Include="System\IO\Compression\DeflateZLib\ZlibCompressionLevel.cs" />
+    <Compile Include="System\IO\Compression\DeflateZLib\ZlibCompressionStrategy.cs" />
+    <Compile Include="System\IO\Compression\DeflateZLib\ZlibFlushCode.cs" />
+    <Compile Include="System\IO\Compression\DeflateZLib\ZlibMemoryLevel.cs" />
+    <Compile Include="System\IO\Compression\DeflateZLib\ZlibOptions.cs" />
+    <Compile Include="System\IO\Compression\DeflateZLib\DeflateOptions.cs" />
     <Compile Include="$(CommonPath)System\IO\Compression\ZLibNative.cs"
              Link="Common\System\IO\Compression\ZLibNative.cs" />
     <Compile Include="$(CommonPath)System\IO\Compression\ZLibNative.ZStream.cs"
@@ -36,6 +42,7 @@
     <Compile Include="System\IO\Compression\CompressionLevel.cs" />
     <Compile Include="System\IO\Compression\CompressionMode.cs" />
     <Compile Include="System\IO\Compression\Crc32Helper.ZLib.cs" />
+    <Compile Include="System\IO\Compression\GZipOptions.cs" />
     <Compile Include="System\IO\Compression\GZipStream.cs" />
     <Compile Include="System\IO\Compression\PositionPreservingWriteOnlyStreamWrapper.cs" />
     <Compile Include="System\IO\Compression\ZLibStream.cs" />

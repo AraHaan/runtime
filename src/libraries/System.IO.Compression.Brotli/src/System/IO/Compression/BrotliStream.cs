@@ -38,8 +38,7 @@ namespace System.IO.Compression
                         throw new ArgumentException(SR.Stream_FalseCanWrite, nameof(stream));
                     }
 
-                    _encoder.SetQuality(BrotliUtils.Quality_Default);
-                    _encoder.SetWindow(BrotliUtils.WindowBits_Default);
+                    _encoder.SetOptions(new BrotliOptions((BrotliCompressionLevel)BrotliUtils.Quality_Default, BrotliUtils.WindowBits_Default));
                     break;
 
                 case CompressionMode.Decompress:

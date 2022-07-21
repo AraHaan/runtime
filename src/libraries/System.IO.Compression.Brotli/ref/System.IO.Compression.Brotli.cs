@@ -6,6 +6,30 @@
 
 namespace System.IO.Compression
 {
+    public enum BrotliCompressionLevel
+    {
+        NoCompression,
+        Level1,
+        Level2,
+        Level3,
+        Level4,
+        Level5,
+        Level6,
+        Level7,
+        Level8,
+        Level9,
+        Level10,
+        Level11
+    }
+    public struct BrotliOptions
+    {
+        public readonly BrotliCompressionLevel CompressionLevel { get { throw null; } }
+        public readonly int WindowBits { get { throw null; } }
+        public readonly CompressionMode CompressionMode { get { throw null; } }
+        public BrotliOptions() { }
+        public BrotliOptions(BrotliCompressionLevel compressionLevel) { }
+        public BrotliOptions(BrotliCompressionLevel compressionLevel, int windowBits) { }
+    }
     public partial struct BrotliDecoder : System.IDisposable
     {
         private object _dummy;
@@ -19,17 +43,21 @@ namespace System.IO.Compression
         private object _dummy;
         private int _dummyPrimitive;
         public BrotliEncoder(int quality, int window) { throw null; }
+        public BrotliEncoder(BrotliOptions options) { throw null; }
         public System.Buffers.OperationStatus Compress(System.ReadOnlySpan<byte> source, System.Span<byte> destination, out int bytesConsumed, out int bytesWritten, bool isFinalBlock) { throw null; }
         public void Dispose() { }
         public System.Buffers.OperationStatus Flush(System.Span<byte> destination, out int bytesWritten) { throw null; }
         public static int GetMaxCompressedLength(int inputSize) { throw null; }
         public static bool TryCompress(System.ReadOnlySpan<byte> source, System.Span<byte> destination, out int bytesWritten) { throw null; }
         public static bool TryCompress(System.ReadOnlySpan<byte> source, System.Span<byte> destination, out int bytesWritten, int quality, int window) { throw null; }
+        public static bool TryCompress(System.ReadOnlySpan<byte> source, System.Span<byte> destination, out int bytesWritten, BrotliOptions options) { throw null; }
     }
     public sealed partial class BrotliStream : System.IO.Stream
     {
         public BrotliStream(System.IO.Stream stream, System.IO.Compression.CompressionLevel compressionLevel) { }
         public BrotliStream(System.IO.Stream stream, System.IO.Compression.CompressionLevel compressionLevel, bool leaveOpen) { }
+        public BrotliStream(Stream stream, BrotliOptions options) { }
+        public BrotliStream(Stream stream, BrotliOptions options, bool leaveOpen) { }
         public BrotliStream(System.IO.Stream stream, System.IO.Compression.CompressionMode mode) { }
         public BrotliStream(System.IO.Stream stream, System.IO.Compression.CompressionMode mode, bool leaveOpen) { }
         public System.IO.Stream BaseStream { get { throw null; } }

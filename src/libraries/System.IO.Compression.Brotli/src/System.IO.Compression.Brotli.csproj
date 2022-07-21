@@ -36,6 +36,10 @@
              Link="Common\Interop\Unix\Interop.Libraries.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="System\IO\Compression\BrotliCompressionLevel.cs" />
+    <Compile Include="System\IO\Compression\BrotliOptions.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <Reference Include="System.Collections" />
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.Memory" />
