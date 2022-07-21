@@ -79,6 +79,7 @@ static void TransferStateToPalZStream(z_stream* from, PAL_ZStream* to)
 
     to->nextOut = from->next_out;
     to->availOut = from->avail_out;
+    to->totalOut = from->total_out;
 
     to->msg = from->msg;
 }
@@ -212,6 +213,15 @@ uint32_t CompressionNative_Crc32(uint32_t crc, uint8_t* buffer, int32_t len)
     assert(buffer != NULL);
 
     unsigned long result = crc32(crc, buffer, len);
+    assert(result <= UINT32_MAX);
+    return (uint32_t)result;
+}
+
+uint32_t CompressionNative_Adler32(uint32_t adler, uint8_t* buffer, int32_t len)
+{
+    assert(buffer != NULL);
+
+    unsigned long result = adler32(adler, buffer, len);
     assert(result <= UINT32_MAX);
     return (uint32_t)result;
 }

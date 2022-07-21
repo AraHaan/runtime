@@ -25,6 +25,7 @@ namespace System.IO.Compression
 
             internal uint availIn;   //uInt     avail_in;  /* number of bytes available at next_in */
             internal uint availOut;  //uInt     avail_out; /* remaining free space at next_out */
+            internal uint totalOut;  //uInt     total_out; /* total number of bytes output so far */
         }
     }
 }

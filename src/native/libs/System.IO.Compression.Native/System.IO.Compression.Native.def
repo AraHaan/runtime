@@ -13,6 +13,7 @@ EXPORTS
     BrotliEncoderHasMoreOutput
     BrotliEncoderSetParameter
     CompressionNative_Crc32
+    CompressionNative_Adler32
     CompressionNative_Deflate
     CompressionNative_DeflateEnd
     CompressionNative_DeflateReset

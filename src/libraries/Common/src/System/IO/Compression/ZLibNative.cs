@@ -249,6 +249,11 @@ namespace System.IO.Compression
                 set { _zStream.availOut = value; }
             }
 
+            public uint TotalOut
+            {
+                get { return _zStream.totalOut; }
+            }
+
             private void EnsureNotDisposed()
             {
                 ObjectDisposedException.ThrowIf(InitializationState == State.Disposed, this);

@@ -4,6 +4,8 @@
 // Changes to this file must follow the https://aka.ms/api-review process.
 // ------------------------------------------------------------------------------
 
+using System.Buffers;
+
 namespace System.IO.Compression
 {
     public enum CompressionLevel
@@ -230,5 +232,36 @@ namespace System.IO.Compression
     public class GZipOptions : ZlibOptions
     {
         public GZipOptions(CompressionMode compressionMode) { }
+    }
+    public sealed class ZlibResult : System.IDisposable
+    {
+        public ZlibResult() { }
+        public bool IsDisposed { get { throw null; } }
+        public int LastBytesWritten { get { throw null; } }
+        public int LastBytesRead { get { throw null; } }
+        public int TotalBytesWritten { get { throw null; } }
+        public int TotalBytesRead { get { throw null; } }
+        public System.Buffers.OperationStatus Status { get { throw null; } }
+        public void Dispose() { throw null; }
+    }
+    public class ZlibEncoder
+    {
+        public ZlibEncoder() { }
+        public ZlibOptions? Options { get { throw null; } set { throw null; } }
+        public bool TryCompress(ref ZlibResult zlibResult, ReadOnlySpan<byte> source, Span<byte> dest) { throw null; }
+        public void Compress(ref ZlibResult zlibResult, ReadOnlySpan<byte> source, Span<byte> dest) { throw null; }
+#pragma warning disable CS3002 // Return type is not CLS-compliant
+        public uint CalculateChecksum(ReadOnlySpan<byte> source) { throw null; }
+#pragma warning restore CS3002 // Return type is not CLS-compliant
+    }
+    public class ZlibDecoder
+    {
+        public ZlibDecoder() { }
+        public ZlibOptions? Options { get { throw null; } set { throw null; } }
+        public bool TryDecompress(ref ZlibResult zlibResult, ReadOnlySpan<byte> source, Span<byte> dest) { throw null; }
+        public void Decompress(ref ZlibResult zlibResult, ReadOnlySpan<byte> source, Span<byte> dest) { throw null; }
+#pragma warning disable CS3002 // Return type is not CLS-compliant
+        public uint CalculateChecksum(ReadOnlySpan<byte> source) { throw null; }
+#pragma warning restore CS3002 // Return type is not CLS-compliant
     }
 }

@@ -35,6 +35,9 @@
     <Compile Include="System\IO\Compression\DeflateZLib\ZlibMemoryLevel.cs" />
     <Compile Include="System\IO\Compression\DeflateZLib\ZlibOptions.cs" />
     <Compile Include="System\IO\Compression\DeflateZLib\DeflateOptions.cs" />
+    <Compile Include="System\IO\Compression\DeflateZLib\ZlibResult.cs" />
+    <Compile Include="System\IO\Compression\DeflateZLib\ZlibDecoder.cs" />
+    <Compile Include="System\IO\Compression\DeflateZLib\ZlibEncoder.cs" />
     <Compile Include="$(CommonPath)System\IO\Compression\ZLibNative.cs"
              Link="Common\System\IO\Compression\ZLibNative.cs" />
     <Compile Include="$(CommonPath)System\IO\Compression\ZLibNative.ZStream.cs"

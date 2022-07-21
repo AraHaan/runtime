@@ -40,5 +40,8 @@ internal static partial class Interop
 
         [LibraryImport(Libraries.CompressionNative, EntryPoint = "CompressionNative_Crc32")]
         internal static unsafe partial uint crc32(uint crc, byte* buffer, int len);
+
+        [LibraryImport(Libraries.CompressionNative, EntryPoint = "CompressionNative_Adler32")]
+        internal static unsafe partial uint adler32(uint adler, byte* buffer, int len);
     }
 }

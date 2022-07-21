@@ -28,6 +28,7 @@ typedef struct PAL_ZStream
 
     uint32_t availIn;  // number of bytes available at nextIn
     uint32_t availOut; // remaining free space at nextOut
+    uint32_t totalOut; // total number of bytes output so far
 } PAL_ZStream;
 
 /*
@@ -147,3 +148,11 @@ updated CRC-32.
 Returns the updated CRC-32.
 */
 FUNCTIONEXPORT uint32_t FUNCTIONCALLINGCONVENCTION CompressionNative_Crc32(uint32_t crc, uint8_t* buffer, int32_t len);
+
+/*
+Update a running Adler-32 with the bytes buffer[0..len-1 and return the
+updated Adler-32.
+
+Returns the updated Adler-32.
+*/
+FUNCTIONEXPORT uint32_t FUNCTIONCALLINGCONVENCTION CompressionNative_Adler32(uint32_t adler, uint8_t* buffer, int32_t len);

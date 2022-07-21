@@ -29,5 +29,9 @@ namespace System.Buffers
         /// will make the invalid sequence valid.
         /// </summary>
         InvalidData,
+        /// <summary>
+        /// The operation ran into an generic error while processing the input buffer.
+        /// </summary>
+        Error,
     }
 }

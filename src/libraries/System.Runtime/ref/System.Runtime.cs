@@ -7084,6 +7084,7 @@ namespace System.Buffers
         DestinationTooSmall = 1,
         NeedMoreData = 2,
         InvalidData = 3,
+        Error = 4,
     }
     public delegate void ReadOnlySpanAction<T, in TArg>(System.ReadOnlySpan<T> span, TArg arg);
     public delegate void SpanAction<T, in TArg>(System.Span<T> span, TArg arg);
