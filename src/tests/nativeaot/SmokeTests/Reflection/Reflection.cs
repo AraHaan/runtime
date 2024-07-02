@@ -13,15 +13,13 @@ using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Reflection;
-using Xunit;
 
 [assembly: TestAssembly]
 [module: TestModule]
 
-public static class ReflectionTest
+internal static class ReflectionTest
 {
-    [Fact]
-    public static int TestEntryPoint()
+    private static int Main()
     {
         // Things I would like to test, but we don't fully support yet:
         // * Interface method is reflectable if we statically called it through a constrained call
@@ -68,6 +66,7 @@ public static class ReflectionTest
         TestGenericMethodOnGenericType.Run();
         TestIsValueTypeWithoutTypeHandle.Run();
         TestMdArrayLoad.Run();
+        TestMdArrayLoad2.Run();
         TestByRefTypeLoad.Run();
         TestGenericLdtoken.Run();
         TestAbstractGenericLdtoken.Run();
@@ -90,7 +89,7 @@ public static class ReflectionTest
         TestByRefReturnInvoke.Run();
         TestAssemblyLoad.Run();
         TestBaseOnlyUsedFromCode.Run();
-        TestStartPoint.Run();
+        TestEntryPoint.Run();
 
         return 100;
     }
@@ -1044,7 +1043,9 @@ public static class ReflectionTest
     {
         interface IUnreferenced { }
 
-        class UnreferencedBaseType : IUnreferenced { }
+        interface IReferenced { }
+
+        class UnreferencedBaseType : IUnreferenced, IReferenced { }
         class UnreferencedMidType : UnreferencedBaseType { }
         class ReferencedDerivedType : UnreferencedMidType { }
 
@@ -1063,8 +1064,9 @@ public static class ReflectionTest
 
             Assert.Equal(count, 3);
 
-            // This one could in theory fail if we start trimming interface lists
+            // We expect to see only IReferenced but not IUnreferenced
             Assert.Equal(1, mi.GetParameters()[0].ParameterType.GetInterfaces().Length);
+            Assert.Equal(typeof(IReferenced), mi.GetParameters()[0].ParameterType.GetInterfaces()[0]);
         }
     }
 
@@ -2205,13 +2207,50 @@ public static class ReflectionTest
             }
         }
 
+        class ClassWithCctor
+        {
+            static ClassWithCctor() => s_field = 42;
+        }
+
+        class ClassWithCctor<T>
+        {
+            static ClassWithCctor() => s_field = 11;
+        }
+
+        class DynamicClassWithCctor<T>
+        {
+            static DynamicClassWithCctor() => s_field = 1000;
+        }
+
+        class Atom { }
+
         private static bool s_cctorRan;
+        private static int s_field;
 
         public static void Run()
         {
             RuntimeHelpers.RunClassConstructor(typeof(TypeWithNoStaticFieldsButACCtor).TypeHandle);
             if (!s_cctorRan)
                 throw new Exception();
+
+            RunTheCctor(typeof(ClassWithCctor));
+            if (s_field != 42)
+                throw new Exception();
+
+            RunTheCctor(typeof(ClassWithCctor<Atom>));
+            if (s_field != 11)
+                throw new Exception();
+
+            RunTheCctor(typeof(DynamicClassWithCctor<>).MakeGenericType(GetAtom()));
+            if (s_field != 1000)
+                throw new Exception();
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            static void RunTheCctor([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.NonPublicConstructors)] Type t)
+                => RuntimeHelpers.RunClassConstructor(t.TypeHandle);
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            static Type GetAtom() => typeof(Atom);
         }
     }
 
@@ -2442,6 +2481,21 @@ public static class ReflectionTest
         }
     }
 
+    class TestMdArrayLoad2
+    {
+        class Atom { }
+
+        public static object MakeMdArray<T>() => new T[1,1,1];
+
+        public static void Run()
+        {
+            var mi = typeof(TestMdArrayLoad2).GetMethod(nameof(MakeMdArray)).MakeGenericMethod(GetAtom());
+            if (mi.Invoke(null, Array.Empty<object>()) is not Atom[,,])
+                throw new Exception();
+            static Type GetAtom() => typeof(Atom);
+        }
+    }
+
     class TestByRefTypeLoad
     {
         class Atom { }
@@ -2539,11 +2593,11 @@ public static class ReflectionTest
         }
     }
 
-    class TestStartPoint
+    class TestEntryPoint
     {
         public static void Run()
         {
-            Console.WriteLine(nameof(TestStartPoint));
+            Console.WriteLine(nameof(TestEntryPoint));
             if (Assembly.GetEntryAssembly().EntryPoint == null)
                 throw new Exception();
         }

@@ -2989,7 +2989,6 @@ void FreeExceptionData(ExceptionData *pedata)
     if (pedata->bstrHelpFile)
         SysFreeString(pedata->bstrHelpFile);
 }
-#endif // FEATURE_COMINTEROP
 
 void GetExceptionForHR(HRESULT hr, IErrorInfo* pErrInfo, OBJECTREF* pProtectedThrowable)
 {
@@ -3005,7 +3004,6 @@ void GetExceptionForHR(HRESULT hr, IErrorInfo* pErrInfo, OBJECTREF* pProtectedTh
     // Initialize
     *pProtectedThrowable = NULL;
 
-#if defined(FEATURE_COMINTEROP)
     if (pErrInfo != NULL)
     {
         // If this represents a managed object...
@@ -3039,7 +3037,6 @@ void GetExceptionForHR(HRESULT hr, IErrorInfo* pErrInfo, OBJECTREF* pProtectedTh
             (*pProtectedThrowable) = ex.GetThrowable();
         }
     }
-#endif // defined(FEATURE_COMINTEROP)
 
     // If we made it here and we don't have an exception object, we didn't have a valid IErrorInfo
     // so we'll create an exception based solely on the hresult.
@@ -3056,20 +3053,32 @@ void GetExceptionForHR(HRESULT hr, OBJECTREF* pProtectedThrowable)
     {
         THROWS;
         GC_TRIGGERS;        // because of IErrorInfo
-        MODE_ANY;
+        MODE_COOPERATIVE;
     }
     CONTRACTL_END;
 
     // Get an IErrorInfo if one is available.
     IErrorInfo *pErrInfo = NULL;
-#ifdef FEATURE_COMINTEROP
     if (SafeGetErrorInfo(&pErrInfo) != S_OK)
         pErrInfo = NULL;
-#endif // FEATURE_COMINTEROP
 
     GetExceptionForHR(hr, pErrInfo, pProtectedThrowable);
 }
+#else
+void GetExceptionForHR(HRESULT hr, OBJECTREF* pProtectedThrowable)
+{
+    CONTRACTL
+    {
+        GC_TRIGGERS;
+        NOTHROW;
+        MODE_COOPERATIVE;
+    }
+    CONTRACTL_END;
 
+    EEMessageException ex(hr);
+    (*pProtectedThrowable) = ex.GetThrowable();
+}
+#endif // FEATURE_COMINTEROP
 
 //
 // Maps a Win32 fault to a COM+ Exception enumeration code
@@ -4585,13 +4594,6 @@ LONG InternalUnhandledExceptionFilter_Worker(
     STRESS_LOG2(LF_EH, LL_INFO10, "In InternalUnhandledExceptionFilter_Worker, Exception = %x, sp = %p\n",
                                     pExceptionInfo->ExceptionRecord->ExceptionCode, GetCurrentSP());
 
-    // If we can't enter the EE, done.
-    if (g_fForbidEnterEE)
-    {
-        LOG((LF_EH, LL_INFO100, "InternalUnhandledExceptionFilter_Worker: g_fForbidEnterEE is TRUE\n"));
-        return EXCEPTION_CONTINUE_SEARCH;
-    }
-
     // We don't do anything when this is called from an unmanaged thread.
     Thread *pThread = GetThreadNULLOk();
 
@@ -4622,18 +4624,6 @@ LONG InternalUnhandledExceptionFilter_Worker(
         }
     }
 #endif
-
-    // This shouldn't be possible, but MSVC re-installs us... for now, just bail if this happens.
-    if (g_fNoExceptions)
-    {
-        return EXCEPTION_CONTINUE_SEARCH;
-    }
-
-    // Are we looking at a stack overflow here?
-    if ((pThread !=  NULL) && !pThread->DetermineIfGuardPagePresent())
-    {
-        g_fForbidEnterEE = true;
-    }
 
 #ifdef DEBUGGING_SUPPORTED
 
@@ -4739,20 +4729,10 @@ LONG InternalUnhandledExceptionFilter_Worker(
 
         if (pParam->pThread != NULL)
         {
-            BOOL fIsProcessTerminating = TRUE;
 
-            // In CoreCLR, we can be asked to not let an exception go unhandled on managed threads in a given AppDomain.
+            // In CoreCLR, we can be asked to not let an exception go unhandled on managed threads.
             // If the exception reaches the top of the thread's stack, we simply deliver AppDomain's UnhandledException event and
             // return back to the filter, instead of letting the process terminate because of unhandled exception.
-
-            // Below is how we perform the check:
-            //
-            // 1) The flag is specified on the AD when it is created by the host and all managed threads created
-            //    in such an AD will inherit the flag. For non-finalizer and non-threadpool threads, we check the flag against the thread.
-            // 2) The finalizer thread always switches to the AD of the object that is going to be finalized. Thus,
-            //    while it wont have the flag specified, the AD it switches to will.
-            // 3) The threadpool thread also switches to the correct AD before executing the request. The thread wont have the
-            //    flag specified, but the AD it switches to will.
 
             // This code must only be exercised when running as a normal filter; returning
             // EXCEPTION_EXECUTE_HANDLER is not valid if this code is being invoked from
@@ -4760,10 +4740,7 @@ LONG InternalUnhandledExceptionFilter_Worker(
             // Fortunately, we should never get into this case, since the thread flag about
             // ignoring unhandled exceptions cannot be set on the default domain.
 
-            if (IsFinalizerThread() || (pParam->pThread->IsThreadPoolThread()))
-                fIsProcessTerminating = !(pParam->pThread->GetDomain()->IgnoreUnhandledExceptions());
-            else
-                fIsProcessTerminating = !(pParam->pThread->HasThreadStateNC(Thread::TSNC_IgnoreUnhandledExceptions));
+            BOOL fIsProcessTerminating = !(AppDomain::GetCurrentDomain()->IgnoreUnhandledExceptions());
 
 #ifndef TARGET_UNIX
             // Setup the watson bucketing details for UE processing.
@@ -4860,7 +4837,7 @@ lDone: ;
 #ifdef _DEBUG
         char buffer[200];
         sprintf_s(buffer, 200, "\nInternal error: Uncaught exception was thrown from IP = %p in UnhandledExceptionFilter_Worker on thread 0x%08x\n",
-                param.ExceptionEIP, ((GetThreadNULLOk() == NULL) ? NULL : GetThread()->GetThreadId()));
+                param.ExceptionEIP, ((GetThreadNULLOk() == NULL) ? 0 : GetThread()->GetThreadId()));
         PrintToStdErrA(buffer);
         _ASSERTE(!"Unexpected exception in UnhandledExceptionFilter_Worker");
 #endif
@@ -5533,8 +5510,6 @@ static LONG ThreadBaseExceptionFilter_Worker(PEXCEPTION_POINTERS pExceptionInfo,
     ThreadBaseExceptionFilterParam *pParam = (ThreadBaseExceptionFilterParam *) pvParam;
     UnhandledExceptionLocation location = pParam->location;
 
-    _ASSERTE(!g_fNoExceptions);
-
     Thread* pThread = GetThread();
 
 #ifdef _DEBUG
@@ -5808,7 +5783,7 @@ LPVOID COMPlusCheckForAbort(UINT_PTR uTryCatchResumeAddress)
 
     // Reverse COM interop IL stubs map all exceptions to HRESULTs and must not propagate Thread.Abort
     // to their unmanaged callers.
-    if (uTryCatchResumeAddress != NULL)
+    if (uTryCatchResumeAddress != (UINT_PTR)NULL)
     {
         MethodDesc * pMDResumeMethod = ExecutionManager::GetCodeMethodDesc((PCODE)uTryCatchResumeAddress);
         if (pMDResumeMethod->IsILStub())
@@ -6737,14 +6712,6 @@ VEH_ACTION WINAPI CLRVectoredExceptionHandlerPhase3(PEXCEPTION_POINTERS pExcepti
 
 VEH_ACTION WINAPI CLRVectoredExceptionHandler(PEXCEPTION_POINTERS pExceptionInfo)
 {
-    // It is not safe to execute code inside VM after we shutdown EE.  One example is DisablePreemptiveGC
-    // will block forever.
-    if (g_fForbidEnterEE)
-    {
-        return VEH_CONTINUE_SEARCH;
-    }
-
-
     //
     // DO NOT USE CONTRACTS HERE AS THIS ROUTINE MAY NEVER RETURN.  You can use
     // static contracts, but currently this is all WRAPPER_NO_CONTRACT.
@@ -6796,39 +6763,40 @@ VEH_ACTION WINAPI CLRVectoredExceptionHandler(PEXCEPTION_POINTERS pExceptionInfo
 
     if (pExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_RETURN_ADDRESS_HIJACK_ATTEMPT)
     {
-        HijackArgs hijackArgs;
-        hijackArgs.Rax = pExceptionInfo->ContextRecord->Rax;
-        hijackArgs.Rsp = pExceptionInfo->ContextRecord->Rsp;
-
-        bool areCetShadowStacksEnabled = Thread::AreCetShadowStacksEnabled();
-        if (areCetShadowStacksEnabled)
+        if (pThread == NULL || !pThread->PreemptiveGCDisabled())
         {
-            // When the CET is enabled, the return address is still on stack, so we need to set the Rsp as
-            // if it was popped.
-            hijackArgs.Rsp += 8;
+            // We are not running managed code, so this cannot be our hijack
+            // Perhaps some other runtime is responsible.
+            return VEH_CONTINUE_SEARCH;
         }
-        hijackArgs.Rip = 0 ; // The OnHijackWorker sets this
-        #define CALLEE_SAVED_REGISTER(regname) hijackArgs.Regs.regname = pExceptionInfo->ContextRecord->regname;
-        ENUM_CALLEE_SAVED_REGISTERS();
-        #undef CALLEE_SAVED_REGISTER
 
-        OnHijackWorker(&hijackArgs);
-
-        #define CALLEE_SAVED_REGISTER(regname) pExceptionInfo->ContextRecord->regname = hijackArgs.Regs.regname;
-        ENUM_CALLEE_SAVED_REGISTERS();
-        #undef CALLEE_SAVED_REGISTER
-        pExceptionInfo->ContextRecord->Rax = hijackArgs.Rax;
-
-        if (areCetShadowStacksEnabled)
+        PCONTEXT interruptedContext = pExceptionInfo->ContextRecord;
+        bool areShadowStacksEnabled = Thread::AreShadowStacksEnabled();
+        if (areShadowStacksEnabled)
         {
-            // The context refers to the return instruction
-            // Set the return address on the stack to the original one
-            *(size_t *)pExceptionInfo->ContextRecord->Rsp = hijackArgs.ReturnAddress;
+            // OS should have fixed the SP value to the same as we`ve stashed for the hijacked thread
+            _ASSERTE(*(size_t *)interruptedContext->Rsp == (uintptr_t)pThread->GetHijackedReturnAddress());
+
+            // When the CET is enabled, the interruption happens on the ret instruction in the calee.
+            // We need to "pop" rsp to the caller, as if the ret has consumed it.
+            interruptedContext->Rsp += 8;
         }
-        else
+
+        // Change the IP to be at the original return site, as if we have returned to the caller.
+        // That IP is an interruptible safe point, so we can suspend right there.
+        uintptr_t origIp = interruptedContext->Rip;
+        interruptedContext->Rip = (uintptr_t)pThread->GetHijackedReturnAddress();
+
+        FrameWithCookie<ResumableFrame> frame(pExceptionInfo->ContextRecord);
+        frame.Push(pThread);
+        CommonTripThread();
+        frame.Pop(pThread);
+
+        if (areShadowStacksEnabled)
         {
-            // The context refers to the location after the return was processed
-            pExceptionInfo->ContextRecord->Rip = hijackArgs.ReturnAddress;
+            // Undo the "pop", so that the ret could now succeed.
+            interruptedContext->Rsp = interruptedContext->Rsp - 8;
+            interruptedContext->Rip = origIp;
         }
 
         return VEH_CONTINUE_EXECUTION;
@@ -7434,12 +7402,6 @@ LONG WINAPI CLRVectoredExceptionHandlerShim(PEXCEPTION_POINTERS pExceptionInfo)
     // WARNING WARNING WARNING WARNING WARNING WARNING WARNING
     //
 
-    // If exceptions (or runtime) have been disabled, then simply return.
-    if (g_fForbidEnterEE || g_fNoExceptions)
-    {
-        return EXCEPTION_CONTINUE_SEARCH;
-    }
-
 #ifdef FEATURE_EH_FUNCLETS
     pExceptionInfo->ContextRecord->ContextFlags |= CONTEXT_EXCEPTION_ACTIVE;
 #endif // FEATURE_EH_FUNCLETS
@@ -7688,35 +7650,6 @@ void CLRAddVectoredHandlers(void)
 #endif // !TARGET_UNIX
 }
 
-// This function removes the vectored exception and continue handler registration
-// from the OS.
-void CLRRemoveVectoredHandlers(void)
-{
-    CONTRACTL
-    {
-        NOTHROW;
-        GC_NOTRIGGER;
-        MODE_ANY;
-    }
-    CONTRACTL_END;
-#ifndef TARGET_UNIX
-
-    // Unregister the vectored exception handler if one is registered (and we can).
-    if (g_hVectoredExceptionHandler != NULL)
-    {
-        // Unregister the vectored exception handler
-        if (RemoveVectoredExceptionHandler(g_hVectoredExceptionHandler) == FALSE)
-        {
-            LOG((LF_EH, LL_INFO100, "CLRRemoveVectoredHandlers: RemoveVectoredExceptionHandler() failed.\n"));
-        }
-        else
-        {
-            LOG((LF_EH, LL_INFO100, "CLRRemoveVectoredHandlers: RemoveVectoredExceptionHandler() succeeded.\n"));
-        }
-    }
-#endif // !TARGET_UNIX
-}
-
 //
 // This does the work of the Unwind and Continue Hanlder inside the catch clause of that handler. The stack has not
 // been unwound when this is called. Keep that in mind when deciding where to put new code :)
@@ -7958,12 +7891,12 @@ LONG NotifyOfCHFFilterWrapper(
          (pThread->GetExceptionState()->GetContextRecord() == NULL)  ||
          (GetSP(pThread->GetExceptionState()->GetContextRecord()) != GetSP(pExceptionInfo->ContextRecord) ) )
     {
-        LOG((LF_EH, LL_INFO1000, "NotifyOfCHFFilterWrapper: not sending notices. pThread: %0x8", pThread));
+        LOG((LF_EH, LL_INFO1000, "NotifyOfCHFFilterWrapper: not sending notices. pThread: %p", pThread));
         if (pThread)
         {
-            LOG((LF_EH, LL_INFO1000, ", Thread SP: %0x8, Exception SP: %08x",
-                 pThread->GetExceptionState()->GetContextRecord() ? GetSP(pThread->GetExceptionState()->GetContextRecord()) : NULL,
-                 pExceptionInfo->ContextRecord ? GetSP(pExceptionInfo->ContextRecord) : NULL ));
+            LOG((LF_EH, LL_INFO1000, ", Thread SP: %p, Exception SP: %p",
+                 pThread->GetExceptionState()->GetContextRecord() ? GetSP(pThread->GetExceptionState()->GetContextRecord()) : (TADDR)NULL,
+                 pExceptionInfo->ContextRecord ? GetSP(pExceptionInfo->ContextRecord) : (TADDR)NULL ));
         }
         LOG((LF_EH, LL_INFO1000, "\n"));
         return ret;
@@ -11008,7 +10941,7 @@ void ResetThreadAbortState(PTR_Thread pThread, CrawlFrame *pCf, StackFrame sfCur
 
         // If the exception has been caught in native code, then alongwith not having address of the handler to be
         // invoked, we also wont have the IL clause for the catch block and resume stack frame will be NULL as well.
-        _ASSERTE((pCurEHTracker->GetCatchToCallPC() == NULL) &&
+        _ASSERTE((pCurEHTracker->GetCatchToCallPC() == 0) &&
             (pCurEHTracker->GetCatchHandlerExceptionClauseToken() == NULL) &&
                  (pCurEHTracker->GetResumeStackFrame().IsNull()));
 
@@ -11272,6 +11205,7 @@ VOID DECLSPEC_NORETURN RealCOMPlusThrowNonLocalized(RuntimeExceptionKind reKind,
 //==========================================================================
 // Throw a runtime exception based on an HResult
 //==========================================================================
+#ifdef FEATURE_COMINTEROP
 VOID DECLSPEC_NORETURN RealCOMPlusThrowHR(HRESULT hr, IErrorInfo* pErrInfo, Exception * pInnerException)
 {
     CONTRACTL
@@ -11294,7 +11228,6 @@ VOID DECLSPEC_NORETURN RealCOMPlusThrowHR(HRESULT hr, IErrorInfo* pErrInfo, Exce
     //_ASSERTE((hr != COR_E_EXECUTIONENGINE) ||
     //         !"ExecutionEngineException shouldn't be thrown. Use EEPolicy to failfast or a better exception. The caller of this function should modify their code.");
 
-#ifdef FEATURE_COMINTEROP
     // check for complus created IErrorInfo pointers
     if (pErrInfo != NULL)
     {
@@ -11308,9 +11241,7 @@ VOID DECLSPEC_NORETURN RealCOMPlusThrowHR(HRESULT hr, IErrorInfo* pErrInfo, Exce
             GCPROTECT_END ();
         }
     }
-#endif // FEATURE_COMINTEROP
 
-    _ASSERTE((pErrInfo == NULL) || !"pErrInfo should always be null when FEATURE_COMINTEROP is disabled.");
     if (pInnerException == NULL)
     {
         EX_THROW(EEMessageException, (hr));
@@ -11342,8 +11273,6 @@ VOID DECLSPEC_NORETURN RealCOMPlusThrowHR(HRESULT hr)
     RealCOMPlusThrowHR(hr, (IErrorInfo*)NULL);
 }
 
-
-#ifdef FEATURE_COMINTEROP
 VOID DECLSPEC_NORETURN RealCOMPlusThrowHR(HRESULT hr, tagGetErrorInfo)
 {
     CONTRACTL
@@ -11362,6 +11291,19 @@ VOID DECLSPEC_NORETURN RealCOMPlusThrowHR(HRESULT hr, tagGetErrorInfo)
 
     // Throw the exception.
     RealCOMPlusThrowHR(hr, pErrInfo);
+}
+#else // FEATURE_COMINTEROP
+VOID DECLSPEC_NORETURN RealCOMPlusThrowHR(HRESULT hr)
+{
+    CONTRACTL
+    {
+        THROWS;
+        DISABLED(GC_NOTRIGGER);  // Must sanitize first pass handling to enable this
+        MODE_ANY;
+    }
+    CONTRACTL_END;
+
+    EX_THROW(EEMessageException, (hr));
 }
 #endif // FEATURE_COMINTEROP
 
