@@ -3852,7 +3852,8 @@ namespace System.Text.RegularExpressions.Generator
                 {
                     startingPos = ReserveName("lazyloop_starting_pos");
                     sawEmpty = ReserveName("lazyloop_empty_seen");
-                    writer.WriteLine($"int {startingPos} = pos, {sawEmpty} = 0; // the lazy loop may match empty iterations");
+                    additionalDeclarations.Add($"int {startingPos} = 0, {sawEmpty} = 0;");
+                    writer.WriteLine($"{startingPos} = {sawEmpty} = 0; // the lazy loop may match empty iterations");
                 }
 
                 // If the min count is 0, start out by jumping right to what's after the loop.  Backtracking
@@ -4180,13 +4181,6 @@ namespace System.Text.RegularExpressions.Generator
                 }
                 else
                 {
-                    // if ((uint)(sliceStaticPos + iterations - 1) >= (uint)slice.Length) goto doneLabel;
-                    if (emitLengthCheck)
-                    {
-                        EmitSpanLengthCheck(iterations);
-                        writer.WriteLine();
-                    }
-
                     // If we're able to vectorize the search, do so. Otherwise, fall back to a loop.
                     // For the loop, we're validating that each char matches the target node.
                     // For Contains{Any}, we're looking for the first thing that _doesn't_ match the target node,
@@ -4195,13 +4189,26 @@ namespace System.Text.RegularExpressions.Generator
                     {
                         string containsExpr = indexOfExpr.Replace("IndexOf", "Contains");
 
-                        using (EmitBlock(writer, $"if ({sliceSpan}.Slice({sliceStaticPos}, {iterations}).{containsExpr})"))
+                        string condition = $"{sliceSpan}.Slice({sliceStaticPos}, {iterations}).{containsExpr}";
+                        if (emitLengthCheck)
+                        {
+                            condition = $"{SpanLengthCheck(iterations)} || {condition}";
+                        }
+
+                        using (EmitBlock(writer, $"if ({condition})"))
                         {
                             Goto(doneLabel);
                         }
                     }
                     else
                     {
+                        // if ((uint)(sliceStaticPos + iterations - 1) >= (uint)slice.Length) goto doneLabel;
+                        if (emitLengthCheck)
+                        {
+                            EmitSpanLengthCheck(iterations);
+                            writer.WriteLine();
+                        }
+
                         string repeaterSpan = "repeaterSlice"; // As this repeater doesn't wrap arbitrary node emits, this shouldn't conflict with anything
                         writer.WriteLine($"ReadOnlySpan<char> {repeaterSpan} = {sliceSpan}.Slice({sliceStaticPos}, {iterations});");
 
